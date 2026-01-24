@@ -162,10 +162,15 @@ async function initFirebase() {
       await Promise.all(admin.apps.map((app) => app.delete()));
     }
 
-    // Force key load via absolute path + fs (NO relative paths)
-    // We intentionally use process.cwd() so starting the server from a different folder is explicit.
-    const keyPath = path.join(process.cwd(), 'firebase-key.json');
-    const serviceAccount = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
+    // Load credentials from env var OR local ignored file (NO hardcoded keys in codebase)
+    let serviceAccount;
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    } else {
+      // We intentionally use process.cwd() so starting the server from a different folder is explicit.
+      const keyPath = path.join(process.cwd(), 'firebase-key.json');
+      serviceAccount = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
+    }
 
     console.log('🔐 client_email uit sleutel:', serviceAccount.client_email);
     console.log('Verbinding maken met project:', serviceAccount.project_id);
@@ -174,8 +179,8 @@ async function initFirebase() {
     if (!serviceAccount.client_email || !serviceAccount.private_key || !serviceAccount.project_id) {
       throw new Error('Service account JSON mist client_email/private_key/project_id');
     }
-    if (!String(serviceAccount.private_key).includes('BEGIN PRIVATE KEY')) {
-      throw new Error('Service account JSON private_key lijkt ongeldig (BEGIN PRIVATE KEY ontbreekt)');
+    if (typeof serviceAccount.private_key !== 'string' || serviceAccount.private_key.length < 100) {
+      throw new Error('Service account JSON private_key lijkt ongeldig (te kort of geen string)');
     }
 
     const credential = admin.credential.cert(serviceAccount);
