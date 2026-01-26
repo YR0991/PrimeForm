@@ -1,6 +1,6 @@
-# Quasar App (primeform-frontend)
+# PrimeForm • Female Biohacking
 
-A Quasar Project
+Elite performance coaching app for female athletes with menstrual cycle tracking and AI-powered training recommendations.
 
 ## Install the dependencies
 
