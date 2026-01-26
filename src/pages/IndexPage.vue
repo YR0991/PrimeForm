@@ -117,7 +117,14 @@
 
       <!-- Advice Card -->
       <transition name="fade-scale">
-        <div v-if="advice" class="advice-card" :class="statusGlowClass">
+        <div v-if="advice || loading" class="advice-card" :class="statusGlowClass">
+          <!-- Premium Loading State -->
+          <q-inner-loading :showing="loading" color="#D4AF37">
+            <q-spinner-gears size="64px" color="#D4AF37" />
+            <div class="loading-message">{{ currentLoadingMessage }}</div>
+          </q-inner-loading>
+
+          <template v-if="advice && !loading">
           <!-- Cycle Wave SVG -->
           <div class="cycle-wave-container">
             <svg class="cycle-wave" viewBox="0 0 400 60" preserveAspectRatio="none">
@@ -176,6 +183,7 @@
           <div v-if="advice.reasons && advice.reasons.length > 0" class="advice-reasons">
             <strong>Reden:</strong> {{ advice.reasons.join(', ') }}
           </div>
+          </template>
         </div>
       </transition>
 
@@ -267,7 +275,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import VueApexCharts from 'vue3-apexcharts'
 import { API_BASE_URL } from '../config/api.js'
@@ -284,6 +292,19 @@ const cycleDay = ref(null)
 const loading = ref(false)
 const advice = ref(null)
 const userId = ref('')
+const loadingMessageIndex = ref(0)
+
+const loadingMessages = [
+  'Trends analyseren...',
+  'AI-coach raadplegen...',
+  'Jouw plan wordt gesmeed...',
+  'Cyclusdata verwerken...',
+  'Optimalisatie berekenen...'
+]
+
+const currentLoadingMessage = computed(() => {
+  return loadingMessages[loadingMessageIndex.value] || loadingMessages[0]
+})
 
 // Settings state
 const settingsDialog = ref(false)
@@ -417,6 +438,9 @@ const fetchHistory = async () => {
   }
 }
 
+// Rotate loading messages while AI is thinking
+let loadingMessageInterval = null
+
 // Get advice from backend
 const getAdvice = async () => {
   if (!lastPeriodDate.value) {
@@ -425,6 +449,13 @@ const getAdvice = async () => {
   }
   
   loading.value = true
+  loadingMessageIndex.value = 0
+  
+  // Rotate messages every 1.5 seconds
+  loadingMessageInterval = setInterval(() => {
+    loadingMessageIndex.value = (loadingMessageIndex.value + 1) % loadingMessages.length
+  }, 1500)
+  
   try {
     const payload = {
       userId: userId.value,
@@ -454,8 +485,19 @@ const getAdvice = async () => {
     alert("Kan backend niet bereiken. Check of server draait op poort 3000.")
   } finally {
     loading.value = false
+    if (loadingMessageInterval) {
+      clearInterval(loadingMessageInterval)
+      loadingMessageInterval = null
+    }
   }
 }
+
+// Cleanup interval on unmount
+onUnmounted(() => {
+  if (loadingMessageInterval) {
+    clearInterval(loadingMessageInterval)
+  }
+})
 
 // Status glow class for advice card
 const statusGlowClass = computed(() => {
@@ -971,6 +1013,17 @@ const renderMarkdown = (text) => {
 .advice-card.status-push {
   border-color: rgba(16, 185, 129, 0.4);
   box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+}
+
+/* Premium Loading State */
+.loading-message {
+  margin-top: 16px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 400;
+  font-size: 1rem;
+  color: #D4AF37;
+  text-align: center;
+  letter-spacing: 0.5px;
 }
 
 .advice-header {
