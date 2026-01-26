@@ -270,6 +270,7 @@
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 import VueApexCharts from 'vue3-apexcharts'
+import { API_BASE_URL } from '../config/api.js'
 
 const ApexChart = VueApexCharts
 
@@ -313,7 +314,7 @@ const loadSettings = async () => {
   // Overlay with Firestore profile values (source of truth)
   try {
     if (!userId.value) return
-    const resp = await axios.get('http://127.0.0.1:3000/api/profile', {
+    const resp = await axios.get(`${API_BASE_URL}/api/profile`, {
       params: { userId: userId.value }
     })
     const profile = resp.data?.data?.profile
@@ -348,7 +349,7 @@ const saveSettings = async () => {
 
   try {
     if (userId.value) {
-      await axios.put('http://127.0.0.1:3000/api/profile', {
+      await axios.put(`${API_BASE_URL}/api/profile`, {
         userId: userId.value,
         profilePatch: {
           rhrBaseline: rhrBaseline.value,
@@ -404,7 +405,7 @@ const getOrCreateUserId = () => {
 const fetchHistory = async () => {
   historyLoading.value = true
   try {
-    const response = await axios.get('http://127.0.0.1:3000/api/history', {
+    const response = await axios.get(`${API_BASE_URL}/api/history`, {
       params: { userId: userId.value }
     })
     historyLogs.value = response.data?.data || []
@@ -440,7 +441,7 @@ const getAdvice = async () => {
 
     console.log('Verzenden naar backend...', payload)
 
-    const response = await axios.post('http://127.0.0.1:3000/api/daily-advice', payload)
+    const response = await axios.post(`${API_BASE_URL}/api/daily-advice`, payload)
     
     console.log('Antwoord ontvangen:', response.data)
     

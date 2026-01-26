@@ -6,6 +6,7 @@ import {
   createWebHashHistory,
 } from 'vue-router'
 import routes from './routes'
+import { API_BASE_URL } from '../config/api.js'
 
 const getOrCreateUserId = () => {
   const key = 'primeform_user_id'
@@ -62,7 +63,7 @@ export default defineRouter(function (/* { store, ssrContext } */) {
         const shouldRefetch = profileCache.userId !== userId || now - profileCache.fetchedAt > 30_000
 
         if (shouldRefetch) {
-          const resp = await fetch(`http://127.0.0.1:3000/api/profile?userId=${encodeURIComponent(userId)}`)
+          const resp = await fetch(`${API_BASE_URL}/api/profile?userId=${encodeURIComponent(userId)}`)
           const json = await resp.json()
           profileCache = {
             userId,
