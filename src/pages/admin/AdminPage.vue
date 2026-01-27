@@ -93,7 +93,7 @@
 
             <q-separator />
 
-            <q-tab-panels v-model="dialogTab" animated>
+            <q-tab-panels v-model="dialogTab" animated dark>
               <!-- Intake Tab -->
               <q-tab-panel name="intake">
                 <div v-if="loadingDetails" class="text-center q-pa-lg">
@@ -781,15 +781,43 @@ onMounted(() => {
 
 /* Q-Tabs styling */
 .user-dialog-card :deep(.q-tabs) {
-  background: transparent;
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.user-dialog-card :deep(.q-tabs__content) {
+  background: transparent !important;
+}
+
+.user-dialog-card :deep(.q-tabs__arrow) {
+  color: rgba(255, 255, 255, 0.7) !important;
 }
 
 .user-dialog-card :deep(.q-tab) {
+  background: transparent !important;
   color: rgba(255, 255, 255, 0.6) !important;
+  text-transform: none !important;
+  font-weight: 500 !important;
+}
+
+.user-dialog-card :deep(.q-tab:hover) {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
 }
 
 .user-dialog-card :deep(.q-tab--active) {
+  background: transparent !important;
   color: #D4AF37 !important;
+  font-weight: 600 !important;
+}
+
+.user-dialog-card :deep(.q-tab__indicator) {
+  background: #D4AF37 !important;
+  height: 2px !important;
+}
+
+.user-dialog-card :deep(.q-tab__label) {
+  color: inherit !important;
 }
 
 /* Q-List styling */
