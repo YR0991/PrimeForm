@@ -112,3 +112,4 @@ export default defineRouter(function (/* { store, ssrContext } */) {
 
   return Router
 })
+// History mode enforced - no hash
