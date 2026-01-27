@@ -80,6 +80,11 @@ export default defineRouter(function (/* { store, ssrContext } */) {
       return true
     }
 
+    // Skip profile check for admin routes (admin has its own authentication)
+    if (to.path === '/admin' || to.path.startsWith('/admin/')) {
+      return true
+    }
+
     // For any other route: ensure profile is complete
     try {
       const userId = getOrCreateUserId()
