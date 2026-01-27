@@ -183,7 +183,10 @@ async function initFirebase() {
     if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
       serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
     } else {
-      // We intentionally use process.cwd() so starting the server from a different folder is explicit.
+      // IMPORTANT:
+      // - On Render and local dev we start the server from the PrimeForm-backed subfolder.
+      // - process.cwd() is therefore expected to be the PrimeForm-backed directory,
+      //   where firebase-key.json lives (and is gitignored).
       const keyPath = path.join(process.cwd(), 'firebase-key.json');
       serviceAccount = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
     }
