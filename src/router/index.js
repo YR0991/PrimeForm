@@ -32,10 +32,14 @@ let profileCache = {
  */
 
 export default defineRouter(function (/* { store, ssrContext } */) {
-  // Force history mode (no hash in URL) - always use createWebHistory
-  const history = process.env.SERVER
-    ? createMemoryHistory()
-    : createWebHistory(process.env.VUE_ROUTER_BASE || '/')
+  // HARD FORCE history mode - NO HASH, NO CONDITIONALS
+  let history
+  if (process.env.SERVER) {
+    history = createMemoryHistory()
+  } else {
+    // ALWAYS use createWebHistory in browser - NO hash mode
+    history = createWebHistory('/')
+  }
 
   const Router = createRouter({
     scrollBehavior: () => ({ left: 0, top: 0 }),
