@@ -3,7 +3,6 @@ import {
   createRouter,
   createMemoryHistory,
   createWebHistory,
-  createWebHashHistory,
 } from 'vue-router'
 import routes from './routes'
 import { API_URL } from '../config/api.js'
@@ -33,26 +32,30 @@ let profileCache = {
  */
 
 export default defineRouter(function (/* { store, ssrContext } */) {
-  const createHistory = process.env.SERVER
-    ? createMemoryHistory
-    : process.env.VUE_ROUTER_MODE === 'history'
-      ? createWebHistory
-      : createWebHashHistory
+  // HARD FORCE history mode - NO HASH, NO CONDITIONALS
+  let history
+  if (process.env.SERVER) {
+    history = createMemoryHistory()
+  } else {
+    // ALWAYS use createWebHistory in browser - NO hash mode
+    history = createWebHistory('/')
+  }
 
   const Router = createRouter({
     scrollBehavior: () => ({ left: 0, top: 0 }),
     routes,
-
-    // Leave this as is and make changes in quasar.conf.js instead!
-    // quasar.conf.js -> build -> vueRouterMode
-    // quasar.conf.js -> build -> publicPath
-    history: createHistory(process.env.VUE_ROUTER_BASE),
+    history,
   })
 
   // Redirect to intake if profile is incomplete
   Router.beforeEach(async (to) => {
     // Only run in browser
     if (process.env.SERVER) return true
+
+    // CRITICAL: Skip ALL checks for admin routes FIRST (admin has its own authentication)
+    if (to.path === '/admin' || to.path.startsWith('/admin')) {
+      return true
+    }
 
     // Allow direct access to intake route
     if (to.path === '/intake') {
