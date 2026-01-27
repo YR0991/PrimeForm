@@ -33,14 +33,14 @@ let profileCache = {
 
 export default defineRouter(function (/* { store, ssrContext } */) {
   // Force history mode (no hash in URL) - always use createWebHistory
-  const createHistory = process.env.SERVER
-    ? createMemoryHistory
-    : () => createWebHistory(process.env.VUE_ROUTER_BASE || '/')
+  const history = process.env.SERVER
+    ? createMemoryHistory()
+    : createWebHistory(process.env.VUE_ROUTER_BASE || '/')
 
   const Router = createRouter({
     scrollBehavior: () => ({ left: 0, top: 0 }),
     routes,
-    history: typeof createHistory === 'function' ? createHistory() : createHistory,
+    history,
   })
 
   // Redirect to intake if profile is incomplete
