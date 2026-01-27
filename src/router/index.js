@@ -3,7 +3,6 @@ import {
   createRouter,
   createMemoryHistory,
   createWebHistory,
-  createWebHashHistory,
 } from 'vue-router'
 import routes from './routes'
 import { API_URL } from '../config/api.js'
@@ -33,15 +32,15 @@ let profileCache = {
  */
 
 export default defineRouter(function (/* { store, ssrContext } */) {
-  // Force history mode (no hash in URL)
+  // Force history mode (no hash in URL) - always use createWebHistory
   const createHistory = process.env.SERVER
     ? createMemoryHistory
-    : createWebHistory
+    : () => createWebHistory(process.env.VUE_ROUTER_BASE || '/')
 
   const Router = createRouter({
     scrollBehavior: () => ({ left: 0, top: 0 }),
     routes,
-    history: createHistory(process.env.VUE_ROUTER_BASE),
+    history: typeof createHistory === 'function' ? createHistory() : createHistory,
   })
 
   // Redirect to intake if profile is incomplete
