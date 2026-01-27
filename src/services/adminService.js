@@ -100,3 +100,47 @@ export function calculateStats(users) {
     checkinsToday
   }
 }
+
+/**
+ * Import historical HRV/RHR data for a user
+ * @param {string} userId - User ID
+ * @param {Array} entries - Array of {date, hrv, rhr} objects
+ * @returns {Promise<Object>} Import result
+ */
+export async function importHistory(userId, entries) {
+  try {
+    const adminEmail = localStorage.getItem('admin_email')
+    
+    if (!adminEmail) {
+      throw new Error('Admin email not found. Please login first.')
+    }
+    
+    const response = await fetch(`${API_URL}/api/admin/import-history`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-email': adminEmail
+      },
+      body: JSON.stringify({
+        userId,
+        entries,
+        adminEmail
+      })
+    })
+    
+    if (!response.ok) {
+      if (response.status === 403) {
+        localStorage.removeItem('admin_email')
+        throw new Error('Unauthorized: Invalid admin credentials')
+      }
+      const errorData = await response.json()
+      throw new Error(errorData.error || `Failed to import history: ${response.statusText}`)
+    }
+    
+    const data = await response.json()
+    return data.data
+  } catch (error) {
+    console.error('Error importing history:', error)
+    throw error
+  }
+}

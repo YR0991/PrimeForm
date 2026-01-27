@@ -88,6 +88,7 @@
             <q-tabs v-model="dialogTab" align="left" class="text-grey" active-color="primary">
               <q-tab name="intake" label="Intake" />
               <q-tab name="history" label="Historie" />
+              <q-tab name="import" label="Import Historie" />
             </q-tabs>
 
             <q-separator />
@@ -222,6 +223,99 @@
                   Geen check-in geschiedenis beschikbaar
                 </div>
               </q-tab-panel>
+
+              <!-- Import Historie Tab -->
+              <q-tab-panel name="import">
+                <div class="import-section">
+                  <div class="text-h6 q-mb-md">Batch Import Historische Data</div>
+                  <div class="text-caption text-grey q-mb-lg">
+                    Importeer HRV en RHR data voor baseline berekening. Kies een startdatum en vul de waarden in.
+                  </div>
+
+                  <div class="q-mb-md">
+                    <q-input
+                      v-model="importStartDate"
+                      outlined
+                      dark
+                      label="Startdatum"
+                      type="date"
+                      @update:model-value="generateImportRows"
+                      class="q-mb-md"
+                    />
+                  </div>
+
+                  <div v-if="importRows.length > 0" class="import-table-container">
+                    <q-table
+                      :rows="importRows"
+                      :columns="importColumns"
+                      row-key="date"
+                      flat
+                      dark
+                      class="import-table"
+                      :pagination="{ rowsPerPage: 0 }"
+                    >
+                      <template v-slot:body-cell-hrv="props">
+                        <q-td :props="props">
+                          <q-input
+                            v-model.number="props.row.hrv"
+                            outlined
+                            dense
+                            dark
+                            type="number"
+                            placeholder="HRV"
+                            @update:model-value="validateImportRow(props.row)"
+                          />
+                        </q-td>
+                      </template>
+                      <template v-slot:body-cell-rhr="props">
+                        <q-td :props="props">
+                          <q-input
+                            v-model.number="props.row.rhr"
+                            outlined
+                            dense
+                            dark
+                            type="number"
+                            placeholder="RHR"
+                            @update:model-value="validateImportRow(props.row)"
+                          />
+                        </q-td>
+                      </template>
+                    </q-table>
+                  </div>
+
+                  <div class="q-mt-lg">
+                    <q-linear-progress
+                      v-if="importing"
+                      :value="importProgress"
+                      color="primary"
+                      class="q-mb-md"
+                    />
+                    <div class="row justify-end q-gutter-sm">
+                      <q-btn
+                        flat
+                        label="Annuleren"
+                        color="white"
+                        @click="resetImport"
+                      />
+                      <q-btn
+                        label="Opslaan"
+                        color="primary"
+                        :loading="importing"
+                        :disable="!canImport"
+                        @click="saveImport"
+                      />
+                    </div>
+                  </div>
+
+                  <q-banner
+                    v-if="importMessage"
+                    :class="importSuccess ? 'bg-positive' : 'bg-negative'"
+                    class="q-mt-md"
+                  >
+                    {{ importMessage }}
+                  </q-banner>
+                </div>
+              </q-tab-panel>
             </q-tab-panels>
           </q-card-section>
         </q-card>
@@ -231,8 +325,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { fetchAllUsers, getUserDetails, getUserHistory, calculateStats } from '../../services/adminService.js'
+import { ref, computed, onMounted, watch } from 'vue'
+import { fetchAllUsers, getUserDetails, getUserHistory, calculateStats, importHistory } from '../../services/adminService.js'
 
 const loading = ref(false)
 const users = ref([])
@@ -249,6 +343,41 @@ const userHistory = ref([])
 const loadingDetails = ref(false)
 const loadingHistory = ref(false)
 const dialogTab = ref('intake')
+
+// Import state
+const importStartDate = ref('')
+const importRows = ref([])
+const importing = ref(false)
+const importProgress = ref(0)
+const importMessage = ref('')
+const importSuccess = ref(false)
+
+const importColumns = [
+  {
+    name: 'date',
+    label: 'Datum',
+    field: 'date',
+    align: 'left',
+    sortable: true
+  },
+  {
+    name: 'hrv',
+    label: 'HRV',
+    field: 'hrv',
+    align: 'left'
+  },
+  {
+    name: 'rhr',
+    label: 'RHR',
+    field: 'rhr',
+    align: 'left'
+  }
+]
+
+const canImport = computed(() => {
+  return importRows.value.length > 0 && 
+         importRows.value.some(row => row.hrv !== null && row.rhr !== null)
+})
 
 const columns = [
   {
@@ -320,14 +449,7 @@ const openUserDialog = async (user) => {
   }
 
   // Load user history
-  loadingHistory.value = true
-  try {
-    userHistory.value = await getUserHistory(user.id || user.userId)
-  } catch (error) {
-    console.error('Failed to load user history:', error)
-  } finally {
-    loadingHistory.value = false
-  }
+  await loadUserHistory(user.id || user.userId)
 }
 
 const formatDate = (dateString) => {
@@ -341,6 +463,118 @@ const formatDate = (dateString) => {
     minute: '2-digit'
   })
 }
+
+const generateImportRows = () => {
+  if (!importStartDate.value) {
+    importRows.value = []
+    return
+  }
+
+  const startDate = new Date(importStartDate.value)
+  const rows = []
+
+  for (let i = 0; i < 30; i++) {
+    const currentDate = new Date(startDate)
+    currentDate.setDate(startDate.getDate() + i)
+    
+    const dateStr = currentDate.toISOString().split('T')[0]
+    
+    rows.push({
+      date: dateStr,
+      hrv: null,
+      rhr: null,
+      valid: false
+    })
+  }
+
+  importRows.value = rows
+}
+
+const validateImportRow = (row) => {
+  row.valid = row.hrv !== null && row.rhr !== null && 
+              row.hrv > 0 && row.rhr > 0
+}
+
+const resetImport = () => {
+  importStartDate.value = ''
+  importRows.value = []
+  importMessage.value = ''
+  importSuccess.value = false
+  importProgress.value = 0
+}
+
+const saveImport = async () => {
+  if (!selectedUser.value) return
+
+  const userId = selectedUser.value.id || selectedUser.value.userId
+  const validEntries = importRows.value
+    .filter(row => row.hrv !== null && row.rhr !== null && row.hrv > 0 && row.rhr > 0)
+    .map(row => ({
+      date: row.date,
+      hrv: Number(row.hrv),
+      rhr: Number(row.rhr)
+    }))
+
+  if (validEntries.length === 0) {
+    importMessage.value = 'Geen geldige data om te importeren'
+    importSuccess.value = false
+    return
+  }
+
+  importing.value = true
+  importProgress.value = 0
+  importMessage.value = ''
+
+  try {
+    // Simulate progress
+    const progressInterval = setInterval(() => {
+      if (importProgress.value < 0.9) {
+        importProgress.value += 0.1
+      }
+    }, 100)
+
+    await importHistory(userId, validEntries)
+
+    clearInterval(progressInterval)
+    importProgress.value = 1
+
+    importMessage.value = `${validEntries.length} dagen historie succesvol toegevoegd`
+    importSuccess.value = true
+
+    // Refresh history tab
+    await loadUserHistory(userId)
+
+    // Reset form after 2 seconds
+    setTimeout(() => {
+      resetImport()
+      dialogTab.value = 'history'
+    }, 2000)
+  } catch (error) {
+    console.error('Import failed:', error)
+    importMessage.value = `Import mislukt: ${error.message}`
+    importSuccess.value = false
+  } finally {
+    importing.value = false
+  }
+}
+
+const loadUserHistory = async (userId) => {
+  loadingHistory.value = true
+  try {
+    userHistory.value = await getUserHistory(userId)
+  } catch (error) {
+    console.error('Failed to load user history:', error)
+  } finally {
+    loadingHistory.value = false
+  }
+}
+
+// Watch for dialog tab changes to reset import when switching away
+watch(dialogTab, (newTab) => {
+  if (newTab !== 'import') {
+    resetImport()
+  }
+})
 
 onMounted(() => {
   loadUsers()
@@ -437,5 +671,37 @@ onMounted(() => {
 
 .admin-table :deep(.q-table tbody tr:hover) {
   background: rgba(255, 255, 255, 0.05);
+}
+
+.import-section {
+  padding: 16px 0;
+}
+
+.import-table-container {
+  max-height: 500px;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.import-table :deep(.q-table thead tr th) {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.import-table :deep(.q-table tbody tr) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.import-table :deep(.q-table tbody tr:hover) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.import-table :deep(.q-input) {
+  max-width: 120px;
 }
 </style>
