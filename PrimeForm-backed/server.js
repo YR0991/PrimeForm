@@ -933,7 +933,7 @@ app.post('/api/admin/import-history', async (req, res) => {
     }
 
     // Admin check
-    const adminEmail = req.headers['x-admin-email'] || req.body.adminEmail;
+    const adminEmail = (req.headers['x-admin-email'] || req.body.adminEmail || '').trim();
     if (adminEmail !== 'yoramroemersma50@gmail.com') {
       return res.status(403).json({
         success: false,
@@ -1020,7 +1020,7 @@ app.get('/api/admin/users', async (req, res) => {
     }
 
     // Simple admin check (in production, use proper authentication)
-    const adminEmail = req.headers['x-admin-email'] || req.query.adminEmail;
+    const adminEmail = (req.headers['x-admin-email'] || req.query.adminEmail || '').trim();
     if (adminEmail !== 'yoramroemersma50@gmail.com') {
       return res.status(403).json({
         success: false,
