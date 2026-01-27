@@ -3,14 +3,13 @@ const isAdminEmail = (email) => {
   return email === 'yoramroemersma50@gmail.com'
 }
 
-// Admin route guard
-const adminGuard = (to, from, next) => {
+// Admin route guard (Vue Router 4 syntax)
+const adminGuard = (to, from) => {
   // Simple check: prompt for email (in production, use Firebase Auth)
   const storedEmail = localStorage.getItem('admin_email')
   
   if (storedEmail && isAdminEmail(storedEmail)) {
-    next()
-    return
+    return true
   }
   
   // Prompt for email
@@ -18,10 +17,10 @@ const adminGuard = (to, from, next) => {
   
   if (email && isAdminEmail(email)) {
     localStorage.setItem('admin_email', email)
-    next()
+    return true
   } else {
     alert('Access Denied: Alleen beheerders hebben toegang tot deze pagina.')
-    next('/')
+    return { path: '/' }
   }
 }
 
