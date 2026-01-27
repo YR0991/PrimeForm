@@ -922,6 +922,93 @@ app.post('/api/save-checkin', async (req, res) => {
   }
 });
 
+// Admin route: Batch import historical data
+app.post('/api/admin/import-history', async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({
+        success: false,
+        error: 'Firestore is not initialized'
+      });
+    }
+
+    // Admin check
+    const adminEmail = req.headers['x-admin-email'] || req.body.adminEmail;
+    if (adminEmail !== 'yoramroemersma50@gmail.com') {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized: Admin access required'
+      });
+    }
+
+    const { userId, entries } = req.body;
+
+    if (!userId || !Array.isArray(entries) || entries.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing userId or entries array'
+      });
+    }
+
+    // Import each entry
+    const batch = db.batch();
+    const userLogsRef = db.collection('users').doc(String(userId)).collection('dailyLogs');
+
+    let imported = 0;
+    for (const entry of entries) {
+      const { date, hrv, rhr } = entry;
+      
+      if (!date || hrv === undefined || rhr === undefined) {
+        continue; // Skip invalid entries
+      }
+
+      // Create timestamp from date string (YYYY-MM-DD)
+      const entryDate = new Date(date + 'T00:00:00');
+      const formattedDate = date;
+
+      const docRef = userLogsRef.doc();
+      batch.set(docRef, {
+        timestamp: admin.firestore.Timestamp.fromDate(entryDate),
+        date: formattedDate,
+        userId: String(userId),
+        metrics: {
+          hrv: Number(hrv),
+          rhr: { current: Number(rhr) },
+          readiness: null,
+          sleep: null
+        },
+        cycleInfo: null,
+        recommendation: null,
+        aiMessage: null,
+        imported: true,
+        importedAt: FieldValue.serverTimestamp()
+      });
+
+      imported++;
+    }
+
+    // Commit batch
+    await batch.commit();
+
+    console.log(`✅ Batch import: ${imported} entries for userId ${userId}`);
+
+    res.json({
+      success: true,
+      data: {
+        imported,
+        total: entries.length
+      }
+    });
+  } catch (error) {
+    console.error('❌ FIRESTORE FOUT:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to import history',
+      message: error.message
+    });
+  }
+});
+
 // Admin route: Fetch all users
 app.get('/api/admin/users', async (req, res) => {
   try {
