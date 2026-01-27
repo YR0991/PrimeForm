@@ -48,6 +48,11 @@ export default defineRouter(function (/* { store, ssrContext } */) {
     // Only run in browser
     if (process.env.SERVER) return true
 
+    // CRITICAL: Skip ALL checks for admin routes FIRST (admin has its own authentication)
+    if (to.path === '/admin' || to.path.startsWith('/admin')) {
+      return true
+    }
+
     // Allow direct access to intake route
     if (to.path === '/intake') {
       // If already complete, bounce to dashboard
@@ -71,11 +76,6 @@ export default defineRouter(function (/* { store, ssrContext } */) {
         // If profile check fails, still allow intake
         return true
       }
-      return true
-    }
-
-    // Skip profile check for admin routes (admin has its own authentication)
-    if (to.path === '/admin' || to.path.startsWith('/admin/')) {
       return true
     }
 
