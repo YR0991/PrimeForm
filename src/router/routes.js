@@ -4,7 +4,7 @@ const isAdminEmail = (email) => {
 }
 
 // Admin route guard (Vue Router 4 syntax)
-const adminGuard = (to, from) => {
+const adminGuard = () => {
   // Simple check: prompt for email (in production, use Firebase Auth)
   const storedEmail = localStorage.getItem('admin_email')
   
