@@ -216,6 +216,20 @@
                           {{ entry.redFlags.count }} Red Flag(s)
                         </q-chip>
                       </div>
+                      <div v-if="entry.aiMessage || entry.advice" class="q-mt-sm">
+                        <q-expansion-item
+                          dense
+                          expand-separator
+                          icon="psychology"
+                          label="AI Advies"
+                          class="ai-advice-item"
+                        >
+                          <div
+                            class="ai-advice-content"
+                            v-html="entry.aiMessage || entry.advice"
+                          />
+                        </q-expansion-item>
+                      </div>
                     </div>
                   </q-timeline-entry>
                 </q-timeline>
@@ -329,7 +343,14 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { fetchAllUsers, getUserDetails, getUserHistory, calculateStats, importHistory } from '../../services/adminService.js'
+import {
+  fetchAllUsers,
+  getUserDetails,
+  getUserHistory,
+  calculateStats,
+  importHistory,
+  fetchAdminStats
+} from '../../services/adminService.js'
 
 const loading = ref(false)
 const users = ref([])
@@ -382,6 +403,33 @@ const canImport = computed(() => {
          importRows.value.some(row => row.hrv !== null && row.rhr !== null)
 })
 
+const toDateFromFirestore = (value) => {
+  if (!value) return null
+
+  if (typeof value.toDate === 'function') {
+    const d = value.toDate()
+    return isNaN(d.getTime()) ? null : d
+  }
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    const d = new Date(value)
+    return isNaN(d.getTime()) ? null : d
+  }
+
+  if (typeof value === 'object') {
+    const seconds = value._seconds ?? value.seconds
+    const nanos = value._nanoseconds ?? value.nanoseconds ?? 0
+
+    if (typeof seconds === 'number') {
+      const millis = seconds * 1000 + nanos / 1e6
+      const d = new Date(millis)
+      return isNaN(d.getTime()) ? null : d
+    }
+  }
+
+  return null
+}
+
 const columns = [
   {
     name: 'name',
@@ -404,7 +452,8 @@ const columns = [
     align: 'left',
     field: row => {
       if (!row.createdAt) return 'Onbekend'
-      const date = row.createdAt?.toDate ? row.createdAt.toDate() : new Date(row.createdAt)
+      const date = toDateFromFirestore(row.createdAt)
+      if (!date) return 'Onbekend'
       return date.toLocaleDateString('nl-NL')
     },
     sortable: true
@@ -422,7 +471,16 @@ const loadUsers = async () => {
   try {
     const allUsers = await fetchAllUsers()
     users.value = allUsers
-    stats.value = calculateStats(allUsers)
+
+    // Load aggregated stats from backend (e.g. check-ins vandaag via collectionGroup)
+    let backendStats = { newThisWeek: undefined, checkinsToday: undefined }
+    try {
+      backendStats = await fetchAdminStats()
+    } catch (error) {
+      console.error('Failed to load admin stats from backend:', error)
+    }
+
+    stats.value = calculateStats(allUsers, backendStats)
   } catch (error) {
     console.error('Failed to load users:', error)
     users.value = []

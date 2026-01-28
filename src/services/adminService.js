@@ -76,28 +76,105 @@ export async function getUserHistory(userId) {
 }
 
 /**
- * Calculate statistics from users array
+ * Safely convert various Firestore timestamp shapes to a JS Date
+ * Supports:
+ * - Firestore Timestamp instances (with .toDate())
+ * - Plain JS Date / ISO strings / millis
+ * - JSON-serialised timestamps: { _seconds, _nanoseconds } or { seconds, nanoseconds }
+ */
+function toDateFromFirestore(value) {
+  if (!value) return null
+
+  // Native Firestore Timestamp
+  if (typeof value.toDate === 'function') {
+    const d = value.toDate()
+    return isNaN(d.getTime()) ? null : d
+  }
+
+  // Primitive date representations
+  if (typeof value === 'string' || typeof value === 'number') {
+    const d = new Date(value)
+    return isNaN(d.getTime()) ? null : d
+  }
+
+  // JSON-serialised Timestamp ({ _seconds, _nanoseconds } or { seconds, nanoseconds })
+  if (typeof value === 'object') {
+    const seconds = value._seconds ?? value.seconds
+    const nanos = value._nanoseconds ?? value.nanoseconds ?? 0
+
+    if (typeof seconds === 'number') {
+      const millis = seconds * 1000 + nanos / 1e6
+      const d = new Date(millis)
+      return isNaN(d.getTime()) ? null : d
+    }
+  }
+
+  return null
+}
+
+/**
+ * Calculate statistics from users array.
+ * This function focuses on totals derived from the users collection.
+ * Check-ins today are loaded via a dedicated admin stats endpoint.
+ *
  * @param {Array} users - Array of user documents
+ * @param {Object} [override] - Optional override values (e.g. from backend stats)
  * @returns {Object} Statistics object
  */
-export function calculateStats(users) {
+export function calculateStats(users, override = {}) {
   const now = new Date()
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-  
-  const newThisWeek = users.filter(user => {
-    const createdAt = user.createdAt?.toDate ? user.createdAt.toDate() : new Date(user.createdAt)
-    return createdAt >= weekAgo
+
+  const newThisWeek = users.filter((user) => {
+    const createdAtDate = toDateFromFirestore(user.createdAt)
+    if (!createdAtDate) return false
+    return createdAtDate >= weekAgo && createdAtDate <= now
   }).length
-  
-  // For check-ins today, we'd need to query dailyLogs
-  // This is a placeholder - you'd need to aggregate from history
-  const checkinsToday = 0 // Placeholder
-  
-  return {
+
+  const baseStats = {
     totalMembers: users.length,
     newThisWeek,
-    checkinsToday
+    checkinsToday: 0
   }
+
+  // Allow backend-provided stats to override the client-side calculation
+  if (typeof override.newThisWeek === 'number') {
+    baseStats.newThisWeek = override.newThisWeek
+  }
+  if (typeof override.checkinsToday === 'number') {
+    baseStats.checkinsToday = override.checkinsToday
+  }
+
+  return baseStats
+}
+
+/**
+ * Fetch aggregated admin stats from backend (e.g. check-ins today)
+ * Uses collectionGroup queries on the server so the client
+ * does not need to load all users or logs.
+ */
+export async function fetchAdminStats() {
+  const adminEmail = localStorage.getItem('admin_email')
+
+  if (!adminEmail) {
+    throw new Error('Admin email not found. Please login first.')
+  }
+
+  const response = await fetch(
+    `${API_URL}/api/admin/stats?adminEmail=${encodeURIComponent(adminEmail)}`
+  )
+
+  if (!response.ok) {
+    if (response.status === 403) {
+      localStorage.removeItem('admin_email')
+      throw new Error('Unauthorized: Invalid admin credentials')
+    }
+    const errorData = await response.json().catch(() => ({}))
+    throw new Error(errorData.error || `Failed to fetch admin stats: ${response.statusText}`)
+  }
+
+  const data = await response.json()
+  return data.data || { newThisWeek: 0, checkinsToday: 0 }
 }
 
 /**

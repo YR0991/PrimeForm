@@ -731,7 +731,9 @@ app.post('/api/daily-advice', async (req, res) => {
             status: recommendation.status,
             reasons: recommendation.reasons
           },
-          aiMessage: aiMessage
+          aiMessage: aiMessage,
+          // Duplicate under a generic "advice" key for easier querying / display
+          advice: aiMessage
         });
       console.log('✅ Data succesvol opgeslagen in Firestore!');
     } catch (error) {
@@ -1054,6 +1056,72 @@ app.get('/api/admin/users', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch users',
+      message: error.message
+    });
+  }
+});
+
+// Admin route: Aggregated dashboard stats
+// - newThisWeek: users created in the last 7 days
+// - checkinsToday: all dailyLogs entries across users for "today"
+app.get('/api/admin/stats', async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({
+        success: false,
+        error: 'Firestore is not initialized'
+      });
+    }
+
+    // Simple admin check (in production, use proper authentication)
+    const adminEmail = (req.headers['x-admin-email'] || req.query.adminEmail || '').trim();
+    if (adminEmail !== 'yoramroemersma50@gmail.com') {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized: Admin access required'
+      });
+    }
+
+    const now = new Date();
+
+    // --- New members this week ---
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const usersWeekSnapshot = await db
+      .collection('users')
+      .where('createdAt', '>=', weekAgo)
+      .get();
+
+    const newThisWeek = usersWeekSnapshot.size;
+
+    // --- Check-ins today (via collectionGroup on dailyLogs) ---
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(startOfDay);
+    endOfDay.setDate(startOfDay.getDate() + 1);
+
+    const startTs = admin.firestore.Timestamp.fromDate(startOfDay);
+    const endTs = admin.firestore.Timestamp.fromDate(endOfDay);
+
+    const logsSnapshot = await db
+      .collectionGroup('dailyLogs')
+      .where('timestamp', '>=', startTs)
+      .where('timestamp', '<', endTs)
+      .get();
+
+    const checkinsToday = logsSnapshot.size;
+
+    return res.json({
+      success: true,
+      data: {
+        newThisWeek,
+        checkinsToday
+      }
+    });
+  } catch (error) {
+    console.error('❌ FIRESTORE FOUT (admin stats):', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch admin stats',
       message: error.message
     });
   }
