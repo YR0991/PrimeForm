@@ -220,3 +220,109 @@ export async function importHistory(userId, entries) {
     throw error
   }
 }
+
+/**
+ * Save admin-only internal notes for a user (never exposed to user app)
+ * @param {string} userId - User ID
+ * @param {string} adminNotes - Notes text
+ * @returns {Promise<Object>}
+ */
+export async function saveAdminNotes(userId, adminNotes) {
+  const adminEmail = localStorage.getItem('admin_email')
+  if (!adminEmail) throw new Error('Admin email not found. Please login first.')
+  const response = await fetch(`${API_URL}/api/admin/user-notes`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'x-admin-email': adminEmail },
+    body: JSON.stringify({ userId, adminNotes, adminEmail })
+  })
+  if (!response.ok) {
+    if (response.status === 403) {
+      localStorage.removeItem('admin_email')
+      throw new Error('Unauthorized: Invalid admin credentials')
+    }
+    const err = await response.json().catch(() => ({}))
+    throw new Error(err.error || `Failed to save notes: ${response.statusText}`)
+  }
+  const data = await response.json()
+  return data.data
+}
+
+/**
+ * Update a single check-in (dailyLog) — hrv, rhr, sleep, redFlags
+ * @param {string} userId - User ID
+ * @param {string} logId - Daily log document ID
+ * @param {Object} patch - { hrv?, rhr?, sleep?, redFlags? }
+ * @returns {Promise<Object>}
+ */
+export async function updateCheckIn(userId, logId, patch) {
+  const adminEmail = localStorage.getItem('admin_email')
+  if (!adminEmail) throw new Error('Admin email not found. Please login first.')
+  const response = await fetch(`${API_URL}/api/admin/check-in`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'x-admin-email': adminEmail },
+    body: JSON.stringify({ userId, logId, patch, adminEmail })
+  })
+  if (!response.ok) {
+    if (response.status === 403) {
+      localStorage.removeItem('admin_email')
+      throw new Error('Unauthorized: Invalid admin credentials')
+    }
+    const err = await response.json().catch(() => ({}))
+    throw new Error(err.error || `Failed to update check-in: ${response.statusText}`)
+  }
+  const data = await response.json()
+  return data.data
+}
+
+/**
+ * Fetch attention alerts: missed check-ins (>3 days inactive), critical status (today REST/RECOVER)
+ * @returns {Promise<{ missed: Array, critical: Array }>}
+ */
+export async function fetchAlerts() {
+  const adminEmail = localStorage.getItem('admin_email')
+  if (!adminEmail) throw new Error('Admin email not found. Please login first.')
+  const response = await fetch(`${API_URL}/api/admin/alerts?adminEmail=${encodeURIComponent(adminEmail)}`)
+  if (!response.ok) {
+    if (response.status === 403) {
+      localStorage.removeItem('admin_email')
+      throw new Error('Unauthorized: Invalid admin credentials')
+    }
+    const err = await response.json().catch(() => ({}))
+    throw new Error(err.error || `Failed to fetch alerts: ${response.statusText}`)
+  }
+  const data = await response.json()
+  return data.data || { missed: [], critical: [] }
+}
+
+/**
+ * Update user cycle display (cycleDay, currentPhase) in profile.cycleData — admin only
+ * @param {string} userId - User ID
+ * @param {number} cycleDay - Current cycle day (1–length)
+ * @param {string} currentPhase - e.g. Follicular, Luteal, Menstrual
+ * @returns {Promise<Object>}
+ */
+export async function updateUserCycle(userId, cycleDay, currentPhase) {
+  const adminEmail = localStorage.getItem('admin_email')
+  if (!adminEmail) throw new Error('Admin email not found. Please login first.')
+  const profilePatch = {
+    cycleData: {
+      cycleDay: cycleDay != null ? Number(cycleDay) : undefined,
+      currentPhase: currentPhase != null ? String(currentPhase) : undefined
+    }
+  }
+  const response = await fetch(`${API_URL}/api/admin/profile-patch`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'x-admin-email': adminEmail },
+    body: JSON.stringify({ userId, profilePatch, adminEmail })
+  })
+  if (!response.ok) {
+    if (response.status === 403) {
+      localStorage.removeItem('admin_email')
+      throw new Error('Unauthorized: Invalid admin credentials')
+    }
+    const err = await response.json().catch(() => ({}))
+    throw new Error(err.error || `Failed to update profile: ${response.statusText}`)
+  }
+  const data = await response.json()
+  return data.data
+}

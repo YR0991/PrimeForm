@@ -37,6 +37,66 @@
         </q-card>
       </div>
 
+      <!-- Attention: Alert Cards -->
+      <div class="alerts-row q-mb-lg">
+        <q-card class="alert-card missed-card" flat>
+          <q-card-section>
+            <div class="alert-title">
+              <q-icon name="event_busy" size="sm" class="q-mr-sm" />
+              Missed Check-ins
+            </div>
+            <div class="alert-count">{{ alerts.missed.length }}</div>
+            <div class="alert-list">
+              <template v-if="alerts.missed.length === 0">
+                <span class="text-caption text-grey">Geen leden &gt;3 dagen inactief</span>
+              </template>
+              <template v-else>
+                <q-btn
+                  v-for="item in alerts.missed.slice(0, 5)"
+                  :key="item.userId"
+                  flat
+                  dense
+                  no-caps
+                  class="alert-name-btn"
+                  @click="openUserDialogByUserId(item.userId)"
+                >
+                  {{ item.fullName }}
+                </q-btn>
+                <span v-if="alerts.missed.length > 5" class="text-caption">+{{ alerts.missed.length - 5 }} meer</span>
+              </template>
+            </div>
+          </q-card-section>
+        </q-card>
+        <q-card class="alert-card critical-card" flat>
+          <q-card-section>
+            <div class="alert-title">
+              <q-icon name="warning" size="sm" class="q-mr-sm" />
+              Critical Status
+            </div>
+            <div class="alert-count">{{ alerts.critical.length }}</div>
+            <div class="alert-list">
+              <template v-if="alerts.critical.length === 0">
+                <span class="text-caption text-grey">Geen REST/RECOVER vandaag</span>
+              </template>
+              <template v-else>
+                <q-btn
+                  v-for="item in alerts.critical.slice(0, 5)"
+                  :key="item.userId"
+                  flat
+                  dense
+                  no-caps
+                  class="alert-name-btn"
+                  @click="openUserDialogByUserId(item.userId)"
+                >
+                  {{ item.fullName }} <q-badge :label="item.status" color="negative" class="q-ml-xs" />
+                </q-btn>
+                <span v-if="alerts.critical.length > 5" class="text-caption">+{{ alerts.critical.length - 5 }} meer</span>
+              </template>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+
       <!-- Users Table -->
       <q-card class="users-card" flat>
         <q-card-section>
@@ -80,20 +140,50 @@
           </q-card-section>
 
           <q-card-section v-if="selectedUser">
-            <div class="user-header q-mb-md">
-              <div class="text-h6">{{ selectedUser.profile?.fullName || 'Geen naam' }}</div>
-              <div class="text-caption text-grey">{{ selectedUser.profile?.email || 'Geen e-mail' }}</div>
+            <div class="user-header q-mb-md row items-center justify-between">
+              <div>
+                <div class="text-h6">{{ selectedUser.profile?.fullName || 'Geen naam' }}</div>
+                <div class="text-caption text-grey">{{ selectedUser.profile?.email || 'Geen e-mail' }}</div>
+              </div>
+              <div class="cycle-manager row items-center q-gutter-sm">
+                <span class="text-caption text-grey">Cyclus:</span>
+                <q-badge :label="`Dag ${cycleDisplay.day}`" color="primary" />
+                <q-badge :label="cycleDisplay.phase" color="secondary" />
+                <q-btn flat dense round size="sm" icon="edit" @click="openCycleEdit">
+                  <q-tooltip>Cyclus bewerken</q-tooltip>
+                </q-btn>
+              </div>
             </div>
 
             <q-tabs v-model="dialogTab" align="left" dark active-color="#D4AF37">
+              <q-tab name="trends" label="Trends" />
               <q-tab name="intake" label="Intake" />
               <q-tab name="history" label="Historie" />
+              <q-tab name="notes" label="Notities" />
               <q-tab name="import" label="Import Historie" />
             </q-tabs>
 
             <q-separator />
 
             <q-tab-panels v-model="dialogTab" animated dark>
+              <!-- Trends Tab (HRV/RHR chart) -->
+              <q-tab-panel name="trends">
+                <div class="trends-panel">
+                  <div class="card-label q-mb-sm">HRV & RHR • laatste 28 metingen</div>
+                  <div v-if="!userHistory || userHistory.length === 0" class="text-grey text-center q-pa-lg">
+                    Nog geen trenddata. Gebruik Import Historie of wacht op check-ins.
+                  </div>
+                  <div v-else class="apex-wrap">
+                    <VueApexCharts
+                      type="line"
+                      height="280"
+                      :options="trendsChartOptions"
+                      :series="trendsSeries"
+                    />
+                  </div>
+                </div>
+              </q-tab-panel>
+
               <!-- Intake Tab -->
               <q-tab-panel name="intake">
                 <div v-if="loadingDetails" class="text-center q-pa-lg">
@@ -194,47 +284,71 @@
                 <q-timeline v-else-if="userHistory && userHistory.length > 0" color="#D4AF37" side="right" dark>
                   <q-timeline-entry
                     v-for="(entry, index) in userHistory"
-                    :key="index"
+                    :key="entry.id || index"
                     :title="formatDate(entry.timestamp || entry.date)"
                     :subtitle="`Status: ${entry.recommendation?.status || 'N/A'}`"
                   >
-                    <div class="history-entry">
-                      <div class="q-mb-sm">
-                        <strong>Readiness:</strong> {{ entry.metrics?.readiness || 'N/A' }}/10
+                    <div class="history-entry row items-start justify-between">
+                      <div>
+                        <div class="q-mb-sm">
+                          <strong>Readiness:</strong> {{ entry.metrics?.readiness || 'N/A' }}/10
+                        </div>
+                        <div class="q-mb-sm">
+                          <strong>Slaap:</strong> {{ entry.metrics?.sleep || 'N/A' }} uur
+                        </div>
+                        <div class="q-mb-sm">
+                          <strong>RHR:</strong> {{ entry.metrics?.rhr?.current || entry.metrics?.rhr || 'N/A' }} bpm
+                        </div>
+                        <div class="q-mb-sm">
+                          <strong>HRV:</strong> {{ entry.metrics?.hrv?.current || entry.metrics?.hrv || 'N/A' }}
+                        </div>
+                        <div v-if="entry.redFlags?.count > 0" class="q-mt-sm">
+                          <q-chip color="negative" size="sm">
+                            {{ entry.redFlags.count }} Red Flag(s)
+                          </q-chip>
+                        </div>
+                        <div v-if="entry.aiMessage || entry.advice" class="q-mt-sm">
+                          <q-expansion-item
+                            dense
+                            expand-separator
+                            icon="psychology"
+                            label="AI Advies"
+                            class="ai-advice-item"
+                          >
+                            <div
+                              class="ai-advice-content"
+                              v-html="entry.aiMessage || entry.advice"
+                            />
+                          </q-expansion-item>
+                        </div>
                       </div>
-                      <div class="q-mb-sm">
-                        <strong>Slaap:</strong> {{ entry.metrics?.sleep || 'N/A' }} uur
-                      </div>
-                      <div class="q-mb-sm">
-                        <strong>RHR:</strong> {{ entry.metrics?.rhr?.current || entry.metrics?.rhr || 'N/A' }} bpm
-                      </div>
-                      <div class="q-mb-sm">
-                        <strong>HRV:</strong> {{ entry.metrics?.hrv?.current || entry.metrics?.hrv || 'N/A' }}
-                      </div>
-                      <div v-if="entry.redFlags?.count > 0" class="q-mt-sm">
-                        <q-chip color="negative" size="sm">
-                          {{ entry.redFlags.count }} Red Flag(s)
-                        </q-chip>
-                      </div>
-                      <div v-if="entry.aiMessage || entry.advice" class="q-mt-sm">
-                        <q-expansion-item
-                          dense
-                          expand-separator
-                          icon="psychology"
-                          label="AI Advies"
-                          class="ai-advice-item"
-                        >
-                          <div
-                            class="ai-advice-content"
-                            v-html="entry.aiMessage || entry.advice"
-                          />
-                        </q-expansion-item>
-                      </div>
+                      <q-btn flat dense round size="sm" icon="edit" color="primary" @click="openEditCheckIn(entry)">
+                        <q-tooltip>Check-in bewerken</q-tooltip>
+                      </q-btn>
                     </div>
                   </q-timeline-entry>
                 </q-timeline>
                 <div v-else class="text-center q-pa-lg text-grey">
                   Geen check-in geschiedenis beschikbaar
+                </div>
+              </q-tab-panel>
+
+              <!-- Notities Tab (admin-only) -->
+              <q-tab-panel name="notes">
+                <div class="notes-panel">
+                  <div class="text-caption text-grey q-mb-md">Interne notities (niet zichtbaar voor de gebruiker)</div>
+                  <q-input
+                    v-model="adminNotesLocal"
+                    type="textarea"
+                    outlined
+                    dark
+                    placeholder="Notities over deze gebruiker..."
+                    rows="12"
+                    class="notes-textarea"
+                  />
+                  <div class="row justify-end q-mt-md">
+                    <q-btn label="Opslaan" color="primary" :loading="savingNotes" @click="saveNotes" />
+                  </div>
                 </div>
               </q-tab-panel>
 
@@ -337,19 +451,68 @@
           </q-card-section>
         </q-card>
       </q-dialog>
+
+      <!-- Cycle edit dialog -->
+      <q-dialog v-model="cycleEditOpen" persistent>
+        <q-card class="user-dialog-card" dark style="min-width: 320px">
+          <q-card-section>
+            <div class="text-h6">Cyclus bewerken</div>
+          </q-card-section>
+          <q-card-section class="q-pt-none">
+            <q-input v-model.number="cycleDayEdit" outlined dark type="number" label="Cyclusdag" :min="1" :max="cycleLengthEdit" class="q-mb-md" />
+            <q-select
+              v-model="cyclePhaseEdit"
+              outlined
+              dark
+              label="Fase"
+              :options="['Menstrual','Follicular','Ovulation','Luteal']"
+              class="q-mb-md"
+            />
+          </q-card-section>
+          <q-card-actions align="right">
+            <q-btn flat label="Annuleren" v-close-popup />
+            <q-btn label="Opslaan" color="primary" :loading="savingCycle" @click="saveCycle" />
+          </q-card-actions>
+        </q-card>
+      </q-dialog>
+
+      <!-- Edit check-in dialog -->
+      <q-dialog v-model="editCheckInOpen" persistent>
+        <q-card class="user-dialog-card" dark style="min-width: 340px">
+          <q-card-section>
+            <div class="text-h6">Check-in bewerken</div>
+            <div class="text-caption text-grey" v-if="editCheckInEntry">{{ formatDate(editCheckInEntry.timestamp || editCheckInEntry.date) }}</div>
+          </q-card-section>
+          <q-card-section class="q-pt-none" v-if="editCheckInEntry">
+            <q-input v-model.number="editForm.hrv" outlined dark type="number" label="HRV" class="q-mb-sm" />
+            <q-input v-model.number="editForm.rhr" outlined dark type="number" label="RHR (bpm)" class="q-mb-sm" />
+            <q-input v-model.number="editForm.sleep" outlined dark type="number" step="0.5" label="Slaap (uur)" class="q-mb-sm" />
+            <q-input v-model.number="editForm.redFlagsCount" outlined dark type="number" label="Red Flags (aantal)" min="0" class="q-mb-sm" />
+          </q-card-section>
+          <q-card-actions align="right">
+            <q-btn flat label="Annuleren" v-close-popup />
+            <q-btn label="Opslaan" color="primary" :loading="savingCheckIn" @click="saveCheckInEdit" />
+          </q-card-actions>
+        </q-card>
+      </q-dialog>
     </div>
   </q-page>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import VueApexCharts from 'vue3-apexcharts'
 import {
   fetchAllUsers,
   getUserDetails,
   getUserHistory,
   calculateStats,
   importHistory,
-  fetchAdminStats
+  fetchAdminStats,
+  saveAdminNotes,
+  updateCheckIn,
+  fetchAlerts,
+  updateUserCycle
 } from '../../services/adminService.js'
 
 const loading = ref(false)
@@ -359,6 +522,7 @@ const stats = ref({
   newThisWeek: 0,
   checkinsToday: 0
 })
+const alerts = ref({ missed: [], critical: [] })
 
 const userDialogOpen = ref(false)
 const selectedUser = ref(null)
@@ -367,6 +531,19 @@ const userHistory = ref([])
 const loadingDetails = ref(false)
 const loadingHistory = ref(false)
 const dialogTab = ref('intake')
+
+const adminNotesLocal = ref('')
+const savingNotes = ref(false)
+
+const cycleEditOpen = ref(false)
+const cycleDayEdit = ref(1)
+const cyclePhaseEdit = ref('Follicular')
+const savingCycle = ref(false)
+
+const editCheckInOpen = ref(false)
+const editCheckInEntry = ref(null)
+const editForm = ref({ hrv: null, rhr: null, sleep: null, redFlagsCount: 0 })
+const savingCheckIn = ref(false)
 
 // Import state
 const importStartDate = ref('')
@@ -402,6 +579,53 @@ const canImport = computed(() => {
   return importRows.value.length > 0 && 
          importRows.value.some(row => row.hrv !== null && row.rhr !== null)
 })
+
+const cycleDisplay = computed(() => {
+  const cd = userDetails.value?.cycleData || selectedUser.value?.profile?.cycleData
+  return {
+    day: cd?.cycleDay ?? 1,
+    phase: cd?.currentPhase || 'Follicular'
+  }
+})
+
+const cycleLengthEdit = computed(() => {
+  const cd = userDetails.value?.cycleData || selectedUser.value?.profile?.cycleData
+  return Number(cd?.avgDuration) || 28
+})
+
+const toMillis = (ts) => {
+  if (!ts) return 0
+  const d = new Date(ts)
+  return isNaN(d.getTime()) ? 0 : d.getTime()
+}
+
+const trendsSeries = computed(() => {
+  const logs = Array.isArray(userHistory.value) ? userHistory.value : []
+  const sorted = [...logs].sort((a, b) => toMillis(a.timestamp || a.date) - toMillis(b.timestamp || b.date))
+  const hrvData = sorted.map((l, i) => {
+    const hrvVal = Number(l.hrv) ?? Number(l.metrics?.hrv) ?? Number(l.metrics?.hrv?.current) ?? Number(l.metrics?.hrv?.value)
+    return { x: toMillis(l.timestamp || l.date), y: hrvVal }
+  }).filter(p => Number.isFinite(p.y) && p.y > 0)
+  const rhrData = sorted.map((l) => {
+    const rhrVal = Number(l.metrics?.rhr?.current) ?? Number(l.metrics?.rhr) ?? null
+    return { x: toMillis(l.timestamp || l.date), y: rhrVal }
+  }).filter(p => Number.isFinite(p.y))
+  return [
+    { name: 'HRV', data: hrvData },
+    { name: 'RHR', data: rhrData }
+  ]
+})
+
+const trendsChartOptions = computed(() => ({
+  chart: { type: 'line', background: 'transparent', toolbar: { show: false }, foreColor: 'rgba(255,255,255,0.75)' },
+  theme: { mode: 'dark' },
+  stroke: { curve: 'smooth', width: 2 },
+  colors: ['#D4AF37', '#81c784'],
+  grid: { borderColor: 'rgba(255,255,255,0.08)' },
+  xaxis: { type: 'datetime', labels: { style: { colors: 'rgba(255,255,255,0.55)' } } },
+  yaxis: { labels: { style: { colors: 'rgba(255,255,255,0.55)' } } },
+  tooltip: { theme: 'dark', x: { format: 'dd MMM' } }
+}))
 
 const toDateFromFirestore = (value) => {
   if (!value) return null
@@ -466,13 +690,22 @@ const columns = [
   }
 ]
 
+const loadAlerts = async () => {
+  try {
+    const data = await fetchAlerts()
+    alerts.value = { missed: data.missed || [], critical: data.critical || [] }
+  } catch (error) {
+    console.error('Failed to load alerts:', error)
+    alerts.value = { missed: [], critical: [] }
+  }
+}
+
 const loadUsers = async () => {
   loading.value = true
   try {
     const allUsers = await fetchAllUsers()
     users.value = allUsers
 
-    // Load aggregated stats from backend (e.g. check-ins vandaag via collectionGroup)
     let backendStats = { newThisWeek: undefined, checkinsToday: undefined }
     try {
       backendStats = await fetchAdminStats()
@@ -481,6 +714,7 @@ const loadUsers = async () => {
     }
 
     stats.value = calculateStats(allUsers, backendStats)
+    await loadAlerts()
   } catch (error) {
     console.error('Failed to load users:', error)
     users.value = []
@@ -489,14 +723,19 @@ const loadUsers = async () => {
   }
 }
 
+const openUserDialogByUserId = (userId) => {
+  const user = users.value.find(u => (u.id || u.userId) === userId)
+  if (user) openUserDialog(user)
+}
+
 const openUserDialog = async (user) => {
   selectedUser.value = user
   userDialogOpen.value = true
   dialogTab.value = 'intake'
   userDetails.value = null
   userHistory.value = []
+  adminNotesLocal.value = selectedUser.value?.adminNotes ?? ''
 
-  // Load user details
   loadingDetails.value = true
   try {
     userDetails.value = await getUserDetails(user.id || user.userId)
@@ -506,8 +745,87 @@ const openUserDialog = async (user) => {
     loadingDetails.value = false
   }
 
-  // Load user history
   await loadUserHistory(user.id || user.userId)
+}
+
+const openEditCheckIn = (entry) => {
+  editCheckInEntry.value = entry
+  const m = entry.metrics || {}
+  editForm.value = {
+    hrv: m.hrv?.current ?? m.hrv ?? null,
+    rhr: m.rhr?.current ?? m.rhr ?? null,
+    sleep: m.sleep ?? null,
+    redFlagsCount: entry.redFlags?.count ?? 0
+  }
+  editCheckInOpen.value = true
+}
+
+const saveCheckInEdit = async () => {
+  if (!selectedUser.value || !editCheckInEntry.value) return
+  savingCheckIn.value = true
+  try {
+    await updateCheckIn(
+      selectedUser.value.id || selectedUser.value.userId,
+      editCheckInEntry.value.id,
+      {
+        hrv: editForm.value.hrv,
+        rhr: editForm.value.rhr,
+        sleep: editForm.value.sleep,
+        redFlags: { count: editForm.value.redFlagsCount }
+      }
+    )
+    editCheckInOpen.value = false
+    await loadUserHistory(selectedUser.value.id || selectedUser.value.userId)
+  } catch (error) {
+    console.error('Failed to update check-in:', error)
+  } finally {
+    savingCheckIn.value = false
+  }
+}
+
+const saveNotes = async () => {
+  if (!selectedUser.value) return
+  savingNotes.value = true
+  try {
+    await saveAdminNotes(selectedUser.value.id || selectedUser.value.userId, adminNotesLocal.value)
+    selectedUser.value.adminNotes = adminNotesLocal.value
+  } catch (error) {
+    console.error('Failed to save notes:', error)
+  } finally {
+    savingNotes.value = false
+  }
+}
+
+const openCycleEdit = () => {
+  cycleDayEdit.value = cycleDisplay.value.day
+  cyclePhaseEdit.value = cycleDisplay.value.phase
+  cycleEditOpen.value = true
+}
+
+const saveCycle = async () => {
+  if (!selectedUser.value) return
+  savingCycle.value = true
+  try {
+    await updateUserCycle(
+      selectedUser.value.id || selectedUser.value.userId,
+      cycleDayEdit.value,
+      cyclePhaseEdit.value
+    )
+    if (userDetails.value?.cycleData) {
+      userDetails.value.cycleData.cycleDay = cycleDayEdit.value
+      userDetails.value.cycleData.currentPhase = cyclePhaseEdit.value
+    }
+    if (selectedUser.value?.profile?.cycleData) {
+      selectedUser.value.profile.cycleData = selectedUser.value.profile.cycleData || {}
+      selectedUser.value.profile.cycleData.cycleDay = cycleDayEdit.value
+      selectedUser.value.profile.cycleData.currentPhase = cyclePhaseEdit.value
+    }
+    cycleEditOpen.value = false
+  } catch (error) {
+    console.error('Failed to save cycle:', error)
+  } finally {
+    savingCycle.value = false
+  }
 }
 
 const formatDate = (dateString) => {
@@ -674,6 +992,64 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 16px;
+}
+
+.alerts-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.alert-card {
+  background: rgba(18, 18, 18, 0.95) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.alert-card.missed-card { border-left: 3px solid #ff9800; }
+.alert-card.critical-card { border-left: 3px solid #f44336; }
+
+.alert-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+}
+
+.alert-count {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #D4AF37;
+  font-family: 'Montserrat', sans-serif;
+  margin-bottom: 8px;
+}
+
+.alert-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.alert-name-btn {
+  color: rgba(255, 255, 255, 0.9) !important;
+  text-transform: none;
+}
+
+.trends-panel .card-label {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.trends-panel .apex-wrap {
+  min-height: 280px;
+}
+
+.notes-panel .notes-textarea :deep(.q-field__control) {
+  min-height: 200px;
+}
+
+.cycle-manager .q-badge {
+  font-size: 0.75rem;
 }
 
 .stat-card {

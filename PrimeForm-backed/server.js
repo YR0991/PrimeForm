@@ -1083,6 +1083,7 @@ app.get('/api/admin/users', async (req, res) => {
         userId: doc.id,
         profile: data.profile || null,
         profileComplete: data.profileComplete || false,
+        adminNotes: data.adminNotes ?? null,
         createdAt: data.createdAt || null,
         updatedAt: data.updatedAt || null
       };
@@ -1165,6 +1166,162 @@ app.get('/api/admin/stats', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch admin stats',
+      message: error.message
+    });
+  }
+});
+
+// Admin route: Patch user profile (e.g. cycleData.cycleDay, currentPhase) — admin only
+app.put('/api/admin/profile-patch', async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
+    }
+    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || '').trim();
+    if (adminEmail !== 'yoramroemersma50@gmail.com') {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Admin access required' });
+    }
+    const { userId, profilePatch } = req.body || {};
+    if (!userId || !profilePatch || typeof profilePatch !== 'object') {
+      return res.status(400).json({ success: false, error: 'Missing userId or profilePatch' });
+    }
+    const userRef = db.collection('users').doc(String(userId));
+    const snap = await userRef.get();
+    const existing = snap.exists ? snap.data() : {};
+    const existingProfile = existing.profile || {};
+    const mergedProfile = { ...existingProfile, ...profilePatch };
+    if (existingProfile.cycleData || profilePatch.cycleData) {
+      mergedProfile.cycleData = {
+        ...(existingProfile.cycleData || {}),
+        ...(profilePatch.cycleData || {})
+      };
+    }
+    await userRef.set(
+      {
+        profile: mergedProfile,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      },
+      { merge: true }
+    );
+    res.json({ success: true, data: { userId, profile: mergedProfile } });
+  } catch (error) {
+    console.error('❌ admin profile-patch:', error);
+    res.status(500).json({ success: false, error: 'Failed to update profile', message: error.message });
+  }
+});
+
+// Admin route: Save internal notes (adminNotes on user doc) — never exposed to user app
+app.put('/api/admin/user-notes', async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
+    }
+    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || '').trim();
+    if (adminEmail !== 'yoramroemersma50@gmail.com') {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Admin access required' });
+    }
+    const { userId, adminNotes } = req.body || {};
+    if (!userId) {
+      return res.status(400).json({ success: false, error: 'Missing userId' });
+    }
+    const userRef = db.collection('users').doc(String(userId));
+    await userRef.set({ adminNotes: adminNotes ?? '' }, { merge: true });
+    res.json({ success: true, data: { userId, adminNotes: adminNotes ?? '' } });
+  } catch (error) {
+    console.error('❌ admin user-notes:', error);
+    res.status(500).json({ success: false, error: 'Failed to save notes', message: error.message });
+  }
+});
+
+// Admin route: Update a single check-in (dailyLog) — hrv, rhr, sleep, redFlags
+app.put('/api/admin/check-in', async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
+    }
+    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || '').trim();
+    if (adminEmail !== 'yoramroemersma50@gmail.com') {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Admin access required' });
+    }
+    const { userId, logId, patch } = req.body || {};
+    if (!userId || !logId || !patch || typeof patch !== 'object') {
+      return res.status(400).json({ success: false, error: 'Missing userId, logId, or patch' });
+    }
+    const logRef = db.collection('users').doc(String(userId)).collection('dailyLogs').doc(String(logId));
+    const snap = await logRef.get();
+    if (!snap.exists) {
+      return res.status(404).json({ success: false, error: 'Check-in not found' });
+    }
+    const data = snap.data() || {};
+    const metrics = { ...(data.metrics || {}) };
+    if (patch.hrv !== undefined) metrics.hrv = Number(patch.hrv);
+    if (patch.rhr !== undefined) metrics.rhr = typeof patch.rhr === 'object' ? { ...metrics.rhr, current: Number(patch.rhr) } : { current: Number(patch.rhr) };
+    if (patch.sleep !== undefined) metrics.sleep = Number(patch.sleep);
+    const redFlags = patch.redFlags !== undefined ? patch.redFlags : data.redFlags;
+    const update = { metrics, redFlags, updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+    await logRef.update(update);
+    res.json({ success: true, data: { userId, logId } });
+  } catch (error) {
+    console.error('❌ admin check-in update:', error);
+    res.status(500).json({ success: false, error: 'Failed to update check-in', message: error.message });
+  }
+});
+
+// Admin route: Alerts — missed check-ins (>3 days inactive), critical status (today REST/RECOVER)
+app.get('/api/admin/alerts', async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
+    }
+    const adminEmail = (req.headers['x-admin-email'] || req.query.adminEmail || '').trim();
+    if (adminEmail !== 'yoramroemersma50@gmail.com') {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Admin access required' });
+    }
+    const now = new Date();
+    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(startOfDay);
+    endOfDay.setDate(startOfDay.getDate() + 1);
+    const startTs = admin.firestore.Timestamp.fromDate(startOfDay);
+    const endTs = admin.firestore.Timestamp.fromDate(endOfDay);
+
+    const usersSnap = await db.collection('users').get();
+    const missed = [];
+    const critical = [];
+
+    for (const userDoc of usersSnap.docs) {
+      const userData = userDoc.data() || {};
+      const profile = userData.profile || {};
+      const fullName = profile.fullName || 'Geen naam';
+      const userId = userDoc.id;
+
+      const lastLogSnap = await db.collection('users').doc(userId).collection('dailyLogs').orderBy('timestamp', 'desc').limit(1).get();
+      let lastCheckinAt = null;
+      if (!lastLogSnap.empty) {
+        const ts = lastLogSnap.docs[0].data().timestamp;
+        if (ts && typeof ts.toDate === 'function') lastCheckinAt = ts.toDate().toISOString();
+      }
+      if (!lastCheckinAt || new Date(lastCheckinAt) < threeDaysAgo) {
+        missed.push({ userId, fullName, lastCheckinAt });
+      }
+
+      const todayLogSnap = await db.collection('users').doc(userId).collection('dailyLogs').where('timestamp', '>=', startTs).where('timestamp', '<', endTs).limit(1).get();
+      if (!todayLogSnap.empty) {
+        const rec = todayLogSnap.docs[0].data().recommendation || {};
+        const status = (rec.status || '').toUpperCase();
+        if (status === 'REST' || status === 'RECOVER') {
+          critical.push({ userId, fullName, status });
+        }
+      }
+    }
+
+    res.json({ success: true, data: { missed, critical } });
+  } catch (error) {
+    console.error('❌ FIRESTORE FOUT (admin alerts):', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch admin alerts',
       message: error.message
     });
   }
