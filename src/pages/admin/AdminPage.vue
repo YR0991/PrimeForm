@@ -124,6 +124,16 @@
                 >
                   <q-tooltip>Bekijk details</q-tooltip>
                 </q-btn>
+                <q-btn
+                  flat
+                  dense
+                  round
+                  icon="delete"
+                  color="negative"
+                  @click="confirmDeleteUser(props.row)"
+                >
+                  <q-tooltip>Gebruiker verwijderen</q-tooltip>
+                </q-btn>
               </q-td>
             </template>
           </q-table>
@@ -445,6 +455,25 @@
           </q-card-actions>
         </q-card>
       </q-dialog>
+
+      <!-- Delete user confirmation -->
+      <q-dialog v-model="deleteConfirmOpen" persistent>
+        <q-card class="user-dialog-card" dark style="min-width: 320px">
+          <q-card-section>
+            <div class="text-h6">Gebruiker verwijderen</div>
+            <div class="text-body2 q-mt-sm text-grey">
+              Weet je zeker dat je deze gebruiker definitief wilt verwijderen? Dit verwijdert alle data en kan niet ongedaan worden gemaakt.
+            </div>
+            <div v-if="userToDelete" class="q-mt-md text-weight-medium">
+              {{ userToDelete.profile?.fullName || userToDelete.id }}
+            </div>
+          </q-card-section>
+          <q-card-actions align="right">
+            <q-btn flat label="Annuleren" :disable="deleting" v-close-popup />
+            <q-btn label="Verwijderen" color="negative" :loading="deleting" @click="doDeleteUser" />
+          </q-card-actions>
+        </q-card>
+      </q-dialog>
     </div>
   </q-page>
 </template>
@@ -463,7 +492,8 @@ import {
   saveAdminNotes,
   updateCheckIn,
   fetchAlerts,
-  updateUserCycle
+  updateUserCycle,
+  deleteUser
 } from '../../services/adminService.js'
 
 const loading = ref(false)
@@ -495,6 +525,10 @@ const editCheckInOpen = ref(false)
 const editCheckInEntry = ref(null)
 const editForm = ref({ hrv: null, rhr: null, sleep: null, redFlagsCount: 0 })
 const savingCheckIn = ref(false)
+
+const deleteConfirmOpen = ref(false)
+const userToDelete = ref(null)
+const deleting = ref(false)
 
 // Import state
 const importStartDate = ref('')
@@ -753,6 +787,27 @@ const loadUsers = async () => {
 const openUserDialogByUserId = (userId) => {
   const user = users.value.find(u => (u.id || u.userId) === userId)
   if (user) openUserDialog(user)
+}
+
+const confirmDeleteUser = (row) => {
+  userToDelete.value = row
+  deleteConfirmOpen.value = true
+}
+
+const doDeleteUser = async () => {
+  if (!userToDelete.value) return
+  const uid = userToDelete.value.id || userToDelete.value.userId
+  deleting.value = true
+  try {
+    await deleteUser(uid)
+    deleteConfirmOpen.value = false
+    userToDelete.value = null
+    await loadUsers()
+  } catch (error) {
+    console.error('Delete user failed:', error)
+  } finally {
+    deleting.value = false
+  }
 }
 
 const openUserDialog = async (user) => {

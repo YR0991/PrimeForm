@@ -40,3 +40,15 @@ Op basis van de *Adjusted* waarden:
 * **Green (High Adj_HRV):** ENDURANCE. Long steady state cardio, higher reps (12-15), functional bodybuilding.
 * **Yellow (Baseline Adj_HRV):** AEROBIC MAINTENANCE. Zone 2 cardio, mobility flow.
 * **Red (Low Adj_HRV):** ACTIVE RECOVERY. Yoga, Walking. Avoid cortisol spikes (no HIIT).
+
+## 5. Subjective vs. Objective Conflicts (Pessimist Filter)
+
+### The Lazy Filter
+* **IF** Biometrics == GREEN (High HRV / Low RHR) **AND** Subjective_Readiness <= 4:  
+  * **Diagnosis:** Mental Fatigue / Low Motivation.  
+  * **Advice:** "Gentle Push". Do NOT recommend total rest. Recommend a deal: *"Go for 10 mins, stop if it still sucks. Trust the data."*
+
+### The Burnout Filter
+* **IF** Biometrics == RED (Low HRV) **AND** Subjective_Readiness >= 8:  
+  * **Diagnosis:** Adrenaline Override / Lack of Body Awareness.  
+  * **Advice:** "Brake Check". Protect user from themselves. Force a lighter session or active recovery.

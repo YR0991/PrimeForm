@@ -6,7 +6,42 @@ const admin = require('firebase-admin');
 const OpenAI = require('openai');
 const path = require('path');
 const fs = require('fs');
+const nodemailer = require('nodemailer');
 const { Firestore, FieldValue } = require('@google-cloud/firestore');
+
+// SMTP transporter (placeholders – set SMTP_HOST, SMTP_USER, SMTP_PASS in env)
+const mailTransporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp.example.com',
+  port: parseInt(process.env.SMTP_PORT || '587', 10),
+  secure: process.env.SMTP_SECURE === 'true',
+  auth: {
+    user: process.env.SMTP_USER || 'your-email@example.com',
+    pass: process.env.SMTP_PASS || 'your-password'
+  }
+});
+
+const ADMIN_EMAIL = 'yoramroemersma50@gmail.com';
+
+function sendNewIntakeEmail(profile) {
+  const name = profile.fullName || 'Onbekend';
+  const email = profile.email || 'Onbekend';
+  const goal = Array.isArray(profile.goals) && profile.goals.length > 0
+    ? profile.goals.join(', ')
+    : 'Geen doel opgegeven';
+  const subject = `Nieuwe Intake: ${name}`;
+  const text = `Nieuwe Intake: ${name} - ${email} - ${goal}`;
+
+  mailTransporter.sendMail({
+    from: process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@primeform.nl',
+    to: ADMIN_EMAIL,
+    subject,
+    text
+  }).then(() => {
+    console.log('✅ Admin intake email sent to', ADMIN_EMAIL);
+  }).catch((err) => {
+    console.error('❌ Failed to send intake email:', err.message);
+  });
+}
 
 const app = express(); // 3. NU pas bouwen we het 'huis' (de app)
 const PORT = process.env.PORT || 3000;
@@ -200,6 +235,10 @@ app.put('/api/profile', async (req, res) => {
     );
 
     console.log(`Profile saved for userId ${userId} (profileComplete=${profileComplete})`);
+
+    if (profileComplete && !(existing.exists && existing.data()?.profileComplete === true)) {
+      sendNewIntakeEmail(mergedProfile);
+    }
 
     return res.json({
       success: true,
@@ -1100,6 +1139,65 @@ app.get('/api/admin/users', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch users',
+      message: error.message
+    });
+  }
+});
+
+// Admin route: Delete user (Auth + Firestore)
+app.delete('/api/admin/users/:uid', async (req, res) => {
+  try {
+    const adminEmail = (req.headers['x-admin-email'] || req.query.adminEmail || '').trim();
+    if (adminEmail !== 'yoramroemersma50@gmail.com') {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized: Admin access required'
+      });
+    }
+
+    const uid = req.params.uid;
+    if (!uid) {
+      return res.status(400).json({ success: false, error: 'Missing user id' });
+    }
+
+    if (admin.apps.length > 0) {
+      try {
+        await admin.auth().deleteUser(uid);
+        console.log('✅ Auth user deleted:', uid);
+      } catch (authErr) {
+        if (authErr.code !== 'auth/user-not-found') {
+          console.warn('Auth deleteUser failed (non-fatal):', authErr.message);
+        }
+      }
+    }
+
+    if (!db) {
+      return res.status(503).json({
+        success: false,
+        error: 'Firestore is not initialized'
+      });
+    }
+
+    const userRef = db.collection('users').doc(String(uid));
+    const dailyLogsRef = userRef.collection('dailyLogs');
+    const snap = await dailyLogsRef.limit(500).get();
+
+    const batch = db.batch();
+    snap.docs.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+
+    await userRef.delete();
+    console.log('✅ Firestore user deleted:', uid);
+
+    res.json({
+      success: true,
+      data: { deleted: uid }
+    });
+  } catch (error) {
+    console.error('❌ Admin delete user:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete user',
       message: error.message
     });
   }

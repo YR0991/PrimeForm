@@ -326,3 +326,27 @@ export async function updateUserCycle(userId, cycleDay, currentPhase) {
   const data = await response.json()
   return data.data
 }
+
+/**
+ * Delete a user (Auth + Firestore) — admin only
+ * @param {string} uid - User ID
+ * @returns {Promise<Object>}
+ */
+export async function deleteUser(uid) {
+  const adminEmail = localStorage.getItem('admin_email')
+  if (!adminEmail) throw new Error('Admin email not found. Please login first.')
+  const response = await fetch(`${API_URL}/api/admin/users/${encodeURIComponent(uid)}`, {
+    method: 'DELETE',
+    headers: { 'x-admin-email': adminEmail }
+  })
+  if (!response.ok) {
+    if (response.status === 403) {
+      localStorage.removeItem('admin_email')
+      throw new Error('Unauthorized: Invalid admin credentials')
+    }
+    const err = await response.json().catch(() => ({}))
+    throw new Error(err.error || `Failed to delete user: ${response.statusText}`)
+  }
+  const data = await response.json()
+  return data.data
+}
