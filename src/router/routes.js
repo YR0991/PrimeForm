@@ -43,7 +43,12 @@ const routes = [
   {
     path: '/',
     component: () => import('layouts/MainLayout.vue'),
-    children: [{ path: '', component: () => import('pages/IndexPage.vue') }],
+    children: [
+      { path: '', redirect: '/dashboard' },
+      { path: 'dashboard', component: () => import('pages/IndexPage.vue') },
+      { path: 'insights', component: () => import('pages/InsightsPage.vue') },
+      { path: 'settings', component: () => import('pages/SettingsPage.vue') },
+    ],
   },
   {
     path: '/admin',

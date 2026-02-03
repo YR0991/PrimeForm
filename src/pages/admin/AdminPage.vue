@@ -157,6 +157,7 @@
 
             <q-tabs v-model="dialogTab" align="left" dark active-color="#D4AF37">
               <q-tab name="trends" label="Trends" />
+              <q-tab name="insights" label="Inzichten" />
               <q-tab name="intake" label="Intake" />
               <q-tab name="history" label="Historie" />
               <q-tab name="notes" label="Notities" />
@@ -184,90 +185,39 @@
                 </div>
               </q-tab-panel>
 
-              <!-- Intake Tab -->
+              <!-- Inzichten Tab: cycluskalender + trends (zelfde als user Inzichten-pagina) -->
+              <q-tab-panel name="insights">
+                <div class="insights-admin-panel">
+                  <div class="card-label q-mb-sm">Cyclus kalender</div>
+                  <CycleCalendar
+                    v-if="insightsLastPeriod && insightsCycleLength"
+                    :last-period-date="insightsLastPeriod"
+                    :cycle-length="insightsCycleLength"
+                  />
+                  <div v-else class="text-grey text-center q-pa-md">Geen cyclusdata voor deze gebruiker.</div>
+                  <div class="card-label q-mt-lg q-mb-sm">Trends • HRV & RHR</div>
+                  <div v-if="!userHistory || userHistory.length === 0" class="text-grey text-center q-pa-md">Nog geen trenddata.</div>
+                  <div v-else class="apex-wrap">
+                    <VueApexCharts
+                      type="line"
+                      height="260"
+                      :options="trendsChartOptions"
+                      :series="trendsSeries"
+                    />
+                  </div>
+                </div>
+              </q-tab-panel>
+
+              <!-- Intake Tab: dynamisch alle velden uit profile/intake + createdAt/onboardingDate -->
               <q-tab-panel name="intake">
                 <div v-if="loadingDetails" class="text-center q-pa-lg">
                   <q-spinner color="primary" size="3em" />
                 </div>
-                <q-list v-else-if="userDetails" dark separator class="admin-list">
-                  <q-item>
+                <q-list v-else-if="intakeEntries.length > 0" dark separator class="admin-list">
+                  <q-item v-for="entry in intakeEntries" :key="entry.key" class="intake-row">
                     <q-item-section>
-                      <q-item-label>Naam</q-item-label>
-                      <q-item-label caption>{{ userDetails.fullName || 'Niet ingevuld' }}</q-item-label>
-                    </q-item-section>
-                  </q-item>
-
-                  <q-item>
-                    <q-item-section>
-                      <q-item-label>E-mail</q-item-label>
-                      <q-item-label caption>{{ userDetails.email || 'Niet ingevuld' }}</q-item-label>
-                    </q-item-section>
-                  </q-item>
-
-                  <q-item>
-                    <q-item-section>
-                      <q-item-label>Geboortedatum</q-item-label>
-                      <q-item-label caption>{{ userDetails.birthDate || 'Niet ingevuld' }}</q-item-label>
-                    </q-item-section>
-                  </q-item>
-
-                  <q-item>
-                    <q-item-section>
-                      <q-item-label>Doelen</q-item-label>
-                      <q-item-label caption>
-                        <q-chip
-                          v-for="goal in (userDetails.goals || [])"
-                          :key="goal"
-                          size="sm"
-                          color="primary"
-                          class="q-mr-xs q-mt-xs"
-                        >
-                          {{ goal }}
-                        </q-chip>
-                        <span v-if="!userDetails.goals || userDetails.goals.length === 0">Geen doelen geselecteerd</span>
-                      </q-item-label>
-                    </q-item-section>
-                  </q-item>
-
-                  <q-item>
-                    <q-item-section>
-                      <q-item-label>Training Frequentie</q-item-label>
-                      <q-item-label caption>{{ userDetails.trainingFrequency || 'Niet ingevuld' }} dagen/week</q-item-label>
-                    </q-item-section>
-                  </q-item>
-
-                  <q-item>
-                    <q-item-section>
-                      <q-item-label>Programma Type</q-item-label>
-                      <q-item-label caption>{{ userDetails.programmingType || 'Niet ingevuld' }}</q-item-label>
-                    </q-item-section>
-                  </q-item>
-
-                  <q-item>
-                    <q-item-section>
-                      <q-item-label>Gemiddelde Slaap</q-item-label>
-                      <q-item-label caption>{{ userDetails.sleepAvg || 'Niet ingevuld' }} uur</q-item-label>
-                    </q-item-section>
-                  </q-item>
-
-                  <q-item>
-                    <q-item-section>
-                      <q-item-label>Cyclus Duur</q-item-label>
-                      <q-item-label caption>{{ userDetails.cycleData?.avgDuration || 'Niet ingevuld' }} dagen</q-item-label>
-                    </q-item-section>
-                  </q-item>
-
-                  <q-item>
-                    <q-item-section>
-                      <q-item-label>Laatste Menstruatie</q-item-label>
-                      <q-item-label caption>{{ userDetails.cycleData?.lastPeriod || 'Niet ingevuld' }}</q-item-label>
-                    </q-item-section>
-                  </q-item>
-
-                  <q-item>
-                    <q-item-section>
-                      <q-item-label>Anticonceptie</q-item-label>
-                      <q-item-label caption>{{ userDetails.cycleData?.contraception || 'Niet ingevuld' }}</q-item-label>
+                      <q-item-label>{{ entry.keyFormatted }}</q-item-label>
+                      <q-item-label caption class="intake-value">{{ entry.valueFormatted }}</q-item-label>
                     </q-item-section>
                   </q-item>
                 </q-list>
@@ -502,6 +452,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import VueApexCharts from 'vue3-apexcharts'
+import CycleCalendar from '../../components/CycleCalendar.vue'
 import {
   fetchAllUsers,
   getUserDetails,
@@ -591,6 +542,82 @@ const cycleDisplay = computed(() => {
 const cycleLengthEdit = computed(() => {
   const cd = userDetails.value?.cycleData || selectedUser.value?.profile?.cycleData
   return Number(cd?.avgDuration) || 28
+})
+
+const insightsLastPeriod = computed(() => {
+  const cd = userDetails.value?.cycleData || selectedUser.value?.profile?.cycleData
+  return cd?.lastPeriod || ''
+})
+
+const insightsCycleLength = computed(() => {
+  const cd = userDetails.value?.cycleData || selectedUser.value?.profile?.cycleData
+  const n = Number(cd?.avgDuration)
+  return Number.isFinite(n) && n >= 21 ? n : 28
+})
+
+/** Format camelCase/snake_case key for display (e.g. cycleLength → Cycle Length) */
+function formatIntakeKey(key) {
+  if (!key || typeof key !== 'string') return key
+  return key
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/[_-]/g, ' ')
+    .replace(/^\s+|\s+$/g, '')
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ')
+}
+
+/** Format a value for display: arrays as comma list, objects flattened, null/undefined as placeholder */
+function formatIntakeValue(value) {
+  if (value === null || value === undefined) return '—'
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '—'
+    return value.map(v => (typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v))).join(', ')
+  }
+  if (typeof value === 'object') {
+    return Object.entries(value)
+      .map(([k, v]) => `${formatIntakeKey(k)}: ${formatIntakeValue(v)}`)
+      .join(' • ')
+  }
+  if (typeof value === 'boolean') return value ? 'Ja' : 'Nee'
+  if (value instanceof Date) return value.toLocaleDateString('nl-NL', { dateStyle: 'medium' })
+  return String(value)
+}
+
+/** Flatten object to entries with dot-notation keys for nested objects */
+function flattenForIntake(obj, prefix = '') {
+  const entries = []
+  if (!obj || typeof obj !== 'object') return entries
+  const skipKeys = ['adminNotes']
+  for (const [key, value] of Object.entries(obj)) {
+    if (skipKeys.includes(key)) continue
+    const fullKey = prefix ? `${prefix}.${key}` : key
+    if (value !== null && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+      entries.push(...flattenForIntake(value, fullKey))
+    } else {
+      entries.push({ key: fullKey, keyFormatted: formatIntakeKey(key), value, valueFormatted: formatIntakeValue(value) })
+    }
+  }
+  return entries
+}
+
+/** All intake entries: profile/userDetails flattened + createdAt, updatedAt, onboardingDate from user doc */
+const intakeEntries = computed(() => {
+  const details = userDetails.value || selectedUser.value?.profile || {}
+  const user = selectedUser.value || {}
+  const list = flattenForIntake(details)
+  const extra = []
+  const add = (raw, keyFormatted) => {
+    if (raw == null) return
+    const val = typeof raw.toDate === 'function' ? raw.toDate() : raw
+    const str = val instanceof Date ? val.toLocaleString('nl-NL', { dateStyle: 'medium', timeStyle: 'short' }) : String(val)
+    extra.push({ key: keyFormatted, keyFormatted, valueFormatted: str })
+  }
+  add(user.createdAt, 'Created At')
+  add(user.updatedAt, 'Updated At')
+  add(user.onboardingDate, 'Onboarding Date')
+  return [...list, ...extra]
 })
 
 const toMillis = (ts) => {
@@ -1042,6 +1069,13 @@ onMounted(() => {
 
 .trends-panel .apex-wrap {
   min-height: 280px;
+}
+
+.insights-admin-panel {
+  padding: 0;
+}
+.insights-admin-panel .apex-wrap {
+  min-height: 260px;
 }
 
 .notes-panel .notes-textarea :deep(.q-field__control) {

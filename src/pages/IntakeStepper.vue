@@ -212,6 +212,33 @@
               class="q-mt-md"
             />
 
+            <div class="q-mt-lg">
+              <div class="text-caption text-grey q-mb-sm">
+                Weet je dit niet? Geen probleem. Laat het veld leeg of vul een schatting in. De app leert jouw waarden vanzelf kennen zodra je begint met dagelijkse check-ins.
+              </div>
+              <q-input
+                v-model.number="form.hrvBaseline"
+                outlined
+                dark
+                label="HRV baseline (optioneel)"
+                type="number"
+                min="0"
+                step="1"
+                clearable
+                class="q-mb-sm"
+              />
+              <q-input
+                v-model.number="form.rhrBaseline"
+                outlined
+                dark
+                label="RHR baseline – rusthartslag (optioneel)"
+                type="number"
+                min="0"
+                step="1"
+                clearable
+              />
+            </div>
+
             <q-banner v-if="saveError" class="bg-negative text-white q-mt-md">
               {{ saveError }}
             </q-banner>
@@ -288,7 +315,9 @@ const form = ref({
   lastPeriod: '',
   cycleAvgDuration: 28,
   symptoms: [],
-  checkinTime: '08:00'
+  checkinTime: '08:00',
+  hrvBaseline: null,
+  rhrBaseline: null
 })
 
 onMounted(async () => {
@@ -307,7 +336,9 @@ onMounted(async () => {
         // keep defaults for missing keys
         cycleAvgDuration: profile?.cycleData?.avgDuration ?? form.value.cycleAvgDuration,
         lastPeriod: profile?.cycleData?.lastPeriod ?? form.value.lastPeriod,
-        contraception: profile?.cycleData?.contraception ?? form.value.contraception
+        contraception: profile?.cycleData?.contraception ?? form.value.contraception,
+        hrvBaseline: profile?.hrvBaseline ?? form.value.hrvBaseline,
+        rhrBaseline: profile?.rhrBaseline ?? form.value.rhrBaseline
       }
     }
   } catch (e) {
@@ -415,6 +446,9 @@ const saveProfile = async () => {
 
       symptoms: form.value.symptoms,
       checkinTime: form.value.checkinTime,
+
+      hrvBaseline: form.value.hrvBaseline != null && form.value.hrvBaseline !== '' && Number.isFinite(Number(form.value.hrvBaseline)) ? Number(form.value.hrvBaseline) : null,
+      rhrBaseline: form.value.rhrBaseline != null && form.value.rhrBaseline !== '' && Number.isFinite(Number(form.value.rhrBaseline)) ? Number(form.value.rhrBaseline) : null,
 
       cycleData: {
         lastPeriod: form.value.lastPeriod,

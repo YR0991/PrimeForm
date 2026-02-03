@@ -15,6 +15,22 @@
         />
       </div>
 
+      <!-- Calibrating banner: toon bij < 14 dagen data -->
+      <q-banner
+        v-if="!historyLoading && isCalibrating"
+        class="calibrating-banner q-mb-md"
+        rounded
+        dense
+      >
+        <template v-slot:avatar>
+          <q-icon name="psychology" size="md" color="primary" />
+        </template>
+        <div class="text-subtitle1 text-weight-medium">Ik leer je lichaam kennen 🧠</div>
+        <div class="text-body2 q-mt-xs opacity-90">
+          Het algoritme heeft ongeveer 14 dagen aan data nodig om jouw unieke baseline te bepalen. Tot die tijd zijn de adviezen gericht op veiligheid en herstel.
+        </div>
+      </q-banner>
+
       <!-- Cycle Tracker Card -->
       <div class="glass-card">
         <div class="card-label">Cyclus Tracker</div>
@@ -530,6 +546,12 @@ const statusIconColor = computed(() => {
   return '#fbbf24'
 })
 
+// Calibrating: < 14 dagen check-in data → adviezen voorzichtig
+const isCalibrating = computed(() => {
+  const logs = Array.isArray(historyLogs.value) ? historyLogs.value : []
+  return logs.length < 14
+})
+
 // --- HRV History Wave (ApexCharts) ---
 const toMillis = (ts) => {
   if (!ts) return 0
@@ -805,6 +827,14 @@ const renderMarkdown = (text) => {
   min-height: 100vh;
   padding: 24px 16px;
 }
+
+.calibrating-banner {
+  background: rgba(212, 175, 55, 0.12) !important;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  color: rgba(255, 255, 255, 0.95);
+}
+.calibrating-banner .text-subtitle1 { color: rgba(255, 255, 255, 0.95); }
+.calibrating-banner .opacity-90 { opacity: 0.9; }
 
 .dashboard-container {
   max-width: 500px;
