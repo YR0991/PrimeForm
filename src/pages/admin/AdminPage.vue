@@ -602,12 +602,12 @@ const toMillis = (ts) => {
 const trendsSeries = computed(() => {
   const logs = Array.isArray(userHistory.value) ? userHistory.value : []
   const sorted = [...logs].sort((a, b) => toMillis(a.timestamp || a.date) - toMillis(b.timestamp || b.date))
-  const hrvData = sorted.map((l, i) => {
-    const hrvVal = Number(l.hrv) ?? Number(l.metrics?.hrv) ?? Number(l.metrics?.hrv?.current) ?? Number(l.metrics?.hrv?.value)
+  const hrvData = sorted.map((l) => {
+    const hrvVal = Number(l.hrv) || Number(l.metrics?.hrv) || Number(l.metrics?.hrv?.current) || Number(l.metrics?.hrv?.value)
     return { x: toMillis(l.timestamp || l.date), y: hrvVal }
   }).filter(p => Number.isFinite(p.y) && p.y > 0)
   const rhrData = sorted.map((l) => {
-    const rhrVal = Number(l.metrics?.rhr?.current) ?? Number(l.metrics?.rhr) ?? null
+    const rhrVal = Number(l.metrics?.rhr?.current) || Number(l.metrics?.rhr) || null
     return { x: toMillis(l.timestamp || l.date), y: rhrVal }
   }).filter(p => Number.isFinite(p.y))
   return [
