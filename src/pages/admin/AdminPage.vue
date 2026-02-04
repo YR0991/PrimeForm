@@ -206,7 +206,11 @@
                   />
                   <div v-else class="text-grey text-center q-pa-md">Geen cyclusdata voor deze gebruiker.</div>
                   <div class="card-label q-mt-lg q-mb-sm">Cyclus vergelijking • HRV / RHR</div>
-                  <CycleComparisonChart :history="userHistory" />
+                  <CycleComparisonChart
+                    :history="userHistory"
+                    :last-period-date="insightsLastPeriod"
+                    :cycle-length="insightsCycleLength"
+                  />
                   <div class="card-label q-mt-lg q-mb-sm">Trends • HRV & RHR</div>
                   <div v-if="!userHistory || userHistory.length === 0" class="text-grey text-center q-pa-md">Nog geen trenddata.</div>
                   <div v-else class="apex-wrap">
