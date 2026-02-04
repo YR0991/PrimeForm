@@ -103,6 +103,8 @@ async function getLast7DaysActivities(db, uid) {
 
 /**
  * Build stats from logs and activities for the report.
+ * load_total: som van Strava suffer_score (Relative Effort) per activiteit — NIET distance (km).
+ * Als suffer_score ontbreekt wordt een fallback gebruikt op basis van moving_time en average_heartrate.
  */
 function buildStats(logs, activities) {
   const hrvValues = logs.map((l) => l.hrv).filter((v) => v != null && Number.isFinite(Number(v)));
@@ -185,9 +187,27 @@ async function generateWeeklyReport(opts) {
     parsed = { stats, message: content || 'Geen tekst gegenereerd.' };
   }
 
+  // Zelfde 'laatste 7 dagen' activiteiten, geformatteerd voor de frontend (verificatie Week Load e.d.)
+  const activities_list = activities.map((a) => {
+    const dateStr = activityDateString(a);
+    const distance = a.distance != null ? Number(a.distance) : null;
+    const movingTime = a.moving_time != null ? Number(a.moving_time) : null;
+    const avgHr = a.average_heartrate != null ? Number(a.average_heartrate) : null;
+    const load = a.suffer_score != null ? Number(a.suffer_score) : 0;
+    return {
+      date: dateStr,
+      type: a.type || 'Workout',
+      distance_km: distance != null ? Math.round((distance / 1000) * 100) / 100 : null,
+      duration_min: movingTime != null ? Math.round(movingTime / 60) : null,
+      avg_hr: avgHr != null ? avgHr : '-',
+      load
+    };
+  });
+
   return {
     stats: parsed.stats || stats,
-    message: typeof parsed.message === 'string' ? parsed.message : (parsed.message ? String(parsed.message) : 'Geen weekrapport gegenereerd.')
+    message: typeof parsed.message === 'string' ? parsed.message : (parsed.message ? String(parsed.message) : 'Geen weekrapport gegenereerd.'),
+    activities_list
   };
 }
 

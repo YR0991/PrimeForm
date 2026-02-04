@@ -236,6 +236,21 @@
               </div>
             </div>
           </q-card-section>
+          <q-card-section class="q-pt-none">
+            <div class="text-subtitle1 q-mb-sm">Activiteiten (Laatste 7 Dagen)</div>
+            <q-table
+              v-if="weeklyReportActivities.length > 0"
+              :rows="weeklyReportActivities"
+              :columns="weeklyReportActivityColumns"
+              :row-key="(row, i) => i"
+              flat
+              dark
+              dense
+              hide-pagination
+              class="report-activities-table"
+            />
+            <div v-else class="text-grey text-body2">Geen activiteiten gevonden in deze periode.</div>
+          </q-card-section>
         </q-card>
       </q-dialog>
 
@@ -657,10 +672,19 @@ const weeklyReportLoading = ref(false)
 const weeklyReportUserName = ref('')
 const weeklyReportStats = ref({})
 const weeklyReportMessage = ref('')
+const weeklyReportActivities = ref([])
 const syncingUserId = ref(null)
 const weeklyReportStatsColumns = [
   { name: 'label', label: 'Metric', field: 'label', align: 'left' },
   { name: 'value', label: 'Waarde', field: 'value', align: 'right' }
+]
+const weeklyReportActivityColumns = [
+  { name: 'date', label: 'Datum', field: 'date', align: 'left' },
+  { name: 'type', label: 'Type', field: 'type', align: 'left' },
+  { name: 'distance_km', label: 'Afstand (km)', field: 'distance_km', align: 'right' },
+  { name: 'duration_min', label: 'Tijd (min)', field: 'duration_min', align: 'right' },
+  { name: 'avg_hr', label: 'HR Gem.', field: 'avg_hr', align: 'right' },
+  { name: 'load', label: 'Load', field: 'load', align: 'right' }
 ]
 const weeklyReportStatsRows = computed(() => {
   const s = weeklyReportStats.value
@@ -966,10 +990,12 @@ async function openWeeklyReport(row) {
   weeklyReportLoading.value = true
   weeklyReportStats.value = {}
   weeklyReportMessage.value = ''
+  weeklyReportActivities.value = []
   try {
     const data = await fetchWeeklyReport(uid)
     weeklyReportStats.value = data.stats || {}
     weeklyReportMessage.value = data.message || 'Geen rapport gegenereerd.'
+    weeklyReportActivities.value = Array.isArray(data.activities_list) ? data.activities_list : []
   } catch (error) {
     console.error('Weekly report failed:', error)
     Notify.create({ type: 'negative', message: error?.message || 'Weekrapport genereren mislukt.' })
