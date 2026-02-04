@@ -386,73 +386,46 @@ app.put('/api/profile', async (req, res) => {
   }
 });
 
-// Initialize Firebase Admin (with explicit disconnect + forced key load)
+// Initialize Firebase Admin
 async function initFirebase() {
   console.log('🔥 Firebase wordt geïnitialiseerd...');
+  console.log('Firebase Env Check:', process.env.FIREBASE_SERVICE_ACCOUNT_JSON ? 'Exists' : 'Missing');
 
+  if (admin.apps.length) {
+    await Promise.all(admin.apps.map((app) => app.delete()));
+  }
+
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    try {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      // Herstel de private key voor Render/Linux omgevingen
+      if (typeof serviceAccount.private_key === 'string') {
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+      }
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+      db = admin.firestore();
+      console.log('Firebase succesvol verbonden. Project:', serviceAccount.project_id);
+    } catch (error) {
+      console.error('Firebase init error:', error.message);
+      db = null;
+    }
+    return;
+  }
+
+  // Lokaal: fallback naar firebase-key.json
   try {
-    // Fully tear down any existing admin app instances (prevents stale creds)
-    if (admin.apps.length) {
-      await Promise.all(admin.apps.map((app) => app.delete()));
+    const keyPath = path.join(__dirname, 'firebase-key.json');
+    const serviceAccount = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
+    if (typeof serviceAccount.private_key === 'string') {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
     }
-
-    // Load credentials from env var OR local ignored file (NO hardcoded keys in codebase)
-    let serviceAccount;
-    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-      let jsonStr = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-      // Render/env often store private_key with literal \n; convert to real newlines for JSON
-      if (jsonStr.includes('\\n')) {
-        jsonStr = jsonStr.replace(/\\n/g, '\n');
-      }
-      serviceAccount = JSON.parse(jsonStr);
-      console.log('🔐 Using FIREBASE_SERVICE_ACCOUNT_JSON from environment');
-    } else {
-      // Gebruik __dirname zodat het pad altijd relatief is t.o.v. dit bestand,
-      // ongeacht vanuit welke map "node server.js" wordt gestart.
-      // Verwachting: firebase-key.json staat naast server.js in PrimeForm-backed/.
-      const keyPath = path.join(__dirname, 'firebase-key.json');
-      serviceAccount = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
-    }
-
-    console.log('🔐 client_email uit sleutel:', serviceAccount.client_email);
-    console.log('Verbinding maken met project:', serviceAccount.project_id);
-
-    // Basic key sanity checks (do not log secrets)
-    if (!serviceAccount.client_email || !serviceAccount.private_key || !serviceAccount.project_id) {
-      throw new Error('Service account JSON mist client_email/private_key/project_id');
-    }
-    if (typeof serviceAccount.private_key !== 'string' || serviceAccount.private_key.length < 100) {
-      throw new Error('Service account JSON private_key lijkt ongeldig (te kort of geen string)');
-    }
-
-    const credential = admin.credential.cert(serviceAccount);
-
-    // Prove we can mint an OAuth token with this key (do not print token)
-    const tokenInfo = await credential.getAccessToken();
-    console.log('🧾 Access token expiry (ms since epoch):', tokenInfo.expires_in ? '(relative expires_in present)' : tokenInfo.expirationTime);
-
-    admin.initializeApp({
-      credential,
-      // Force projectId explicitly to avoid ambiguity
-      projectId: serviceAccount.project_id
-    });
-
-    // Initialize Firestore
-    // Use explicit Firestore client with explicit credentials to avoid any auth ambiguity
-    db = new Firestore({
-      projectId: serviceAccount.project_id,
-      credentials: {
-        client_email: serviceAccount.client_email,
-        private_key: serviceAccount.private_key
-      }
-    });
-
-    // Debug: which project is this credential pointing at?
-    console.log('Project ID uit sleutel:', serviceAccount.project_id);
+    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    db = admin.firestore();
+    console.log('Firebase succesvol verbonden (lokaal). Project:', serviceAccount.project_id);
   } catch (error) {
-    console.error('❌ FIRESTORE FOUT:', error.message || error);
-    console.error('   Op Render: controleer FIREBASE_SERVICE_ACCOUNT_JSON (gehele JSON, evt. escaped newlines in private_key).');
-    // Keep server alive, but Firestore-dependent routes will fail gracefully
+    console.error('Firebase init error (lokaal):', error.message);
     db = null;
   }
 }
