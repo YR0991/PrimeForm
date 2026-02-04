@@ -57,8 +57,15 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Render en andere services checken vaak GET /health
+// Render en andere services: /health en /healthz
 app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    firestore: db ? 'connected' : 'not_initialized',
+    projectId: process.env.FIREBASE_PROJECT_ID || 'unknown'
+  });
+});
+app.get('/healthz', (req, res) => {
   res.json({
     status: 'ok',
     firestore: db ? 'connected' : 'not_initialized',
