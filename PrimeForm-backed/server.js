@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
 const { Firestore, FieldValue } = require('@google-cloud/firestore');
+const stravaService = require('./services/stravaService');
 
 // SMTP transporter (placeholders – set SMTP_HOST, SMTP_USER, SMTP_PASS in env)
 const mailTransporter = nodemailer.createTransport({
@@ -47,31 +48,23 @@ const app = express(); // 3. NU pas bouwen we het 'huis' (de app)
 const PORT = process.env.PORT || 3000;
 
 // 4. Nu zetten we de deuren open en zorgen we dat hij JSON snapt
-// CORS configuratie:
-// - Altijd localhost:9000 toestaan voor lokale SPA dev
-// - Productie subdomein: https://app.primeform.nl
-// - Elke Vercel-URL toestaan die eindigt op ".vercel.app" (preview URL's)
-const explicitAllowedOrigins = [
+// CORS: lokaal + productie Vercel (met en zonder trailing slash)
+const allowedOrigins = [
   'http://localhost:9000',
-  'https://app.primeform.nl'
+  'https://prime-form-frontend2701.vercel.app',
+  'https://prime-form-frontend2701.vercel.app/'
 ];
 
 app.use(
   cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (zoals mobile apps of curl)
-      if (!origin) return callback(null, true);
-
-      if (
-        explicitAllowedOrigins.includes(origin) ||
-        origin.endsWith('.vercel.app')
-      ) {
-        return callback(null, true);
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
       }
-
-      return callback(new Error(`Not allowed by CORS: ${origin}`));
     },
-    credentials: true,
+    credentials: true
   })
 );
 app.use(express.json()); // BELANGRIJK: Zonder dit kan hij de data van je sliders niet lezen!
@@ -176,7 +169,8 @@ app.get('/api/profile', async (req, res) => {
         data: {
           userId,
           profile: null,
-          profileComplete: false
+          profileComplete: false,
+          strava: null
         }
       });
     }
@@ -188,12 +182,110 @@ app.get('/api/profile', async (req, res) => {
       data: {
         userId,
         profile: data.profile || null,
-        profileComplete: data.profileComplete === true
+        profileComplete: data.profileComplete === true,
+        strava: data.strava || null
       }
     });
   } catch (error) {
     console.error('❌ FIRESTORE FOUT:', error);
     return res.status(500).json({ success: false, error: 'Failed to load profile', message: error.message });
+  }
+});
+
+// --- Strava disconnect (user clears connection from Settings) ---
+app.put('/api/strava/disconnect', async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
+    const { userId } = req.body || {};
+    if (!userId) return res.status(400).json({ success: false, error: 'Missing userId' });
+    const userRef = db.collection('users').doc(String(userId));
+    await userRef.set(
+      {
+        strava: { connected: false },
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      },
+      { merge: true }
+    );
+    return res.json({ success: true, data: { disconnected: true } });
+  } catch (err) {
+    console.error('Strava disconnect error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// --- Strava OAuth (Stap 1) ---
+app.get('/auth/strava/connect', (req, res) => {
+  try {
+    const userId = (req.query.userId || '').toString().trim();
+    if (!userId) {
+      return res.status(400).send('Missing userId. Use /auth/strava/connect?userId=YOUR_USER_ID');
+    }
+    const url = stravaService.getAuthUrl(userId);
+    res.redirect(302, url);
+  } catch (err) {
+    console.error('Strava connect error:', err);
+    res.status(500).send(err.message || 'Strava config missing');
+  }
+});
+
+app.get('/auth/strava/callback', async (req, res) => {
+  const frontendUrl = (process.env.FRONTEND_APP_URL || 'http://localhost:9000').replace(/\/$/, '');
+  const settingsPath = `${frontendUrl}/settings`;
+
+  try {
+    const { code, state: userId, error } = req.query;
+    if (error === 'access_denied') {
+      return res.redirect(`${settingsPath}?status=strava_denied`);
+    }
+    if (!code || !userId) {
+      return res.redirect(`${settingsPath}?status=strava_error&message=missing_code_or_state`);
+    }
+
+    const tokens = await stravaService.exchangeToken(code);
+    const athleteId = tokens.athlete?.id || null;
+
+    if (!db) {
+      return res.redirect(`${settingsPath}?status=strava_error&message=db_not_ready`);
+    }
+
+    const userRef = db.collection('users').doc(String(userId));
+    await userRef.set(
+      {
+        strava: {
+          connected: true,
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token,
+          expiresAt: tokens.expires_at,
+          athleteId: athleteId
+        },
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      },
+      { merge: true }
+    );
+
+    console.log(`✅ Strava connected for user ${userId}, athleteId ${athleteId}`);
+    res.redirect(302, `${settingsPath}?status=success`);
+  } catch (err) {
+    console.error('Strava callback error:', err);
+    res.redirect(`${settingsPath}?status=strava_error&message=${encodeURIComponent(err.message || 'unknown')}`);
+  }
+});
+
+// GET /api/strava/sync/:uid — fetch last 3 days from Strava, store in users/{uid}/activities
+app.get('/api/strava/sync/:uid', async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
+    }
+    const uid = req.params.uid;
+    if (!uid) {
+      return res.status(400).json({ success: false, error: 'Missing uid' });
+    }
+    const result = await stravaService.getRecentActivities(uid, db, admin);
+    return res.json({ success: true, data: { newCount: result.count } });
+  } catch (err) {
+    console.error('Strava sync error:', err);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 
