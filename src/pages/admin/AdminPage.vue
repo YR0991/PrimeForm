@@ -489,7 +489,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, watchEffect } from 'vue'
 import VueApexCharts from 'vue3-apexcharts'
 import CycleCalendar from '../../components/CycleCalendar.vue'
 import CycleComparisonChart from '../../components/CycleComparisonChart.vue'
@@ -1086,8 +1086,28 @@ watch(dialogTab, (newTab) => {
   }
 })
 
+const hasFetchedOnce = ref(false)
 onMounted(() => {
+  console.log('AdminPage mounted. Checking prerequisites...')
+  console.log('Using API URL:', API_URL)
+  const adminEmail = localStorage.getItem('admin_email')
+  console.log('Current User State (admin_email):', adminEmail ?? null)
+  if (!adminEmail) {
+    console.warn('Geen user gevonden, fetch overgeslagen')
+    return
+  }
+  hasFetchedOnce.value = true
   loadUsers()
+})
+
+// Zodra admin_email beschikbaar is en we nog geen data hebben, alsnog fetchen (bv. na late auth)
+watchEffect(() => {
+  const adminEmail = localStorage.getItem('admin_email')
+  if (adminEmail && !hasFetchedOnce.value && users.value.length === 0 && !loading.value) {
+    console.log('Admin email nu beschikbaar, fetch gestart')
+    hasFetchedOnce.value = true
+    loadUsers()
+  }
 })
 </script>
 
