@@ -57,6 +57,15 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Render en andere services checken vaak GET /health
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    firestore: db ? 'connected' : 'not_initialized',
+    projectId: process.env.FIREBASE_PROJECT_ID || 'unknown'
+  });
+});
+
 // 4. Nu zetten we de deuren open en zorgen we dat hij JSON snapt
 // CORS: lokaal + productie Vercel (met en zonder trailing slash)
 const allowedOrigins = [
