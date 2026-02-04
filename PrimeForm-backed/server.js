@@ -1259,21 +1259,22 @@ app.post('/api/admin/import-history', async (req, res) => {
 
 // Admin route: Fetch all users
 app.get('/api/admin/users', async (req, res) => {
-  console.log('Admin request ontvangen voor users...');
+  const adminEmail = (req.headers['x-admin-email'] || req.query.adminEmail || '').trim();
+  console.log('Admin request ontvangen voor users. adminEmail aanwezig:', !!adminEmail, 'match:', adminEmail === 'yoramroemersma50@gmail.com');
   try {
     if (!db) {
       return res.status(503).json({
         success: false,
-        error: 'Firestore is not initialized'
+        error: 'Firestore is not initialized',
+        code: 'FIRESTORE_NOT_READY'
       });
     }
 
-    // Simple admin check (in production, use proper authentication)
-    const adminEmail = (req.headers['x-admin-email'] || req.query.adminEmail || '').trim();
     if (adminEmail !== 'yoramroemersma50@gmail.com') {
       return res.status(403).json({
         success: false,
-        error: 'Unauthorized: Admin access required'
+        error: 'Unauthorized: Admin access required',
+        code: 'ADMIN_EMAIL_MISMATCH'
       });
     }
 
@@ -1373,20 +1374,21 @@ app.delete('/api/admin/users/:uid', async (req, res) => {
 // - newThisWeek: users created in the last 7 days
 // - checkinsToday: all dailyLogs entries across users for "today"
 app.get('/api/admin/stats', async (req, res) => {
+  const adminEmail = (req.headers['x-admin-email'] || req.query.adminEmail || '').trim();
+  console.log('Admin stats request. adminEmail match:', adminEmail === 'yoramroemersma50@gmail.com');
   try {
     if (!db) {
       return res.status(503).json({
         success: false,
-        error: 'Firestore is not initialized'
+        error: 'Firestore is not initialized',
+        code: 'FIRESTORE_NOT_READY'
       });
     }
-
-    // Simple admin check (in production, use proper authentication)
-    const adminEmail = (req.headers['x-admin-email'] || req.query.adminEmail || '').trim();
     if (adminEmail !== 'yoramroemersma50@gmail.com') {
       return res.status(403).json({
         success: false,
-        error: 'Unauthorized: Admin access required'
+        error: 'Unauthorized: Admin access required',
+        code: 'ADMIN_EMAIL_MISMATCH'
       });
     }
 

@@ -1,6 +1,31 @@
 <template>
   <q-page class="admin-page">
-    <div class="admin-container">
+    <!-- Geen geldig admin e-mail (bv. incognito): toon inlogformulier i.p.v. prompt() -->
+    <div v-if="!isAdminAuthenticated" class="admin-container q-pa-lg">
+      <q-card class="admin-login-card" flat dark>
+        <q-card-section>
+          <div class="text-h6 q-mb-md">Admin toegang</div>
+          <p class="text-body2 text-grey q-mb-md">Voer je beheerder e-mailadres in om het dashboard te openen.</p>
+          <q-input
+            v-model="adminEmailInput"
+            type="email"
+            label="E-mailadres"
+            outlined
+            dark
+            class="q-mb-md"
+            :error="!!adminLoginError"
+            :error-message="adminLoginError"
+            @keyup.enter="submitAdminLogin"
+          />
+          <div class="row q-gutter-sm">
+            <q-btn color="primary" label="Toegang" @click="submitAdminLogin" />
+            <q-btn flat label="Naar dashboard" to="/dashboard" />
+          </div>
+        </q-card-section>
+      </q-card>
+    </div>
+
+    <div v-else class="admin-container">
       <div class="admin-header">
         <h1 class="admin-title">Admin Dashboard</h1>
         <q-btn
@@ -12,6 +37,13 @@
           :loading="loading"
         />
       </div>
+
+      <q-banner v-if="adminLoadError" class="bg-negative text-white q-mb-md" rounded>
+        {{ adminLoadError }}
+        <template #action>
+          <q-btn flat dense label="Sluiten" @click="adminLoadError = ''" />
+        </template>
+      </q-banner>
 
       <!-- Statistics Cards -->
       <div class="stats-grid q-mb-lg">
@@ -493,6 +525,7 @@ import { ref, computed, onMounted, watch, watchEffect } from 'vue'
 import VueApexCharts from 'vue3-apexcharts'
 import CycleCalendar from '../../components/CycleCalendar.vue'
 import CycleComparisonChart from '../../components/CycleComparisonChart.vue'
+import { Notify } from 'quasar'
 import { API_URL } from '../../config/api.js'
 import {
   fetchAllUsers,
@@ -509,7 +542,13 @@ import {
   deleteUser
 } from '../../services/adminService.js'
 
+const ADMIN_EMAIL = 'yoramroemersma50@gmail.com'
+const isAdminAuthenticated = ref(false)
+const adminEmailInput = ref('')
+const adminLoginError = ref('')
+
 const loading = ref(false)
+const adminLoadError = ref('')
 const users = ref([])
 const stats = ref({
   totalMembers: 0,
@@ -777,6 +816,7 @@ const loadAlerts = async () => {
 
 const loadUsers = async () => {
   loading.value = true
+  adminLoadError.value = ''
   console.log('Fetching data van:', API_URL + '/api/admin/users')
   try {
     const allUsers = await fetchAllUsers()
@@ -794,6 +834,9 @@ const loadUsers = async () => {
   } catch (error) {
     console.error('Failed to load users:', error)
     users.value = []
+    const msg = error?.message || 'Kon data niet laden.'
+    adminLoadError.value = msg
+    Notify.create({ type: 'negative', message: msg, caption: 'Controleer of je met het juiste admin e-mailadres bent ingelogd.' })
   } finally {
     loading.value = false
   }
@@ -1087,7 +1130,32 @@ watch(dialogTab, (newTab) => {
 })
 
 const hasFetchedOnce = ref(false)
+
+function checkAdminAuth() {
+  const stored = (localStorage.getItem('admin_email') || '').trim()
+  isAdminAuthenticated.value = stored === ADMIN_EMAIL
+}
+
+function submitAdminLogin() {
+  adminLoginError.value = ''
+  const email = adminEmailInput.value.trim()
+  if (!email) {
+    adminLoginError.value = 'Voer een e-mailadres in.'
+    return
+  }
+  if (email !== ADMIN_EMAIL) {
+    adminLoginError.value = 'Geen toegang. Alleen beheerders hebben toegang.'
+    return
+  }
+  localStorage.setItem('admin_email', email)
+  isAdminAuthenticated.value = true
+  hasFetchedOnce.value = true
+  loadUsers()
+}
+
 onMounted(() => {
+  checkAdminAuth()
+  if (!isAdminAuthenticated.value) return
   console.log('AdminPage mounted. Checking prerequisites...')
   console.log('Using API URL:', API_URL)
   const adminEmail = localStorage.getItem('admin_email')
@@ -1123,6 +1191,13 @@ watchEffect(() => {
 .admin-container {
   max-width: 1400px;
   margin: 0 auto;
+}
+
+.admin-login-card {
+  max-width: 420px;
+  margin: 0 auto;
+  background: rgba(18, 18, 18, 0.95) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .admin-header {

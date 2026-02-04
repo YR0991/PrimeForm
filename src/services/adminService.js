@@ -13,18 +13,21 @@ export async function fetchAllUsers() {
     }
     const url = `${API_URL}/api/admin/users?adminEmail=${encodeURIComponent(adminEmail)}`
     console.log('Fetching data van:', url)
-    const response = await fetch(url, { credentials: 'include' })
-    
+    const response = await fetch(url, {
+      credentials: 'include',
+      headers: { 'x-admin-email': adminEmail }
+    })
+    const data = await response.json().catch(() => ({}))
     if (!response.ok) {
       if (response.status === 403) {
-        // Clear invalid admin email
         localStorage.removeItem('admin_email')
-        throw new Error('Unauthorized: Invalid admin credentials')
+        throw new Error(data.error || 'Unauthorized: voer het juiste admin e-mailadres in.')
       }
-      throw new Error(`Failed to fetch users: ${response.statusText}`)
+      if (response.status === 503) {
+        throw new Error(data.error || 'Backend kan niet met de database verbinden. Probeer later.')
+      }
+      throw new Error(data.error || data.message || `Fout bij ophalen gebruikers: ${response.status}`)
     }
-    
-    const data = await response.json()
     return data.data || []
   } catch (error) {
     console.error('Error fetching users:', error)
@@ -178,19 +181,16 @@ export async function fetchAdminStats() {
 
   const response = await fetch(
     `${API_URL}/api/admin/stats?adminEmail=${encodeURIComponent(adminEmail)}`,
-    { credentials: 'include' }
+    { credentials: 'include', headers: { 'x-admin-email': adminEmail } }
   )
-
+  const data = await response.json().catch(() => ({}))
   if (!response.ok) {
     if (response.status === 403) {
       localStorage.removeItem('admin_email')
-      throw new Error('Unauthorized: Invalid admin credentials')
+      throw new Error(data.error || 'Unauthorized: voer het juiste admin e-mailadres in.')
     }
-    const errorData = await response.json().catch(() => ({}))
-    throw new Error(errorData.error || `Failed to fetch admin stats: ${response.statusText}`)
+    throw new Error(data.error || data.message || `Fout bij ophalen stats: ${response.status}`)
   }
-
-  const data = await response.json()
   return data.data || { newThisWeek: 0, checkinsToday: 0 }
 }
 
@@ -301,14 +301,17 @@ export async function updateCheckIn(userId, logId, patch) {
 export async function fetchAlerts() {
   const adminEmail = localStorage.getItem('admin_email')
   if (!adminEmail) throw new Error('Admin email not found. Please login first.')
-  const response = await fetch(`${API_URL}/api/admin/alerts?adminEmail=${encodeURIComponent(adminEmail)}`, { credentials: 'include' })
+  const response = await fetch(`${API_URL}/api/admin/alerts?adminEmail=${encodeURIComponent(adminEmail)}`, {
+    credentials: 'include',
+    headers: { 'x-admin-email': adminEmail }
+  })
+  const err = await response.json().catch(() => ({}))
   if (!response.ok) {
     if (response.status === 403) {
       localStorage.removeItem('admin_email')
-      throw new Error('Unauthorized: Invalid admin credentials')
+      throw new Error(err.error || 'Unauthorized: voer het juiste admin e-mailadres in.')
     }
-    const err = await response.json().catch(() => ({}))
-    throw new Error(err.error || `Failed to fetch alerts: ${response.statusText}`)
+    throw new Error(err.error || err.message || `Fout bij ophalen meldingen: ${response.status}`)
   }
   const data = await response.json()
   return data.data || { missed: [], critical: [] }
