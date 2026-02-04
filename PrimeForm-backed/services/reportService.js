@@ -62,7 +62,20 @@ async function getLast7DaysLogs(db, admin, uid) {
 }
 
 /**
+ * Normalize activity date to YYYY-MM-DD for filtering (ISO string, timestamp, or Firestore Timestamp).
+ */
+function activityDateString(a) {
+  const raw = a.start_date_local ?? a.start_date;
+  if (raw == null) return '';
+  if (typeof raw === 'string') return raw.slice(0, 10);
+  if (typeof raw.toDate === 'function') return raw.toDate().toISOString().slice(0, 10);
+  if (typeof raw === 'number') return new Date(raw * 1000).toISOString().slice(0, 10);
+  return String(raw).slice(0, 10);
+}
+
+/**
  * Get Strava activities for the last 7 days from Firestore (users/{uid}/activities).
+ * Date filtering uses start_date_local or start_date (ISO string or timestamp).
  * Returns empty array if no activities or no Strava; no throw.
  */
 async function getLast7DaysActivities(db, uid) {
@@ -80,10 +93,10 @@ async function getLast7DaysActivities(db, uid) {
   const activities = snap.docs
     .map((doc) => ({ id: doc.id, ...doc.data() }))
     .filter((a) => {
-      const dateStr = (a.start_date_local || a.start_date || '').toString().slice(0, 10);
-      return dateStr >= cutoff;
+      const dateStr = activityDateString(a);
+      return dateStr.length >= 10 && dateStr >= cutoff;
     })
-    .sort((a, b) => (b.start_date_local || b.start_date || '').localeCompare(a.start_date_local || a.start_date || ''));
+    .sort((a, b) => activityDateString(b).localeCompare(activityDateString(a)));
 
   return activities;
 }

@@ -352,6 +352,35 @@ export async function updateUserCycle(userId, cycleDay, currentPhase) {
 }
 
 /**
+ * Sync Strava history (last 30 days) for a user — admin only
+ * @param {string} uid - User ID
+ * @param {{ days?: number }} options - optional, days back (default 30)
+ * @returns {Promise<{ count: number }>}
+ */
+export async function syncStravaHistory(uid, options = {}) {
+  const adminEmail = localStorage.getItem('admin_email')
+  if (!adminEmail) throw new Error('Admin email not found. Please login first.')
+  const response = await fetch(`${API_URL}/api/admin/strava/sync/${encodeURIComponent(uid)}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-admin-email': adminEmail
+    },
+    body: JSON.stringify({ adminEmail, days: options.days ?? 30 })
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    if (response.status === 403) {
+      localStorage.removeItem('admin_email')
+      throw new Error(data.error || 'Unauthorized')
+    }
+    throw new Error(data.error || data.message || `Strava sync mislukt: ${response.status}`)
+  }
+  return data.data || { count: 0 }
+}
+
+/**
  * Generate weekly report (Race Engineer) for a user — admin only
  * @param {string} uid - User ID
  * @returns {Promise<{ stats: Object, message: string }>}

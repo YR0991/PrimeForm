@@ -316,6 +316,29 @@ app.get('/api/strava/sync/:uid', async (req, res) => {
   }
 });
 
+// POST /api/admin/strava/sync/:uid — sync last 30 days of Strava activities (admin only)
+app.post('/api/admin/strava/sync/:uid', async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
+    }
+    const adminEmail = (req.headers['x-admin-email'] || req.query.adminEmail || req.body?.adminEmail || '').trim();
+    if (adminEmail !== 'yoramroemersma50@gmail.com') {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Admin access required' });
+    }
+    const uid = req.params.uid;
+    if (!uid) {
+      return res.status(400).json({ success: false, error: 'Missing uid' });
+    }
+    const days = req.body?.days != null ? Math.min(90, Math.max(1, Number(req.body.days))) : 30;
+    const result = await stravaService.syncRecentActivities(uid, db, admin, { days });
+    return res.json({ success: true, data: { count: result.count } });
+  } catch (err) {
+    console.error('Admin Strava sync error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // GET /api/strava/activities/:uid — return stored activities (for dashboard & admin)
 app.get('/api/strava/activities/:uid', async (req, res) => {
   try {

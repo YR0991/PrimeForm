@@ -160,6 +160,18 @@
                   flat
                   dense
                   round
+                  icon="sync"
+                  :loading="syncingUserId === (props.row.id || props.row.userId)"
+                  :disable="!!syncingUserId"
+                  color="secondary"
+                  @click="syncStravaForUser(props.row)"
+                >
+                  <q-tooltip>Sync Strava Historie</q-tooltip>
+                </q-btn>
+                <q-btn
+                  flat
+                  dense
+                  round
                   icon="assessment"
                   color="secondary"
                   @click="openWeeklyReport(props.row)"
@@ -595,7 +607,8 @@ import {
   fetchAlerts,
   updateUserCycle,
   deleteUser,
-  fetchWeeklyReport
+  fetchWeeklyReport,
+  syncStravaHistory
 } from '../../services/adminService.js'
 
 const ADMIN_EMAIL = 'yoramroemersma50@gmail.com'
@@ -644,6 +657,7 @@ const weeklyReportLoading = ref(false)
 const weeklyReportUserName = ref('')
 const weeklyReportStats = ref({})
 const weeklyReportMessage = ref('')
+const syncingUserId = ref(null)
 const weeklyReportStatsColumns = [
   { name: 'label', label: 'Metric', field: 'label', align: 'left' },
   { name: 'value', label: 'Waarde', field: 'value', align: 'right' }
@@ -973,6 +987,21 @@ function copyReportToClipboard() {
   }).catch(() => {
     Notify.create({ type: 'negative', message: 'Kopiëren mislukt' })
   })
+}
+
+async function syncStravaForUser(row) {
+  const uid = row.id || row.userId
+  syncingUserId.value = uid
+  try {
+    const data = await syncStravaHistory(uid)
+    const count = data?.count ?? 0
+    Notify.create({ type: 'positive', message: `${count} activiteiten opgehaald en opgeslagen.` })
+  } catch (error) {
+    console.error('Strava sync failed:', error)
+    Notify.create({ type: 'negative', message: error?.message || 'Sync Strava mislukt.' })
+  } finally {
+    syncingUserId.value = null
+  }
 }
 
 const openUserDialog = async (user) => {

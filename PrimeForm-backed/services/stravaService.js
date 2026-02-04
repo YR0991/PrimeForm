@@ -211,9 +211,57 @@ async function getRecentActivities(userId, db, admin) {
   return { count: stored };
 }
 
+/**
+ * Sync historische activiteiten van Strava (bijv. laatste 30 dagen) naar Firestore.
+ * Zelfde formaat als getRecentActivities (mapActivity); voor gebruik na koppelen of in admin.
+ * @param {string} userId
+ * @param {object} db - Firestore
+ * @param {object} admin - firebase-admin
+ * @param {{ days?: number }} options - options.days = aantal dagen terug (default 30)
+ * @returns {Promise<{ count: number }>} aantal opgeslagen activiteiten
+ */
+async function syncRecentActivities(userId, db, admin, options = {}) {
+  const days = options.days ?? 30;
+  if (!db) throw new Error('Firestore is not initialized');
+  const userRef = db.collection('users').doc(String(userId));
+  const snap = await userRef.get();
+  if (!snap.exists) throw new Error('User not found');
+  const userData = snap.data() || {};
+  const accessToken = await ensureValidToken(userData, db, admin, userId);
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const afterSec = nowSec - days * 24 * 60 * 60;
+  const params = new URLSearchParams({
+    after: String(afterSec),
+    per_page: '100'
+  });
+  const url = `${STRAVA_ACTIVITIES_URL}?${params.toString()}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `Strava API error: ${res.status}`);
+  }
+  const activities = await res.json();
+  if (!Array.isArray(activities)) return { count: 0 };
+
+  const activitiesRef = userRef.collection('activities');
+  let stored = 0;
+  for (const raw of activities) {
+    const id = String(raw.id);
+    if (!id) continue;
+    const mapped = mapActivity(raw);
+    await activitiesRef.doc(id).set(mapped, { merge: true });
+    stored++;
+  }
+  return { count: stored };
+}
+
 module.exports = {
   getAuthUrl,
   exchangeToken,
   refreshAccessToken,
-  getRecentActivities
+  getRecentActivities,
+  syncRecentActivities
 };
