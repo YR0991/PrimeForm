@@ -62,10 +62,12 @@ app.get('/api/health', (req, res) => res.json(getHealthPayload()));
 app.get('/health', (req, res) => res.json(getHealthPayload()));
 app.get('/healthz', (req, res) => res.json(getHealthPayload()));
 
-// 4. CORS: exact deze origins (Vercel zonder trailing slash, localhost); credentials voor cookies/auth
+// 4. CORS: frontend origins (localhost, Vercel, app.primeform.com); credentials voor cookies/auth
 const allowedOrigins = [
   'http://localhost:9000',
-  'https://prime-form-frontend2701.vercel.app'
+  'https://prime-form-frontend2701.vercel.app',
+  'https://app.primeform.com',
+  'https://www.primeform.com'
 ];
 app.use(
   cors({
