@@ -181,11 +181,13 @@ onMounted(() => {
   loadProfile()
 
   const status = route.query?.status
-  if (status === 'success') {
+  const stravaConnected = route.query?.strava === 'connected'
+  if (status === 'success' || stravaConnected) {
     Notify.create({ type: 'positive', message: 'Strava gekoppeld!' })
     loadProfile()
     const q = { ...route.query }
     delete q.status
+    delete q.strava
     const search = new URLSearchParams(q).toString()
     const url = search ? `${route.path}?${search}` : route.path
     window.history.replaceState({}, '', url)

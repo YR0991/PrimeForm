@@ -289,7 +289,8 @@ app.get('/auth/strava/callback', async (req, res) => {
     );
 
     console.log(`✅ Strava connected for user ${userId}, athleteId ${athleteId}`);
-    res.redirect(302, `${settingsPath}?status=success`);
+    // Stuur terug naar de settings pagina met een succes-parameter
+    res.redirect(302, `${frontendUrl}/settings?strava=connected`);
   } catch (err) {
     console.error('Strava callback error:', err);
     res.redirect(`${settingsPath}?status=strava_error&message=${encodeURIComponent(err.message || 'unknown')}`);
