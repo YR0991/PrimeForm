@@ -46,6 +46,16 @@ function sendNewIntakeEmail(profile) {
 
 const app = express(); // 3. NU pas bouwen we het 'huis' (de app)
 const PORT = process.env.PORT || 3000;
+let db = null; // Firestore; set in initFirebase()
+
+// Eerste route: health check (boven alles, voor Render)
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    firestore: db ? 'connected' : 'not_initialized',
+    projectId: process.env.FIREBASE_PROJECT_ID || 'unknown'
+  });
+});
 
 // 4. Nu zetten we de deuren open en zorgen we dat hij JSON snapt
 // CORS: lokaal + productie Vercel (met en zonder trailing slash)
@@ -248,6 +258,8 @@ app.get('/auth/strava/callback', async (req, res) => {
       return res.redirect(`${settingsPath}?status=strava_error&message=db_not_ready`);
     }
 
+    const athlete = tokens.athlete || {};
+    const athleteName = [athlete.firstname, athlete.lastname].filter(Boolean).join(' ') || null;
     const userRef = db.collection('users').doc(String(userId));
     await userRef.set(
       {
@@ -256,7 +268,8 @@ app.get('/auth/strava/callback', async (req, res) => {
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
           expiresAt: tokens.expires_at,
-          athleteId: athleteId
+          athleteId: athleteId,
+          athleteName: athleteName
         },
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       },
@@ -285,6 +298,21 @@ app.get('/api/strava/sync/:uid', async (req, res) => {
     return res.json({ success: true, data: { newCount: result.count } });
   } catch (err) {
     console.error('Strava sync error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/strava/activities/:uid — return stored activities (for dashboard & admin)
+app.get('/api/strava/activities/:uid', async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
+    const uid = req.params.uid;
+    if (!uid) return res.status(400).json({ success: false, error: 'Missing uid' });
+    const snap = await db.collection('users').doc(String(uid)).collection('activities').get();
+    const activities = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    return res.json({ success: true, data: activities });
+  } catch (err) {
+    console.error('Strava activities list error:', err);
     return res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -343,7 +371,6 @@ app.put('/api/profile', async (req, res) => {
 });
 
 // Initialize Firebase Admin (with explicit disconnect + forced key load)
-let db = null;
 async function initFirebase() {
   console.log('🔥 Firebase wordt geïnitialiseerd...');
 
@@ -356,7 +383,13 @@ async function initFirebase() {
     // Load credentials from env var OR local ignored file (NO hardcoded keys in codebase)
     let serviceAccount;
     if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      let jsonStr = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+      // Render/env often store private_key with literal \n; convert to real newlines for JSON
+      if (jsonStr.includes('\\n')) {
+        jsonStr = jsonStr.replace(/\\n/g, '\n');
+      }
+      serviceAccount = JSON.parse(jsonStr);
+      console.log('🔐 Using FIREBASE_SERVICE_ACCOUNT_JSON from environment');
     } else {
       // Gebruik __dirname zodat het pad altijd relatief is t.o.v. dit bestand,
       // ongeacht vanuit welke map "node server.js" wordt gestart.
@@ -399,16 +432,14 @@ async function initFirebase() {
     });
 
     // Debug: which project is this credential pointing at?
-    console.log('Project ID uit sleutel:', admin.app().options.credential.projectId);
+    console.log('Project ID uit sleutel:', serviceAccount.project_id);
   } catch (error) {
-    console.error('❌ FIRESTORE FOUT:', error);
+    console.error('❌ FIRESTORE FOUT:', error.message || error);
+    console.error('   Op Render: controleer FIREBASE_SERVICE_ACCOUNT_JSON (gehele JSON, evt. escaped newlines in private_key).');
     // Keep server alive, but Firestore-dependent routes will fail gracefully
     db = null;
   }
 }
-
-// Middleware to parse JSON bodies
-app.use(express.json());
 
 /**
  * Calculate if user is in Luteal phase based on last period date
@@ -542,22 +573,69 @@ function calculateRedFlags(sleep, rhr, rhrBaseline, hrv, hrvBaseline, isLuteal) 
 }
 
 /**
+ * Load last workout (today or yesterday) from users/{uid}/activities for AI context.
+ * @param {object} db - Firestore
+ * @param {string} userId
+ * @returns {Promise<string>} - [DETECTED WORKOUT]: ... or empty string
+ */
+async function getDetectedWorkoutForAI(db, userId) {
+  if (!db || !userId) return '';
+  try {
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const snap = await db.collection('users').doc(String(userId)).collection('activities').get();
+    const activities = [];
+    snap.docs.forEach((doc) => {
+      const d = doc.data() || {};
+      const dateLocal = (d.start_date_local || d.start_date || '').toString().slice(0, 10);
+      if (dateLocal === today || dateLocal === yesterday) {
+        activities.push({ ...d, id: doc.id });
+      }
+    });
+    if (activities.length === 0) return '';
+    activities.sort((a, b) => (b.start_date_local || b.start_date || '').localeCompare(a.start_date_local || a.start_date || ''));
+    const a = activities[0];
+    const typeMap = { Run: 'Hardlopen', Ride: 'Fietsen', VirtualRide: 'Virtueel fietsen', Swim: 'Zwemmen' };
+    const typeLabel = typeMap[a.type] || a.type || 'Workout';
+    const durationMin = a.moving_time ? Math.round(a.moving_time / 60) : null;
+    const avgHr = a.average_heartrate != null ? a.average_heartrate : null;
+    const ss = a.suffer_score != null ? Number(a.suffer_score) : null;
+    let load = 'Unknown';
+    if (ss != null) { if (ss <= 50) load = 'Low'; else if (ss <= 100) load = 'Medium'; else load = 'High'; }
+    const parts = [`Type: ${typeLabel}`];
+    if (durationMin) parts.push(`Duration: ${durationMin}min`);
+    if (avgHr) parts.push(`Avg HR: ${avgHr}`);
+    parts.push(`Load: ${load}`);
+    return `[DETECTED WORKOUT]: ${parts.join(', ')}.`;
+  } catch (e) {
+    console.error('getDetectedWorkoutForAI:', e);
+    return '';
+  }
+}
+
+/**
  * Generate AI coaching message using OpenAI
  * @param {string} status - Training status (REST/RECOVER/MAINTAIN/PUSH)
  * @param {string} phaseName - Menstrual cycle phase name
  * @param {object} metrics - Metrics object with sleep, rhr, hrv, etc.
  * @param {object} redFlags - Red flags object with count and reasons
+ * @param {object} [profileContext] - Profile/intake data
+ * @param {string} [detectedWorkout] - Optional [DETECTED WORKOUT] line from Strava
  * @returns {Promise<string>} - AI generated coaching message
  */
-async function generateAICoachingMessage(status, phaseName, metrics, redFlags, profileContext = null) {
+async function generateAICoachingMessage(status, phaseName, metrics, redFlags, profileContext = null, detectedWorkout = '') {
   try {
+    const complianceInstruction = detectedWorkout
+      ? '\n\nCOMPLIANCE CHECK: Check if the detected workout matches the advice given yesterday. If I advised Recover or Rest but the user did a High Load workout, mention it gently in your advice (e.g. "Ik zie dat je flink bent gegaan – volgende keer even afstemmen op het advies."). Do not be harsh.'
+      : '';
     const systemPrompt = `Je bent PrimeForm, de elite biohacking coach. Gebruik ONDERSTAANDE kennisbasis strikt voor je advies. Wijk hier niet van af.
 
 --- KNOWLEDGE BASE START ---
 ${knowledgeBaseContent}
 --- KNOWLEDGE BASE END ---
 
-INSTRUCTION FOR LANGUAGE GENERATION: 1. REASONING: First, think in English about the advice based on Logic v2.0. 2. TRANSLATION: When writing the final response in Dutch, imagine you are texting a smart friend. Use short sentences. Use 'spreektaal' (spoken language), not 'schrijftaal' (written language). 3. FILTER: Check against lingo.md restrictions. If it sounds like a translated document, REWRITE it to sound human.
+INSTRUCTION FOR LANGUAGE GENERATION: 1. REASONING: First, think in English about the advice based on Logic v2.0. 2. TRANSLATION: When writing the final response in Dutch, imagine you are texting a smart friend. Use short sentences. Use 'spreektaal' (spoken language), not 'schrijftaal' (written language). 3. FILTER: Check against lingo.md restrictions. If it sounds like a translated document, REWRITE it to sound human.${complianceInstruction}
 
 IntakeData (kan leeg zijn):
 ${profileContext ? JSON.stringify(profileContext).slice(0, 2500) : 'null'}`;
@@ -567,13 +645,14 @@ ${profileContext ? JSON.stringify(profileContext).slice(0, 2500) : 'null'}`;
     const hrvChange = ((metrics.hrv.current - hrvRefBaseline) / hrvRefBaseline * 100).toFixed(1);
     const hrvTrend = metrics.hrv.current > hrvRefBaseline ? 'verhoogd' : metrics.hrv.current < hrvRefBaseline ? 'verlaagd' : 'stabiel';
     
+    const workoutLine = detectedWorkout ? `\n${detectedWorkout}\n` : '';
     const userPrompt = `Status: ${status}
 Cyclusfase: ${phaseName}
 Readiness: ${metrics.readiness}/10
 Slaap: ${metrics.sleep} uur
 RHR: ${metrics.rhr.current} bpm (baseline: ${metrics.rhr.baseline} bpm${metrics.rhr.lutealCorrection ? ', Luteale correctie toegepast' : ''})
 HRV: ${metrics.hrv.current} (baseline: ${metrics.hrv.baseline}${metrics.hrv.adjustedBaseline ? `, adjusted: ${Number(metrics.hrv.adjustedBaseline).toFixed(1)}${metrics.hrv.lutealOffsetApplied ? ' (Luteal offset +12%)' : ''}` : ''}, ${hrvTrend} met ${Math.abs(hrvChange)}%)
-Red Flags: ${redFlags.count} (${redFlags.reasons.join(', ') || 'geen'})
+Red Flags: ${redFlags.count} (${redFlags.reasons.join(', ') || 'geen'})${workoutLine}
 
 Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
     
@@ -807,6 +886,15 @@ app.post('/api/daily-advice', async (req, res) => {
       console.error('❌ FIRESTORE FOUT:', error);
       profileContext = null;
     }
+
+    // Detected workout (Strava) for today/yesterday — for AI context and compliance check
+    let detectedWorkout = '';
+    try {
+      if (db) detectedWorkout = await getDetectedWorkoutForAI(db, userId);
+      if (detectedWorkout) console.log('🏃 Detected workout for AI:', detectedWorkout);
+    } catch (e) {
+      console.error('Detected workout fetch failed:', e);
+    }
     
     // Calculate Red Flags
     const redFlags = calculateRedFlags(
@@ -843,13 +931,14 @@ app.post('/api/daily-advice', async (req, res) => {
       }
     };
     
-    // Generate AI coaching message
+    // Generate AI coaching message (with optional detected workout for compliance check)
     const aiMessage = await generateAICoachingMessage(
       recommendation.status,
       cycleInfo.phaseName,
       metricsForAI,
       { count: redFlags.count, reasons: redFlags.reasons },
-      profileContext
+      profileContext,
+      detectedWorkout
     );
 
     // Build response payload
@@ -1580,11 +1669,6 @@ app.get('/api/history', async (req, res) => {
   }
 });
 
-// Health check route
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Server is running' });
-});
-
 // Root route
 app.get('/', (req, res) => {
   res.json({
@@ -1593,7 +1677,7 @@ app.get('/', (req, res) => {
       'POST /api/check-luteal-phase': 'Check if user is in Luteal phase',
       'POST /api/daily-advice': 'Get daily training recommendation with full PrimeForm logic',
       'POST /api/save-checkin': 'Save athlete check-in data to Firestore',
-      'GET /health': 'Health check'
+      'GET /api/health': 'Health check (Firebase status)'
     }
   });
 });
