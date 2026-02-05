@@ -102,20 +102,48 @@ async function getLast7DaysActivities(db, uid) {
 }
 
 /**
- * Build stats from logs and activities for the report.
- * load_total: som van Strava suffer_score (Relative Effort) per activiteit — NIET distance (km).
- * Als suffer_score ontbreekt wordt een fallback gebruikt op basis van moving_time en average_heartrate.
+ * Berekent load voor één activiteit: Strava suffer_score, of TRIMP-fallback, of RPE-schatting.
+ * TRIMP (Banister): hrReserve = (avgHr - restHr) / (maxHr - restHr); trimp = duration_min * hrReserve * 0.64 * exp(1.92 * hrReserve); load = trimp * 100.
+ * Geen hartslag: RPE-schatting = (moving_time / 60) * 20.
+ * @param {object} activity - { suffer_score, moving_time, average_heartrate }
+ * @param {object} profile - user profile met max_heart_rate, resting_heart_rate (optioneel)
+ * @returns {number}
  */
-function buildStats(logs, activities) {
+function calculateActivityLoad(activity, profile = {}) {
+  const sufferScore = activity.suffer_score != null ? Number(activity.suffer_score) : null;
+  if (Number.isFinite(sufferScore)) return sufferScore;
+
+  const movingTimeSec = activity.moving_time != null ? Number(activity.moving_time) : 0;
+  const durationMin = movingTimeSec / 60;
+  const avgHr = activity.average_heartrate != null ? Number(activity.average_heartrate) : null;
+
+  if (avgHr != null && Number.isFinite(avgHr)) {
+    const maxHr = profile.max_heart_rate != null ? Number(profile.max_heart_rate) : 190;
+    const restHr = profile.resting_heart_rate != null ? Number(profile.resting_heart_rate) : 60;
+    const denominator = maxHr - restHr;
+    if (denominator > 0) {
+      let hrReserve = (avgHr - restHr) / denominator;
+      hrReserve = Math.max(0, Math.min(1, hrReserve));
+      const trimp = durationMin * hrReserve * 0.64 * Math.exp(1.92 * hrReserve);
+      return Math.round(trimp * 100 * 10) / 10;
+    }
+  }
+
+  return Math.round(durationMin * 20 * 10) / 10;
+}
+
+/**
+ * Build stats from logs and activities for the report.
+ * load_total: som van Strava suffer_score (Relative Effort) per activiteit; ontbreekt die, dan TRIMP- of RPE-fallback.
+ */
+function buildStats(logs, activities, profile = {}) {
   const hrvValues = logs.map((l) => l.hrv).filter((v) => v != null && Number.isFinite(Number(v)));
   const rhrValues = logs.map((l) => l.rhr).filter((v) => v != null && Number.isFinite(Number(v)));
   const readinessValues = logs.map((l) => l.readiness).filter((v) => v != null && Number.isFinite(Number(v)));
 
   let load_total = 0;
   for (const a of activities) {
-    const score = a.suffer_score != null ? Number(a.suffer_score) : null;
-    if (Number.isFinite(score)) load_total += score;
-    else if (a.moving_time && a.average_heartrate) load_total += (a.moving_time / 3600) * (a.average_heartrate || 0) * 0.01;
+    load_total += calculateActivityLoad(a, profile);
   }
 
   return {
@@ -152,7 +180,7 @@ async function generateWeeklyReport(opts) {
     cycleData: profile.cycleData
   }, null, 2);
 
-  const stats = buildStats(logs, activities);
+  const stats = buildStats(logs, activities, profile);
   const logsSummary = logs.length
     ? logs.map((l) => `- ${l.date || l.timestamp?.slice(0, 10)}: HRV=${l.hrv ?? '—'} RHR=${l.rhr ?? '—'} Readiness=${l.readiness ?? '—'} Fase=${l.phase ?? '—'}`).join('\n')
     : 'Geen logdata voor de afgelopen 7 dagen.';
@@ -187,13 +215,13 @@ async function generateWeeklyReport(opts) {
     parsed = { stats, message: content || 'Geen tekst gegenereerd.' };
   }
 
-  // Zelfde 'laatste 7 dagen' activiteiten, geformatteerd voor de frontend (verificatie Week Load e.d.)
+  // Zelfde 'laatste 7 dagen' activiteiten, geformatteerd voor de frontend (load = suffer_score of TRIMP/RPE fallback)
   const activities_list = activities.map((a) => {
     const dateStr = activityDateString(a);
     const distance = a.distance != null ? Number(a.distance) : null;
     const movingTime = a.moving_time != null ? Number(a.moving_time) : null;
     const avgHr = a.average_heartrate != null ? Number(a.average_heartrate) : null;
-    const load = a.suffer_score != null ? Number(a.suffer_score) : 0;
+    const load = calculateActivityLoad(a, profile);
     return {
       date: dateStr,
       type: a.type || 'Workout',
