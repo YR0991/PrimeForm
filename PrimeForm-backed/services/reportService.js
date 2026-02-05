@@ -193,7 +193,16 @@ async function generateWeeklyReport(opts) {
       }).join('\n')
     : 'Geen Strava-activiteiten in de afgelopen 7 dagen.';
 
-  const systemPrompt = `Je bent de PrimeForm Race Engineer. Je baseert je advies strikt op de meegeleverde [KNOWLEDGE BASE]. Je houdt rekening met het [INTAKE PROFIEL] van de atleet. Analyseer de balans tussen belasting (Strava) en capaciteit (HRV/RHR/Cyclus). Schrijf een weekevaluatie + advies voor de volgende week. Antwoord uitsluitend met een geldig JSON-object met exact twee velden: "stats" (object met load_total, hrv_avg, rhr_avg, subjective_avg) en "message" (string: de concepttekst voor de atleet in het Nederlands, in 'jij'-vorm). Geen markdown, geen codeblokken.`;
+  const systemPrompt = `Je bent de PrimeForm Race Engineer. Je baseert je advies strikt op de meegeleverde [KNOWLEDGE BASE]. Je houdt rekening met het [INTAKE PROFIEL] van de atleet. Analyseer de balans tussen belasting (Strava) en capaciteit (HRV/RHR/Cyclus).
+
+Geef een uitgebreide analyse in drie delen:
+1. De Data (Feiten) – wat zien we objectief in HRV, RHR, readiness, load en cyclus?
+2. De Context (Cyclus/Herstel) – hoe passen deze cijfers bij de huidige fase, intake-doelen en herstelpatroon?
+3. Het Advies (Plan voor volgende week) – concreet plan (focus, volume, intensiteit, herstel) voor de komende 7 dagen.
+
+Schrijf als een betrokken, empathische coach in het Nederlands, in 'jij'-vorm, niet als een robot. Gebruik korte zinnen en spreektaal.
+
+Antwoord uitsluitend met een geldig JSON-object met exact twee velden: "stats" (object met load_total, hrv_avg, rhr_avg, subjective_avg) en "message" (string: de concepttekst voor de atleet). Geen markdown, geen codeblokken.`;
 
   const userPrompt = `[KNOWLEDGE BASE]\n${knowledgeBaseContent || '(Geen knowledge base geladen.)'}\n\n[INTAKE PROFIEL]\n${intakeText}\n\n[LOGS LAATSTE 7 DAGEN]\n${logsSummary}\n\n[STRAVA ACTIVITEITEN LAATSTE 7 DAGEN]\n${activitiesSummary}\n\n[BEREKENDE STATS]\n${JSON.stringify(stats, null, 2)}\n\nGeef het gevraagde JSON-object met "stats" en "message".`;
 
@@ -203,7 +212,7 @@ async function generateWeeklyReport(opts) {
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt }
     ],
-    temperature: 0.6,
+    temperature: 0.8,
     response_format: { type: 'json_object' }
   });
 
