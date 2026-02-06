@@ -64,3 +64,9 @@ REGEL 6: DE ELITE OVERRIDE.
    - Conditie: Readiness >= 8 EN HRV >= (Baseline * 0.98).
    - Actie: Advies wordt 'PUSH - ELITE REBOUND'.
    - Guardrail: Waarschuw voor een mogelijke dip de volgende dag.
+
+---
+
+## Instructie voor het Weekrapport (Race Engineer AI)
+
+Als je in de logdata de tag **ELITE_REBOUND** of **LETHARGY_OVERRIDE** ziet bij een dag, is de afwijking van het standaardprotocol **goedgekeurd**. De Daily AI heeft bewust een override toegepast op basis van lichaamskennis en data (hormonale rebound of hormonale lethargie). **Bekritiseer dit niet** in je weekanalyse; bevestig dat de keuze past bij de data en de fase, en bouw daarop voort in je plan.

@@ -5,6 +5,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { calculateActivityLoad, calculatePrimeLoad } = require('./calculationService');
 
 /**
  * Load PrimeForm Knowledge Base (logic, science, lingo) into one string.
@@ -111,7 +112,8 @@ async function getLast7DaysLogs(db, admin, uid) {
       sleep: metrics.sleep ?? null,
       phase: cycleInfo.phase,
       isLuteal: cycleInfo.isLuteal,
-      recommendation: d.recommendation ? d.recommendation.status : null
+      recommendation: d.recommendation ? d.recommendation.status : null,
+      adviceContext: d.adviceContext ?? 'STANDARD'
     };
   });
 }
@@ -154,79 +156,6 @@ async function getLast7DaysActivities(db, uid) {
     .sort((a, b) => activityDateString(b).localeCompare(activityDateString(a)));
 
   return activities;
-}
-
-/**
- * Berekent load voor één activiteit: Strava suffer_score, of TRIMP-fallback, of RPE-schatting.
- * TRIMP (Banister): hrReserve = (avgHr - restHr) / (maxHr - restHr); trimp = duration_min * hrReserve * 0.64 * exp(1.92 * hrReserve); load = trimp (raw TRIMP komt overeen met Garmin/Strava schaal).
- * Geen hartslag: RPE-schatting = (moving_time / 60) * 40.
- * @param {object} activity - { suffer_score, moving_time, average_heartrate }
- * @param {object} profile - user profile met max_heart_rate, resting_heart_rate (optioneel)
- * @returns {number}
- */
-function calculateActivityLoad(activity, profile = {}) {
-  const sufferScore = activity.suffer_score != null ? Number(activity.suffer_score) : null;
-  if (Number.isFinite(sufferScore)) return sufferScore;
-
-  const movingTimeSec = activity.moving_time != null ? Number(activity.moving_time) : 0;
-  const durationMin = movingTimeSec / 60;
-  const avgHr = activity.average_heartrate != null ? Number(activity.average_heartrate) : null;
-
-  if (avgHr != null && Number.isFinite(avgHr)) {
-    const maxHr = profile.max_heart_rate != null ? Number(profile.max_heart_rate) : 190;
-    const restHr = profile.resting_heart_rate != null ? Number(profile.resting_heart_rate) : 60;
-    const denominator = maxHr - restHr;
-    if (denominator > 0) {
-      let hrReserve = (avgHr - restHr) / denominator;
-      hrReserve = Math.max(0, Math.min(1, hrReserve));
-      const trimp = durationMin * hrReserve * 0.64 * Math.exp(1.92 * hrReserve);
-      return Math.round(trimp * 10) / 10;
-    }
-  }
-
-  return Math.round(durationMin * 40 * 10) / 10;
-}
-
-/**
- * PrimeForm v2.1: corrigeer ruwe load op basis van cyclusfase, intensiteit en symptomen.
- * @param {number} rawLoad - ruwe Strava/garmin load (of TRIMP/RPE)
- * @param {string} cyclePhase - cyclusfase voor deze dag (bijv. 'follicular', 'luteal', 'mid_luteal', 'late_luteal', 'menstrual')
- * @param {number} readinessScore - subjectieve readiness 1–10
- * @param {number} avgHr - gemiddelde hartslag van de activiteit
- * @param {number} maxHr - maximale hartslag (profiel)
- * @returns {number} primeLoad - fysiologisch gecorrigeerde load
- */
-function calculatePrimeLoad(rawLoad, cyclePhase, readinessScore, avgHr, maxHr) {
-  if (!Number.isFinite(rawLoad) || rawLoad <= 0) return 0;
-
-  // 1. Base multiplier
-  let multiplier = 1.0;
-
-  // 2. Phase penalty (mid/late luteal)
-  const phase = (cyclePhase || '').toLowerCase();
-  const lutealPhases = ['mid_luteal', 'late_luteal', 'luteal'];
-  if (lutealPhases.includes(phase)) {
-    multiplier = 1.05; // +5% base tax
-
-    // 3. Intensity penalty (HR > 85% van max)
-    if (maxHr && avgHr) {
-      const intensity = avgHr / maxHr;
-      if (intensity >= 0.85) {
-        multiplier += 0.05; // +5% intensity tax
-      }
-    }
-  }
-
-  // 4. Symptom penalty (op basis van readiness 1–10)
-  if (readinessScore != null && Number.isFinite(Number(readinessScore))) {
-    const r = Number(readinessScore);
-    const symptomSeverity = Math.max(0, Math.min(9, 10 - r)); // 0–9
-    const symptomTax = Math.min(symptomSeverity * 0.01, 0.04); // max +4%
-    multiplier += symptomTax;
-  }
-
-  const corrected = rawLoad * multiplier;
-  return Math.round(corrected); // afronden naar heel getal
 }
 
 /**
@@ -312,7 +241,12 @@ async function generateWeeklyReport(opts) {
     load_total: Math.round(primeLoadTotal * 10) / 10
   };
   const logsSummary = logs.length
-    ? logs.map((l) => `- ${l.date || l.timestamp?.slice(0, 10)}: HRV=${l.hrv ?? '—'} RHR=${l.rhr ?? '—'} Readiness=${l.readiness ?? '—'} Fase=${l.phase ?? '—'}`).join('\n')
+    ? logs.map((l) => {
+        const dateStr = l.date || (l.timestamp ? l.timestamp.slice(0, 10) : '') || '—';
+        const rec = l.recommendation ?? '—';
+        const ctx = l.adviceContext && l.adviceContext !== 'STANDARD' ? ` (Reason: ${l.adviceContext})` : '';
+        return `- ${dateStr}: Status ${rec}${ctx} | HRV=${l.hrv ?? '—'} RHR=${l.rhr ?? '—'} Readiness=${l.readiness ?? '—'} Fase=${l.phase ?? '—'}`;
+      }).join('\n')
     : 'Geen logdata voor de afgelopen 7 dagen.';
   const activitiesSummary = enrichedActivities.length
     ? enrichedActivities.map((a) => {
