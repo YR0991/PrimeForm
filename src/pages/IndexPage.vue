@@ -123,14 +123,14 @@
               color="pink-5"
               icon="water_drop"
               keep-color
-              label="Menstruatie vandaag begonnen"
+              label="Menstruatie begonnen"
             />
             <q-toggle
               v-model="isSickOrInjured"
               color="red-5"
               icon="medical_services"
               keep-color
-              label="Ik ben ziek / geblesseerd"
+              label="Ik ben ziek/geblesseerd"
             />
           </div>
         </div>
@@ -340,16 +340,16 @@ const currentLoadingMessage = computed(() => {
 })
 
 const readinessDescriptions = {
-  10: 'Onstuitbaar: Voelt als een machine. Geen spierpijn, volle focus. (PR-dag! 🔥)',
-  9: 'Topvorm: Volledig hersteld. Zin om zwaar te knallen.',
-  8: 'Heel Goed: Goed geslapen. Zin in de training, kleine stijfheid trekt snel weg.',
-  7: 'Stabiel: Normale dag. Voelt prima, geen bijzonderheden. (Goede werkdag)',
-  6: 'Voldoende: Beetje vermoeid/weinig motivatie. Doe de warming-up en kijk dan verder.',
-  5: 'Matig: Duidelijke spierpijn of moe. Verlaag volume/gewicht met 20%. ⚠️',
-  4: 'Lage Energie: Slecht geslapen, zeurende pijntjes. Doe actieve rust (wandelen/mobiliteit).',
-  3: 'Herstel Nodig: Lichaam voelt zwaar, mentaal op. Rustdag. 🛑',
-  2: 'Overbelast: Totaal geen kracht, prikkelbaar. Verplichte rust & slaap.',
-  1: 'Buiten Gebruik: Ziek of geblesseerd. Blijf in bed.'
+  10: 'Onstuitbaar (PR-dag! 🔥)',
+  9: 'Topvorm',
+  8: 'Heel Goed',
+  7: 'Stabiel',
+  6: 'Voldoende',
+  5: 'Matig (20% minder gewicht ⚠️)',
+  4: 'Lage Energie (Actieve rust)',
+  3: 'Herstel Nodig (Rustdag 🛑)',
+  2: 'Overbelast',
+  1: 'Buiten Gebruik (Ziek)'
 }
 
 const readinessDescription = computed(() => {
