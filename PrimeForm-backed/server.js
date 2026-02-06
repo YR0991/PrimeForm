@@ -932,27 +932,14 @@ app.post('/api/daily-advice', async (req, res) => {
     
     const isSickFlag = Boolean(isSickOrInjured);
 
-    // Determine recommendation
-    const baseRecommendation = determineRecommendation(
+    // Determine recommendation (basis)
+    let recommendation = determineRecommendation(
       numericFields.readiness,
       redFlags.count,
       cycleInfo.phaseName
     );
-
-    // Hard override: if user is sick/injured, always enforce REST / Recovery
-    const recommendation = (() => {
-      if (!isSickFlag) return baseRecommendation;
-      const reasons = [
-        ...(baseRecommendation.reasons || []),
-        'Gebruiker heeft ziek/geblesseerd gemeld – algoritme forceert Rust & Herstel.'
-      ];
-      return {
-        status: 'REST',
-        reasons
-      };
-    })();
     
-    // Prepare metrics object for AI
+    // Prepare metrics object for AI (inclusief adjusted baselines)
     const metricsForAI = {
       readiness: numericFields.readiness,
       sleep: numericFields.sleep,
@@ -969,6 +956,49 @@ app.post('/api/daily-advice', async (req, res) => {
         lutealOffsetApplied: redFlags.details.hrv.lutealOffsetApplied
       }
     };
+    
+    // Lethargy Override (Fake Fatigue) — Luteale fase, readiness 4–6, HRV > 105% baseline → MAINTAIN (Aerobic Flow)
+    try {
+      const isLutealPhase = cycleInfo.phaseName === 'Luteal' || cycleInfo.isInLutealPhase === true;
+      if (!isSickFlag && isLutealPhase) {
+        const r = numericFields.readiness;
+        if (r >= 4 && r <= 6) {
+          const baselineHRV = typeof metricsForAI.hrv.adjustedBaseline === 'number'
+            ? metricsForAI.hrv.adjustedBaseline
+            : metricsForAI.hrv.baseline;
+          const currentHRV = metricsForAI.hrv.current;
+          if (
+            typeof baselineHRV === 'number' &&
+            baselineHRV > 0 &&
+            typeof currentHRV === 'number' &&
+            currentHRV >= baselineHRV * 1.05
+          ) {
+            const reasons = [
+              ...(recommendation.reasons || []),
+              'Lethargy Override: Luteale fase, readiness 4–6 maar HRV > 105% van baseline — hormonale lethargie, geen echte vermoeidheid. Focus op MAINTAIN (Aerobic Flow).'
+            ];
+            recommendation = {
+              status: 'MAINTAIN',
+              reasons
+            };
+          }
+        }
+      }
+    } catch (lethErr) {
+      console.error('Lethargy Override evaluatie mislukt:', lethErr);
+    }
+    
+    // Hard override: if user is sick/injured, always enforce REST / Recovery
+    if (isSickFlag) {
+      const reasons = [
+        ...(recommendation.reasons || []),
+        'Gebruiker heeft ziek/geblesseerd gemeld – algoritme forceert Rust & Herstel.'
+      ];
+      recommendation = {
+        status: 'REST',
+        reasons
+      };
+    }
     
     // Generate AI coaching message (with optional detected workout for compliance check)
     const aiMessage = await generateAICoachingMessage(

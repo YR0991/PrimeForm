@@ -52,3 +52,9 @@ Op basis van de *Adjusted* waarden:
 * **IF** Biometrics == RED (Low HRV) **AND** Subjective_Readiness >= 8:  
   * **Diagnosis:** Adrenaline Override / Lack of Body Awareness.  
   * **Advice:** "Brake Check". Protect user from themselves. Force a lighter session or active recovery.
+
+5. DE LETHARGY OVERRIDE (De 'Fake Fatigue' Regel):
+   - Context: In de Luteale fase zorgt progesteron vaak voor een gevoel van lethargie (geen zin/moe), zelfs als het lichaam hersteld is.
+   - Trigger: Fase = Luteaal EN Readiness = 4-6 (Matig) EN HRV > 105% van Baseline (28d).
+   - Actie: Negeer het 'Recover' signaal. Adviseer 'MAINTAIN - AEROBIC FLOW'.
+   - Waarom: Beweging stimuleert doorbloeding en vermindert juist de lethargie. Rust verergert het.
