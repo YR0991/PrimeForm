@@ -1,7 +1,62 @@
 /**
- * Weekly Report Generator — aggregate user data + knowledge base, call OpenAI "Race Engineer".
+ * Weekly Report Generator v2.0 — aggregate user data + knowledge base, call OpenAI "Race Engineer".
  * Used by GET /api/admin/reports/weekly/:uid
  */
+
+const fs = require('fs');
+const path = require('path');
+
+/**
+ * Load PrimeForm Knowledge Base (logic, science, lingo) into one string.
+ * @param {string} [knowledgeDir] - Path to knowledge folder (default: ../knowledge relative to this file)
+ * @returns {string} Combined content or empty string if files missing
+ */
+function loadKnowledgeContext(knowledgeDir) {
+  const dir = knowledgeDir || path.join(__dirname, '..', 'knowledge');
+  const files = ['logic.md', 'science.md', 'lingo.md'];
+  const parts = [];
+  for (const file of files) {
+    try {
+      const filePath = path.join(dir, file);
+      if (fs.existsSync(filePath)) {
+        const content = fs.readFileSync(filePath, 'utf8');
+        parts.push(`--- ${file} ---\n${content}`);
+      }
+    } catch {
+      // Fallback: geen crash bij ontbrekend bestand
+    }
+  }
+  return parts.length ? parts.join('\n\n') : '';
+}
+
+/**
+ * Format user profile / intake to a readable athlete context string.
+ * @param {object} profile - User profile or intake (goals, injuryHistory, trainingPreferences, etc.)
+ * @returns {string}
+ */
+function formatAthleteContext(profile) {
+  if (!profile || typeof profile !== 'object') return 'Geen intake of profiel beschikbaar.';
+  const lines = [];
+  if (profile.fullName) lines.push(`Naam: ${profile.fullName}`);
+  if (profile.goals && (Array.isArray(profile.goals) ? profile.goals.length : profile.goals)) {
+    lines.push(`Doelen: ${Array.isArray(profile.goals) ? profile.goals.join(', ') : String(profile.goals)}`);
+  }
+  if (profile.injuryHistory) lines.push(`Blessure-/klachtenhistorie: ${String(profile.injuryHistory)}`);
+  if (profile.injuries) lines.push(`Blessures/klachten: ${String(profile.injuries)}`);
+  if (profile.trainingPreferences) lines.push(`Trainingsvoorkeuren: ${String(profile.trainingPreferences)}`);
+  if (profile.programmingType) lines.push(`Type programma: ${String(profile.programmingType)}`);
+  if (profile.redFlags && Array.isArray(profile.redFlags) && profile.redFlags.length) {
+    lines.push(`Red flags (intake): ${profile.redFlags.join(', ')}`);
+  }
+  if (profile.cycleData && typeof profile.cycleData === 'object') {
+    const cd = profile.cycleData;
+    if (cd.avgDuration) lines.push(`Gem. cyclusduur: ${cd.avgDuration} dagen`);
+    if (cd.contraception) lines.push(`Anticonceptie: ${cd.contraception}`);
+  }
+  if (profile.successScenario) lines.push(`Successcenario (12 weken): ${String(profile.successScenario)}`);
+  if (profile.painPoint) lines.push(`Pijnpunt: ${String(profile.painPoint)}`);
+  return lines.length ? lines.join('\n') : 'Geen intake of profiel beschikbaar.';
+}
 
 /**
  * Get user profile (intake) from Firestore.
@@ -214,13 +269,10 @@ async function generateWeeklyReport(opts) {
   ]);
 
   const profile = profileData?.profile || {};
-  const intakeText = JSON.stringify({
-    fullName: profile.fullName,
-    goals: profile.goals,
-    programmingType: profile.programmingType,
-    redFlags: profile.redFlags,
-    cycleData: profile.cycleData
-  }, null, 2);
+  const knowledgeContext = (typeof knowledgeBaseContent === 'string' && knowledgeBaseContent.trim())
+    ? knowledgeBaseContent.trim()
+    : loadKnowledgeContext();
+  const athleteContext = formatAthleteContext(profile);
 
   // Maak een lookup van log-data per datum (voor fase/readiness koppeling aan activiteiten)
   const logByDate = new Map();
@@ -273,20 +325,27 @@ async function generateWeeklyReport(opts) {
       }).join('\n')
     : 'Geen Strava-activiteiten in de afgelopen 7 dagen.';
 
-  const systemPrompt = `Je bent de PrimeForm Race Engineer. Je baseert je advies strikt op de meegeleverde [KNOWLEDGE BASE]. Je houdt rekening met het [INTAKE PROFIEL] van de atleet. Analyseer de balans tussen belasting (Strava) en capaciteit (HRV/RHR/Cyclus).
+  const systemPrompt = `ROL: Je bent de PrimeForm Race Engineer, een elite performance coach voor vrouwen.
 
-Week Load (load_total) is een fysiologisch gecorrigeerde load ("Prime Load"): ruwe trainingsload die is aangepast voor cyclusfase (vooral luteale dagen) en subjectieve klachten/readiness.
+PRIMEFORM KNOWLEDGE BASE (Jouw absolute waarheid en regels):
+${knowledgeContext || '(Geen knowledge base geladen – baseer je op algemene PrimeForm principes.)'}
 
-Geef een uitgebreide analyse in drie delen:
-1. De Data (Feiten) – wat zien we objectief in HRV, RHR, readiness, Prime Load en cyclus?
-2. De Context (Cyclus/Herstel) – hoe passen deze cijfers bij de huidige fase, intake-doelen en herstelpatroon?
-3. Het Advies (Plan voor volgende week) – concreet plan (focus, volume, intensiteit, herstel) voor de komende 7 dagen.
+ATLEET PROFIEL (Doelen en achtergrond):
+${athleteContext}
 
-Schrijf als een betrokken, empathische coach in het Nederlands, in 'jij'-vorm, niet als een robot. Gebruik korte zinnen en spreektaal.
+INSTRUCTIE:
+Analyseer de weekdata. Je advies MOET gekoppeld zijn aan de doelen van de atleet en getoetst worden aan de Knowledge Base.
+Gebruik de PrimeForm terminologie.
+Structuur je antwoord in 3 delen:
+1. De Harde Data (Wat zien we? Analyseer de Load vs Prime Load.)
+2. De Context (Cyclusfase, Herstel, en hoe dit relateert aan haar doelen.)
+3. Het Plan (Concreet advies voor volgende week.)
+
+Week Load (load_total) is fysiologisch gecorrigeerde "Prime Load". Schrijf in het Nederlands, 'jij'-vorm, natuurlijke toon.
 
 Antwoord uitsluitend met een geldig JSON-object met exact twee velden: "stats" (object met load_total, hrv_avg, rhr_avg, subjective_avg) en "message" (string: de concepttekst voor de atleet). Geen markdown, geen codeblokken.`;
 
-  const userPrompt = `[KNOWLEDGE BASE]\n${knowledgeBaseContent || '(Geen knowledge base geladen.)'}\n\n[INTAKE PROFIEL]\n${intakeText}\n\n[LOGS LAATSTE 7 DAGEN]\n${logsSummary}\n\n[STRAVA ACTIVITEITEN LAATSTE 7 DAGEN]\n${activitiesSummary}\n\n[BEREKENDE STATS]\n${JSON.stringify(stats, null, 2)}\n\nGeef het gevraagde JSON-object met "stats" en "message".`;
+  const userPrompt = `[LOGS LAATSTE 7 DAGEN]\n${logsSummary}\n\n[STRAVA ACTIVITEITEN LAATSTE 7 DAGEN]\n${activitiesSummary}\n\n[BEREKENDE STATS]\n${JSON.stringify(stats, null, 2)}\n\nGeef het gevraagde JSON-object met "stats" en "message".`;
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -336,5 +395,7 @@ module.exports = {
   getUserProfile,
   getLast7DaysLogs,
   getLast7DaysActivities,
-  buildStats
+  buildStats,
+  loadKnowledgeContext,
+  formatAthleteContext
 };
