@@ -37,6 +37,17 @@ const routes = [
     children: [{ path: '', component: () => import('pages/IndexPage.vue') }],
   },
   {
+    path: '/dashboard',
+    component: () => import('layouts/MainLayout.vue'),
+    children: [{ path: '', component: () => import('pages/dashboard/UserDashboard.vue') }],
+  },
+  {
+    path: '/coach',
+    component: () => import('layouts/MainLayout.vue'),
+    children: [{ path: '', component: () => import('pages/coach/CoachDashboard.vue') }],
+    beforeEnter: adminGuard
+  },
+  {
     path: '/admin',
     component: () => import('layouts/MainLayout.vue'),
     children: [{ path: '', component: () => import('pages/admin/AdminPage.vue') }],

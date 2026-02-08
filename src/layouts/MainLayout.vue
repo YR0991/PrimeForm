@@ -2,9 +2,18 @@
   <q-layout view="hHh lpR fFf">
     <q-header class="premium-header">
       <q-toolbar>
-        <q-toolbar-title class="premium-title">
-          PRIMEFORM
-        </q-toolbar-title>
+        <router-link to="/dashboard" class="premium-title-link">
+          <q-toolbar-title class="premium-title">
+            PRIMEFORM
+          </q-toolbar-title>
+        </router-link>
+        <q-space />
+        <div class="nav-links">
+          <router-link to="/dashboard" class="nav-link">Dashboard</router-link>
+          <router-link to="/" class="nav-link">Check-in</router-link>
+          <router-link to="/coach" class="nav-link">Coach</router-link>
+          <router-link to="/admin" class="nav-link">Admin</router-link>
+        </div>
       </q-toolbar>
     </q-header>
 
@@ -15,22 +24,47 @@
 </template>
 
 <script setup>
-// Premium minimal layout - no drawer, no menu, just focus
+// Premium minimal layout - Elite Dark nav
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use '../css/quasar.variables' as q;
+
 .premium-header {
-  background: #000000;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: q.$prime-black;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.premium-title-link {
+  text-decoration: none;
 }
 
 .premium-title {
-  text-align: center;
-  font-family: 'Montserrat', sans-serif;
-  font-weight: 900;
-  font-style: italic;
-  color: #D4AF37;
-  letter-spacing: 3px;
-  font-size: 1.5rem;
+  font-family: q.$typography-font-family;
+  font-weight: 700;
+  color: q.$prime-gold;
+  letter-spacing: 0.15em;
+  font-size: 1.25rem;
+  text-transform: uppercase;
+}
+
+.nav-links {
+  display: flex;
+  gap: 20px;
+}
+
+.nav-link {
+  font-family: q.$typography-font-family;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: q.$prime-gray;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  text-decoration: none;
+}
+
+.nav-link:hover,
+.nav-link.router-link-active {
+  color: q.$prime-gold;
 }
 </style>

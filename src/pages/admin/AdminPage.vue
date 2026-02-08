@@ -1,44 +1,118 @@
 <template>
-  <q-page class="admin-page">
+  <q-page class="admin-page elite-page">
     <div class="admin-container">
       <div class="admin-header">
-        <h1 class="admin-title">Admin Dashboard</h1>
+        <h1 class="admin-title">SYSTEM ARCHITECT</h1>
         <q-btn
           flat
           round
           icon="refresh"
           color="white"
-          @click="loadUsers"
+          size="sm"
+          @click="refreshAll"
           :loading="loading"
         />
       </div>
 
+      <!-- System Health -->
+      <q-card class="admin-card health-card" flat>
+        <q-card-section>
+          <div class="section-label">SYSTEM HEALTH</div>
+          <div class="health-grid">
+            <div class="health-metric">
+              <div class="health-value elite-data">{{ systemHealth.totalUsers }}</div>
+              <div class="health-label">Totaal gebruikers</div>
+            </div>
+            <div class="health-metric">
+              <div class="health-value elite-data">{{ systemHealth.stravaApiCallsToday }}/{{ systemHealth.stravaRateLimit }}</div>
+              <div class="health-label">Strava API calls vandaag</div>
+            </div>
+          </div>
+          <div class="error-logs">
+            <div class="error-logs-label">Error logs (laatste 5)</div>
+            <div
+              v-for="(log, i) in systemHealth.errorLogs"
+              :key="i"
+              class="error-log-row elite-data"
+            >
+              <span class="error-time">{{ log.time }}</span>
+              <span class="error-msg">{{ log.message }}</span>
+            </div>
+          </div>
+        </q-card-section>
+      </q-card>
+
+      <!-- Algorithm Verification Lab -->
+      <q-card class="admin-card lab-card" flat>
+        <q-card-section>
+          <div class="section-label">ALGORITHM VERIFICATION LAB</div>
+          <div class="lab-input-row">
+            <q-input
+              v-model="algorithmUid"
+              outlined
+              dark
+              dense
+              placeholder="Voer uid in"
+              class="lab-uid-input"
+              input-class="elite-data"
+            />
+            <q-btn
+              label="GENERATE REPORT"
+              unelevated
+              no-caps
+              class="lab-fetch-btn"
+              :loading="labLoading"
+              @click="fetchWeeklyReport"
+            />
+          </div>
+          <div v-if="weeklyReport" class="lab-results">
+            <div class="lab-json-block">
+              <div class="lab-block-label">Raw JSON (generateWeeklyReport)</div>
+              <pre class="lab-json elite-data">{{ jsonPreview }}</pre>
+            </div>
+            <div class="lab-comparison">
+              <div class="lab-block-label">Strava Raw vs Prime Load</div>
+              <q-table
+                :rows="weeklyReport.stravaVsPrime || []"
+                :columns="comparisonColumns"
+                row-key="date"
+                flat
+                dark
+                dense
+                class="comparison-table"
+                :pagination="{ rowsPerPage: 0 }"
+              />
+            </div>
+          </div>
+        </q-card-section>
+      </q-card>
+
       <!-- Statistics Cards -->
       <div class="stats-grid q-mb-lg">
-        <q-card class="stat-card" flat>
+        <q-card class="admin-card stat-card" flat>
           <q-card-section>
-            <div class="stat-value">{{ stats.totalMembers }}</div>
+            <div class="stat-value elite-data">{{ stats.totalMembers }}</div>
             <div class="stat-label">Totaal Leden</div>
           </q-card-section>
         </q-card>
 
-        <q-card class="stat-card" flat>
+        <q-card class="admin-card stat-card" flat>
           <q-card-section>
-            <div class="stat-value">{{ stats.newThisWeek }}</div>
+            <div class="stat-value elite-data">{{ stats.newThisWeek }}</div>
             <div class="stat-label">Nieuw deze week</div>
           </q-card-section>
         </q-card>
 
-        <q-card class="stat-card" flat>
+        <q-card class="admin-card stat-card" flat>
           <q-card-section>
-            <div class="stat-value">{{ stats.checkinsToday }}</div>
+            <div class="stat-value elite-data">{{ stats.checkinsToday }}</div>
             <div class="stat-label">Check-ins vandaag</div>
           </q-card-section>
         </q-card>
       </div>
 
       <!-- Users Table -->
-      <q-card class="users-card" flat>
+      <q-card class="admin-card users-card" flat>
         <q-card-section>
           <div class="text-h6 q-mb-md">Gebruikers</div>
           
@@ -327,8 +401,56 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { fetchAllUsers, getUserDetails, getUserHistory, calculateStats, importHistory } from '../../services/adminService.js'
+import { getSystemHealth, getWeeklyReportForUser } from '../../services/userService.js'
 
 const loading = ref(false)
+const systemHealth = ref({
+  totalUsers: 0,
+  stravaApiCallsToday: 0,
+  stravaRateLimit: 200,
+  errorLogs: [],
+})
+const algorithmUid = ref('')
+const weeklyReport = ref(null)
+const labLoading = ref(false)
+
+const comparisonColumns = [
+  { name: 'date', label: 'DATUM', field: 'date', align: 'left' },
+  { name: 'stravaRaw', label: 'STRAVA RAW', field: 'stravaRaw', align: 'right' },
+  { name: 'primeLoad', label: 'PRIME LOAD', field: 'primeLoad', align: 'right' },
+  { name: 'multiplier', label: 'MULT', field: (r) => r.multiplier?.toFixed(2), align: 'right' },
+]
+
+const jsonPreview = computed(() => {
+  if (!weeklyReport.value) return ''
+  return JSON.stringify(weeklyReport.value, null, 2)
+})
+
+const refreshAll = async () => {
+  await loadUsers()
+  await loadSystemHealth()
+}
+
+const loadSystemHealth = async () => {
+  try {
+    systemHealth.value = await getSystemHealth()
+  } catch (e) {
+    console.error('System health load failed:', e)
+  }
+}
+
+const fetchWeeklyReport = async () => {
+  if (!algorithmUid.value.trim()) return
+  labLoading.value = true
+  weeklyReport.value = null
+  try {
+    weeklyReport.value = await getWeeklyReportForUser(algorithmUid.value.trim())
+  } catch (e) {
+    console.error('Weekly report fetch failed:', e)
+  } finally {
+    labLoading.value = false
+  }
+}
 const users = ref([])
 const stats = ref({
   totalMembers: 0,
@@ -578,12 +700,15 @@ watch(dialogTab, (newTab) => {
 
 onMounted(() => {
   loadUsers()
+  loadSystemHealth()
 })
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use '../../css/quasar.variables' as q;
+
 .admin-page {
-  background: #000000;
+  background: q.$prime-black;
   min-height: 100vh;
   padding: 24px;
 }
@@ -601,12 +726,149 @@ onMounted(() => {
 }
 
 .admin-title {
-  font-family: 'Montserrat', sans-serif;
-  font-weight: 900;
-  font-style: italic;
-  color: #D4AF37;
-  font-size: 2rem;
+  font-family: q.$typography-font-family;
+  font-weight: 700;
+  color: q.$prime-gold;
+  font-size: 1.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
   margin: 0;
+}
+
+.admin-card {
+  background: q.$prime-surface !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 2px !important;
+  box-shadow: none !important;
+}
+
+.section-label {
+  font-family: q.$typography-font-family;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: q.$prime-gray;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  margin-bottom: 16px;
+}
+
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.health-metric {
+  padding: 12px 0;
+}
+
+.health-value {
+  font-family: q.$mono-font;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.health-label {
+  font-size: 0.7rem;
+  color: q.$prime-gray;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 4px;
+}
+
+.error-logs-label {
+  font-size: 0.65rem;
+  color: q.$prime-gray;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
+}
+
+.error-log-row {
+  display: flex;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.error-time {
+  color: q.$prime-gray;
+  min-width: 48px;
+}
+
+.error-msg {
+  color: #ffffff;
+}
+
+.lab-input-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.lab-uid-input {
+  flex: 1;
+  max-width: 280px;
+}
+
+.lab-fetch-btn {
+  background: q.$prime-gold !important;
+  color: #050505 !important;
+  font-family: q.$typography-font-family !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.1em !important;
+  border-radius: 2px !important;
+  box-shadow: none !important;
+}
+
+.lab-results {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+@media (max-width: 768px) {
+  .lab-results {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lab-json-block,
+.lab-comparison {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.lab-block-label {
+  font-size: 0.6rem;
+  color: q.$prime-gray;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
+}
+
+.lab-json {
+  font-family: q.$mono-font;
+  font-size: 0.7rem;
+  color: #ffffff;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.comparison-table :deep(thead tr th) {
+  font-size: 0.6rem !important;
+}
+
+.comparison-table :deep(.q-td) {
+  font-family: q.$mono-font !important;
 }
 
 .stats-grid {
@@ -615,44 +877,45 @@ onMounted(() => {
   gap: 16px;
 }
 
-.stat-card {
-  background: rgba(18, 18, 18, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+.stat-card .q-card__section {
+  padding: 20px;
 }
 
 .stat-value {
-  font-size: 2.5rem;
-  font-weight: 900;
-  color: #D4AF37;
-  font-family: 'Montserrat', sans-serif;
+  font-size: 2rem;
+  font-weight: 700;
+  color: q.$prime-gold;
 }
 
 .stat-label {
-  font-size: 0.9rem;
-  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.75rem;
+  color: q.$prime-gray;
   margin-top: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .users-card {
-  background: rgba(18, 18, 18, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 8px;
 }
 
 .user-dialog-card {
-  background: #000000;
+  background: q.$prime-black !important;
   min-width: 90vw;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 
 .user-header {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   padding-bottom: 16px;
 }
 
 .history-entry {
-  background: rgba(18, 18, 18, 0.5);
+  background: q.$prime-surface;
   padding: 12px;
-  border-radius: 4px;
+  border-radius: 2px;
   margin-top: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .admin-table :deep(.q-table__top) {
@@ -660,17 +923,24 @@ onMounted(() => {
 }
 
 .admin-table :deep(.q-table thead tr th) {
-  background: rgba(255, 255, 255, 0.05);
-  color: rgba(255, 255, 255, 0.9);
-  font-weight: 600;
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: q.$prime-gray !important;
+  font-family: q.$typography-font-family !important;
+  font-size: 0.7rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.1em !important;
 }
 
 .admin-table :deep(.q-table tbody tr) {
-  background: rgba(255, 255, 255, 0.02);
+  background: transparent;
 }
 
 .admin-table :deep(.q-table tbody tr:hover) {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.admin-table :deep(.q-td) {
+  font-family: q.$mono-font !important;
 }
 
 .import-section {
@@ -680,25 +950,25 @@ onMounted(() => {
 .import-table-container {
   max-height: 500px;
   overflow-y: auto;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
 }
 
 .import-table :deep(.q-table thead tr th) {
-  background: rgba(255, 255, 255, 0.05);
-  color: rgba(255, 255, 255, 0.9);
-  font-weight: 600;
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: q.$prime-gray !important;
+  font-family: q.$typography-font-family !important;
   position: sticky;
   top: 0;
   z-index: 1;
 }
 
 .import-table :deep(.q-table tbody tr) {
-  background: rgba(255, 255, 255, 0.02);
+  background: transparent;
 }
 
 .import-table :deep(.q-table tbody tr:hover) {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04) !important;
 }
 
 .import-table :deep(.q-input) {
