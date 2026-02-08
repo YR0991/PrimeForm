@@ -2,14 +2,14 @@
 // --------------------------------------------------
 // Core palette + Quasar overrides. Matches Tailwind config.
 
-// 1. Core Palette
-$prime-black: #050505; // Main Background
-$prime-surface: #121212; // Cards/Panels
-$prime-gold: #fbbf24; // Primary Accent
-$prime-gray: #a1a1aa; // Secondary Text
+// 1. Core Palette (Elite Dark Mode)
+$prime-black: #050505;
+$prime-surface: rgba(255, 255, 255, 0.03);
+$prime-gold: #fbbf24;
+$prime-gray: #9ca3af;
 
-// 2. Status Colors (Traffic Light)
-$status-push: #10b981;
+// 2. Status Colors (Signal Red / Signal Green)
+$status-push: #22c55e;
 $status-maintain: #f97316;
 $status-recover: #ef4444;
 
@@ -31,5 +31,5 @@ $head-font: 'Montserrat', sans-serif;
 $mono-font: 'JetBrains Mono', monospace;
 
 // 5. Borders & Radius
-$border-subtle: 1px solid rgba(255, 255, 255, 0.1);
+$border-subtle: 1px solid rgba(255, 255, 255, 0.08);
 $radius-sm: 2px;
