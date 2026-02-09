@@ -367,33 +367,6 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    // --- ONBOARDING FLOW ---
-
-    /**
-     * Verify a team invite code and return team { id, name, ...data }.
-     */
-    async verifyInviteCode(code) {
-      const raw = (code || '').trim()
-      if (!raw) {
-        throw new Error('Geen teamcode opgegeven')
-      }
-
-      const teamsRef = collection(db, 'teams')
-      const q = query(teamsRef, where('inviteCode', '==', raw))
-      const snap = await getDocs(q)
-      if (snap.empty) {
-        throw new Error('Teamcode niet gevonden')
-      }
-
-      const teamDoc = snap.docs[0]
-      const data = teamDoc.data() || {}
-      return {
-        id: teamDoc.id,
-        name: data.name || 'Unnamed Team',
-        ...data,
-      }
-    },
-
     /**
      * Persist bio onboarding data without completing Strava step yet.
      * payload: { teamId, date, length }
