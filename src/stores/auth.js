@@ -20,6 +20,7 @@ import {
   where,
   getDocs,
 } from 'firebase/firestore'
+import { Notify } from 'quasar'
 import { API_URL } from '../config/api.js'
 
 const googleProvider = new GoogleAuthProvider()
@@ -36,6 +37,8 @@ export const useAuthStore = defineStore('auth', {
     loading: false,
     error: null,
     isAuthReady: false,
+    profile: { lastPeriodDate: null, cycleLength: null },
+    stravaConnected: false,
   }),
 
   getters: {
@@ -59,6 +62,12 @@ export const useAuthStore = defineStore('auth', {
       this.role = profileData?.role ?? null
       this.teamId = profileData?.teamId ?? null
       this.onboardingComplete = !!profileData?.onboardingComplete
+      const p = profileData?.profile || {}
+      this.profile = {
+        lastPeriodDate: p.lastPeriodDate ?? p.lastPeriod ?? null,
+        cycleLength: p.cycleLength != null ? Number(p.cycleLength) : (p.avgDuration != null ? Number(p.avgDuration) : null),
+      }
+      this.stravaConnected = profileData?.strava?.connected === true
     },
 
     async loginWithGoogle() {
@@ -192,6 +201,12 @@ export const useAuthStore = defineStore('auth', {
       this.role = data.role ?? this.role
       this.teamId = data.teamId ?? this.teamId ?? null
       this.onboardingComplete = !!data.onboardingComplete
+      const p = data.profile || {}
+      this.profile = {
+        lastPeriodDate: p.lastPeriodDate ?? p.lastPeriod ?? null,
+        cycleLength: p.cycleLength != null ? Number(p.cycleLength) : (p.avgDuration != null ? Number(p.avgDuration) : null),
+      }
+      this.stravaConnected = data.strava?.connected === true
       return data
     },
 
@@ -218,6 +233,8 @@ export const useAuthStore = defineStore('auth', {
               this.user = null
               this.role = null
               this.teamId = null
+              this.profile = { lastPeriodDate: null, cycleLength: null }
+              this.stravaConnected = false
               this.isAuthReady = true
               if (!resolved) {
                 resolved = true
@@ -431,6 +448,64 @@ export const useAuthStore = defineStore('auth', {
       } catch (err) {
         console.error('completeOnboarding failed', err)
         this.error = err?.message || 'Onboarding voltooien mislukt'
+        throw err
+      } finally {
+        this.loading = false
+      }
+    },
+
+    /**
+     * Update pilot profile (last period date, cycle length). Persists to Firestore and local state.
+     */
+    async updatePilotProfile({ lastPeriodDate, cycleLength }) {
+      const uid = this.user?.uid
+      if (!uid) {
+        throw new Error('No authenticated user')
+      }
+
+      this.loading = true
+      this.error = null
+
+      try {
+        const userRef = doc(db, 'users', uid)
+        const profile = {
+          lastPeriodDate: lastPeriodDate || null,
+          cycleLength: cycleLength != null ? Number(cycleLength) : null,
+        }
+        await updateDoc(userRef, { profile })
+        this.profile = { ...profile }
+        Notify.create({ type: 'positive', message: 'Kalibratie bijgewerkt' })
+      } catch (err) {
+        console.error('updatePilotProfile failed', err)
+        this.error = err?.message || 'Bijwerken mislukt'
+        Notify.create({ type: 'negative', message: this.error })
+        throw err
+      } finally {
+        this.loading = false
+      }
+    },
+
+    /**
+     * Disconnect Strava: clear Strava data on user document and update local state.
+     */
+    async disconnectStrava() {
+      const uid = this.user?.uid
+      if (!uid) {
+        throw new Error('No authenticated user')
+      }
+
+      this.loading = true
+      this.error = null
+
+      try {
+        const userRef = doc(db, 'users', uid)
+        await updateDoc(userRef, { strava: { connected: false } })
+        this.stravaConnected = false
+        Notify.create({ type: 'positive', message: 'Strava ontkoppeld' })
+      } catch (err) {
+        console.error('disconnectStrava failed', err)
+        this.error = err?.message || 'Ontkoppelen mislukt'
+        Notify.create({ type: 'negative', message: this.error })
         throw err
       } finally {
         this.loading = false

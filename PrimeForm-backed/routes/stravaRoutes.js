@@ -129,7 +129,7 @@ function createStravaRoutes(deps) {
       );
 
       console.log(`✅ Strava connected for user ${userId}, athleteId ${athleteId}`);
-      res.redirect(302, `${frontendUrl}/settings?strava=connected`);
+      res.redirect(302, `${frontendUrl}/profile?status=strava_connected`);
     } catch (err) {
       console.error('Strava callback error:', err);
       res.redirect(`${settingsPath}?status=strava_error&message=${encodeURIComponent(err.message || 'unknown')}`);
