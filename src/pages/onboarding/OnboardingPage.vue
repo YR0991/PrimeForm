@@ -193,11 +193,12 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Notify } from 'quasar'
+import { useQuasar } from 'quasar'
 import { useAuthStore } from '../../stores/auth'
 
 const route = useRoute()
 const router = useRouter()
+const $q = useQuasar()
 const authStore = useAuthStore()
 
 const step = ref(1)
@@ -271,7 +272,7 @@ const verifyCode = async () => {
     verifiedTeamId.value = team.id
     verifiedTeamName.value = team.name || 'Unnamed Team'
 
-    Notify.create({
+    $q.notify({
       type: 'positive',
       message: 'Teamcode gevalideerd.',
     })
@@ -302,7 +303,7 @@ const onSaveBio = async () => {
       length: cycleLength.value,
     })
 
-    Notify.create({
+    $q.notify({
       type: 'positive',
       message: 'Biologische kalibratie opgeslagen.',
     })
@@ -314,9 +315,10 @@ const onSaveBio = async () => {
     }
   } catch (err) {
     console.error('onSaveBio failed', err)
-    Notify.create({
+    const msg = err && typeof err.message === 'string' ? err.message : 'Opslaan van biologische kalibratie mislukt.'
+    $q.notify({
       type: 'negative',
-      message: err?.message || 'Opslaan van biologische kalibratie mislukt.',
+      message: msg,
     })
   } finally {
     submittingBio.value = false
@@ -325,7 +327,7 @@ const onSaveBio = async () => {
 
 const onConnectStrava = () => {
   if (!authStore.user?.uid) {
-    Notify.create({
+    $q.notify({
       type: 'negative',
       message: 'Geen geldige gebruiker. Log opnieuw in.',
     })
@@ -340,16 +342,17 @@ const onConnectStrava = () => {
 const onSkipStrava = async () => {
   try {
     await authStore.completeOnboarding()
-    Notify.create({
+    $q.notify({
       type: 'positive',
       message: 'Onboarding voltooid zonder Strava.',
     })
     router.push('/dashboard')
   } catch (err) {
     console.error('onSkipStrava failed', err)
-    Notify.create({
+    const msg = err && typeof err.message === 'string' ? err.message : 'Onboarding afronden mislukt.'
+    $q.notify({
       type: 'negative',
-      message: err?.message || 'Onboarding afronden mislukt.',
+      message: msg,
     })
   }
 }
