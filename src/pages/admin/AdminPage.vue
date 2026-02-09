@@ -194,12 +194,12 @@
         </q-card-section>
       </q-card>
 
-      <!-- Team Management -->
+      <!-- Team Management / Constructor Configuration -->
       <q-card class="teams-card q-mt-lg" flat>
         <q-card-section class="row items-center justify-between">
           <div class="teams-header">
-            <div class="teams-title">TEAM CONFIGURATION</div>
-            <div class="teams-subtitle">Teams • Coaches • Invite Codes</div>
+            <div class="teams-title">CONSTRUCTOR CONFIGURATION</div>
+            <div class="teams-subtitle">Active Squadrons • Coaches • Invite Codes</div>
           </div>
           <q-btn
             class="new-team-btn"
@@ -209,7 +209,7 @@
             :loading="teamsLoading"
             @click="openTeamDialog"
           >
-            NEW TEAM
+            [+] DEPLOY NEW TEAM
           </q-btn>
         </q-card-section>
         <q-card-section>
@@ -733,7 +733,7 @@ import { ref, computed, onMounted, watch, watchEffect } from 'vue'
 import VueApexCharts from 'vue3-apexcharts'
 import CycleCalendar from '../../components/CycleCalendar.vue'
 import CycleComparisonChart from '../../components/CycleComparisonChart.vue'
-import { Notify } from 'quasar'
+import { Notify, copyToClipboard } from 'quasar'
 import { API_URL } from '../../config/api.js'
 import { useTeamsStore } from '../../stores/teams'
 import {
@@ -1030,6 +1030,18 @@ const teamColumns = [
     sortable: true,
   },
   {
+    name: 'createdAt',
+    label: 'Created At',
+    field: (row) => {
+      if (!row.createdAt) return '—'
+      const date = toDateFromFirestore(row.createdAt)
+      if (!date) return '—'
+      return date.toLocaleDateString('nl-NL', { year: 'numeric', month: '2-digit', day: '2-digit' })
+    },
+    align: 'right',
+    sortable: true,
+  },
+  {
     name: 'inviteCode',
     label: 'Invite Code',
     field: 'inviteCode',
@@ -1084,8 +1096,7 @@ const submitTeam = async () => {
 
 const copyTeamInvite = (code) => {
   if (!code) return
-  navigator.clipboard
-    .writeText(code)
+  copyToClipboard(code)
     .then(() => {
       Notify.create({
         type: 'positive',
