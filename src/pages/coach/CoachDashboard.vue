@@ -124,6 +124,9 @@
           </q-table>
         </q-card-section>
       </q-card>
+
+      <!-- Deep Dive: squadron view + pilot detail panel -->
+      <CoachDeepDive />
     </div>
   </q-page>
 </template>
@@ -132,6 +135,7 @@
 import { computed, onMounted as onMountedHook } from 'vue'
 import { Notify } from 'quasar'
 import { useSquadronStore } from '../../stores/squadron'
+import CoachDeepDive from '../../components/CoachDeepDive.vue'
 
 const squadronStore = useSquadronStore()
 
@@ -536,191 +540,5 @@ const onRowClick = (_evt, row) => {
   border-color: rgba(148, 163, 184, 0.7);
   background-color: rgba(30, 64, 175, 0.15);
   color: rgba(209, 213, 219, 0.9);
-}
-</style>
-
-<style scoped lang="scss">
-@use '../../css/quasar.variables' as q;
-
-.coach-dashboard {
-  background: q.$prime-black;
-  min-height: 100vh;
-  padding: 24px;
-}
-
-.engineer-container {
-  max-width: 1100px;
-  margin: 0 auto;
-}
-
-.engineer-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.engineer-title {
-  font-family: q.$typography-font-family;
-  font-weight: 700;
-  font-size: 1.25rem;
-  color: #ffffff;
-  text-transform: uppercase;
-  letter-spacing: 0.15em;
-  margin: 0;
-}
-
-.squadron-card {
-  background: q.$prime-surface !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  border-radius: q.$radius-sm !important;
-  box-shadow: none !important;
-}
-
-.squadron-table :deep(.q-table__top) {
-  background: transparent;
-}
-
-.squadron-table :deep(thead tr th) {
-  background: rgba(255, 255, 255, 0.04) !important;
-  color: q.$prime-gray !important;
-  font-family: q.$typography-font-family !important;
-  font-size: 0.7rem !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.1em !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
-}
-
-.squadron-table :deep(tbody tr) {
-  cursor: pointer;
-}
-
-.squadron-table :deep(tbody tr:hover) {
-  background: rgba(255, 255, 255, 0.04) !important;
-}
-
-.athlete-cell {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.athlete-name {
-  font-family: q.$typography-font-family;
-  font-weight: 500;
-  color: #ffffff;
-  display: block;
-}
-
-.athlete-level {
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: q.$prime-gray;
-}
-
-.athlete-level.level-elite {
-  color: q.$prime-gold;
-}
-
-.acwr-cell.acwr-spike {
-  color: q.$status-recover;
-}
-
-.acwr-cell.acwr-undertraining {
-  color: q.$status-maintain;
-}
-
-.acwr-cell.acwr-sweet {
-  color: q.$status-push;
-}
-
-.compliance-badge {
-  display: inline-block;
-  border: 1px solid;
-  padding: 2px 8px;
-  font-size: 0.65rem;
-  font-weight: 700;
-  font-family: q.$mono-font;
-  text-transform: uppercase;
-  border-radius: 2px;
-}
-
-.compliance-badge.done {
-  color: q.$status-push;
-  border-color: q.$status-push;
-  background: rgba(34, 197, 94, 0.1);
-}
-
-.compliance-badge.pending {
-  color: q.$prime-gray;
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-.deep-dive-card {
-  background: q.$prime-black !important;
-  border-left: 1px solid rgba(255, 255, 255, 0.08) !important;
-  min-width: 360px;
-  max-width: 420px;
-}
-
-.deep-dive-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 20px;
-}
-
-.deep-dive-title {
-  font-family: q.$typography-font-family;
-  font-weight: 700;
-  font-size: 1rem;
-  color: #ffffff;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.deep-dive-body {
-  padding: 20px;
-}
-
-.deep-dive-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.deep-dive-row .label {
-  font-family: q.$typography-font-family;
-  font-size: 0.7rem;
-  color: q.$prime-gray;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.deep-dive-row .value {
-  font-family: q.$mono-font;
-  font-size: 0.9rem;
-  color: #ffffff;
-}
-
-.deep-dive-section-label {
-  font-family: q.$typography-font-family;
-  font-size: 0.65rem;
-  font-weight: 700;
-  color: q.$prime-gray;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin: 20px 0 12px 0;
-}
-
-.deep-dive-activity {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 0;
-  font-size: 0.8rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 </style>

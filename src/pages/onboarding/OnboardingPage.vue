@@ -3,9 +3,9 @@
     <div class="onboarding-container">
       <q-card class="onboarding-card" flat>
         <q-card-section>
-          <div class="title">ATHLETE ONBOARDING</div>
+          <div class="title">ATLEET ONBOARDING</div>
           <div class="subtitle">
-            Sync your squadron, biological clock, and telemetry.
+            Koppel je squadron, biologische klok en telemetrie.
           </div>
         </q-card-section>
 
@@ -22,32 +22,32 @@
             inactive-color="grey-7"
             done-color="amber-400"
           >
-            <!-- Step 1: Squadron -->
+            <!-- Step 1: SQUADRON -->
             <q-step
               :name="1"
-              title="The Squadron"
-              caption="Connect to your Constructor"
+              title="SQUADRON"
+              caption="Koppel aan je Constructor"
               icon="groups"
               :done="step > 1"
             >
               <div class="q-gb-md">
                 <q-input
                   v-model="inviteCode"
-                  label="Invite Code"
+                  label="Uitnodigingscode"
                   placeholder="TEAM-X9Z"
                   outlined
                   dark
-                  class="q-mb-sm"
+                  class="q-mb-sm onboarding-input"
                   :error="!!inviteError"
                   :error-message="inviteError"
                   @keyup.enter="verifyCode"
                 />
                 <div class="hint mono-text q-mb-sm">
-                  If you joined via a coach link, the code is pre-filled.
+                  Als je via een coachlink bent gekomen, staat de code al ingevuld.
                 </div>
                 <div class="row items-center q-gutter-sm q-mb-sm">
                   <q-btn
-                    label="VERIFY CODE"
+                    label="Code Valideren"
                     color="primary"
                     outline
                     class="mono-btn"
@@ -55,34 +55,34 @@
                     @click="verifyCode"
                   />
                   <div v-if="verifiedTeamName" class="verified-label mono-text">
-                    Linked to: {{ verifiedTeamName }}
+                    Gekoppeld aan: {{ verifiedTeamName }}
                   </div>
                 </div>
                 <div class="hint mono-text">
-                  You can skip this step if you don't have a squadron yet.
+                  Je kunt deze stap overslaan als je nog geen squadron hebt.
                 </div>
               </div>
 
               <q-stepper-navigation>
                 <q-btn
                   color="primary"
-                  label="Next"
+                  label="Volgende"
                   class="mono-btn"
                   @click="step = 2"
                 />
               </q-stepper-navigation>
             </q-step>
 
-            <!-- Step 2: Bio-Calibration -->
+            <!-- Step 2: Biologische Kalibratie -->
             <q-step
               :name="2"
-              title="Bio-Calibration"
-              caption="Critical for Phase-Based Load Calculation."
+              title="Biologische Kalibratie"
+              caption="Nodig voor fase-gebaseerde loadberekening."
               icon="favorite"
               :done="step > 2"
             >
               <div class="q-mb-lg">
-                <div class="field-label">Last Period Start</div>
+                <div class="field-label">Eerste dag van laatste menstruatie</div>
                 <q-date
                   v-model="lastPeriodDate"
                   color="amber-400"
@@ -91,9 +91,14 @@
                   minimal
                   flat
                   class="q-mb-md date-field"
+                  :locale="dateLocale"
+                  @update:model-value="onDateSelected"
                 />
+                <div v-if="lastPeriodDate" class="mono-text date-value-display">
+                  Gekozen: {{ formatDisplayDate(lastPeriodDate) }}
+                </div>
 
-                <div class="field-label">Average Cycle Length</div>
+                <div class="field-label">Cyclusduur</div>
                 <div class="row items-center q-gutter-sm q-mb-xs">
                   <q-slider
                     v-model="cycleLength"
@@ -106,64 +111,66 @@
                     class="col"
                   />
                   <div class="mono-text cycle-length-label">
-                    {{ cycleLength }} days
+                    {{ cycleLength }} dagen
                   </div>
                 </div>
 
                 <q-input
                   v-model.number="birthYear"
                   type="number"
-                  label="Year of birth (optional)"
+                  label="Geboortejaar (optioneel)"
                   outlined
                   dark
-                  class="q-mb-md"
+                  class="q-mb-md onboarding-input"
+                  placeholder="1990"
                 />
 
                 <div class="hint mono-text">
-                  Critical for Phase-Based Load Calculation.
+                  Nodig voor fase-gebaseerde loadberekening.
                 </div>
               </div>
 
               <q-stepper-navigation>
                 <q-btn
                   flat
-                  label="Back"
+                  label="Terug"
                   color="grey-5"
                   class="q-mr-sm mono-btn"
                   @click="step = 1"
                 />
                 <q-btn
                   color="primary"
-                  label="SAVE & CONTINUE"
+                  label="Opslaan & doorgaan"
                   class="mono-btn"
+                  :disable="!hasValidDate"
                   :loading="submittingBio"
                   @click="onSaveBio"
                 />
               </q-stepper-navigation>
             </q-step>
 
-            <!-- Step 3: Strava Telemetry -->
+            <!-- Step 3: Strava -->
             <q-step
               :name="3"
-              title="Strava Telemetry"
-              caption="Optional, but recommended"
+              title="Strava Telemetrie"
+              caption="Optioneel, wel aanbevolen"
               icon="timeline"
               :done="false"
             >
               <div class="q-mb-lg">
-                <div class="field-label">Connect your training telemetry</div>
+                <div class="field-label">Koppel je trainingstelemetrie</div>
                 <div class="hint mono-text q-mb-md">
-                  Redirects you to Strava to authorize PrimeForm with your training data.
+                  Je wordt doorgestuurd naar Strava om PrimeForm toegang te geven tot je trainingsdata.
                 </div>
 
                 <q-btn
-                  label="CONNECT STRAVA"
+                  label="Koppel Strava"
                   class="mono-btn strava-btn q-mb-md"
                   @click="onConnectStrava"
                 />
 
                 <div class="hint mono-text q-mb-sm">
-                  Don't use Strava? You can skip this step and log sessions manually.
+                  Geen Strava? Je kunt deze stap overslaan en sessies handmatig invoeren.
                 </div>
                 <q-btn
                   flat
@@ -171,7 +178,7 @@
                   class="mono-btn skip-link"
                   @click="onSkipStrava"
                 >
-                  Skip Strava for now
+                  Nu overslaan
                 </q-btn>
               </div>
             </q-step>
@@ -183,7 +190,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Notify } from 'quasar'
 import { useAuthStore } from '../../stores/auth'
@@ -201,7 +208,7 @@ const verifyingCode = ref(false)
 const verifiedTeamName = ref('')
 const verifiedTeamId = ref(null)
 
-// Step 2
+// Step 2 — use string in YYYY/MM/DD for q-date
 const lastPeriodDate = ref('')
 const cycleLength = ref(28)
 const birthYear = ref(null)
@@ -209,8 +216,36 @@ const birthYear = ref(null)
 // Step 3
 const submittingBio = ref(false)
 
+// Dutch locale for q-date (month/day names)
+const dateLocale = {
+  months: 'Januari_Februari_Maart_April_Mei_Juni_Juli_Augustus_September_Oktober_November_December'.split('_'),
+  monthsShort: 'Jan_Feb_Mrt_Apr_Mei_Jun_Jul_Aug_Sep_Okt_Nov_Dec'.split('_'),
+  days: 'Zondag_Maandag_Dinsdag_Woensdag_Donderdag_Vrijdag_Zaterdag'.split('_'),
+  daysShort: 'Zo_Ma_Di_Wo_Do_Vr_Za'.split('_'),
+  firstDayOfWeek: 1,
+}
+
+const hasValidDate = computed(() => {
+  const v = (lastPeriodDate.value || '').toString().trim()
+  return /^\d{4}\/\d{2}\/\d{2}$/.test(v)
+})
+
+function formatDisplayDate(isoOrQuasarDate) {
+  const str = (isoOrQuasarDate || '').toString().trim()
+  if (!str) return '—'
+  const normalized = str.includes('/') ? str.replace(/\//g, '-') : str
+  const d = new Date(normalized)
+  if (Number.isNaN(d.getTime())) return str
+  return d.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+function onDateSelected(value) {
+  if (value && typeof value === 'string') {
+    lastPeriodDate.value = value
+  }
+}
+
 onMounted(() => {
-  // Autofill team invite from URL (?invite=...)
   const inviteFromQuery = (route.query.invite || '').toString().trim()
   if (inviteFromQuery) {
     inviteCode.value = inviteFromQuery
@@ -260,7 +295,7 @@ const onSaveBio = async () => {
 
     Notify.create({
       type: 'positive',
-      message: 'Bio-calibration saved.',
+      message: 'Biologische kalibratie opgeslagen.',
     })
 
     step.value = 3
@@ -268,7 +303,7 @@ const onSaveBio = async () => {
     console.error('onSaveBio failed', err)
     Notify.create({
       type: 'negative',
-      message: err?.message || 'Opslaan van bio-calibration mislukt.',
+      message: err?.message || 'Opslaan van biologische kalibratie mislukt.',
     })
   } finally {
     submittingBio.value = false
@@ -349,6 +384,22 @@ const onSkipStrava = async () => {
   background: transparent;
 }
 
+.onboarding-stepper :deep(.q-step__title) {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.onboarding-stepper :deep(.q-step__caption) {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.7rem;
+  color: rgba(156, 163, 175, 0.9);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .field-label {
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     sans-serif;
@@ -376,9 +427,27 @@ const onSkipStrava = async () => {
   border: 1px solid rgba(148, 163, 184, 0.5);
 }
 
+.date-value-display {
+  font-size: 0.75rem;
+  color: #fbbf24;
+  margin-top: 4px;
+  margin-bottom: 12px;
+}
+
 .cycle-length-label {
   font-size: 0.8rem;
   color: rgba(249, 250, 251, 0.9);
+  min-width: 4rem;
+}
+
+.onboarding-input :deep(.q-field__control) {
+  border-radius: 2px;
+}
+
+.onboarding-input :deep(input),
+.onboarding-input :deep(.q-field__native) {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, 'Liberation Mono', 'Courier New', monospace;
 }
 
 .hint {
