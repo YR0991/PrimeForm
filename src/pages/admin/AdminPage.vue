@@ -194,6 +194,107 @@
         </q-card-section>
       </q-card>
 
+      <!-- Team Management -->
+      <q-card class="teams-card q-mt-lg" flat>
+        <q-card-section class="row items-center justify-between">
+          <div class="teams-header">
+            <div class="teams-title">TEAM CONFIGURATION</div>
+            <div class="teams-subtitle">Teams • Coaches • Invite Codes</div>
+          </div>
+          <q-btn
+            class="new-team-btn"
+            color="primary"
+            outline
+            no-caps
+            :loading="teamsLoading"
+            @click="openTeamDialog"
+          >
+            NEW TEAM
+          </q-btn>
+        </q-card-section>
+        <q-card-section>
+          <q-table
+            :rows="teams"
+            :columns="teamColumns"
+            row-key="id"
+            flat
+            dark
+            :loading="teamsLoading"
+            :rows-per-page-options="[5, 10, 25]"
+            class="teams-table"
+          >
+            <template #body-cell-inviteCode="props">
+              <q-td :props="props">
+                <span class="team-code">{{ props.row.inviteCode || '—' }}</span>
+                <q-btn
+                  v-if="props.row.inviteCode"
+                  flat
+                  dense
+                  round
+                  icon="content_copy"
+                  size="sm"
+                  class="q-ml-xs"
+                  @click="copyTeamInvite(props.row.inviteCode)"
+                >
+                  <q-tooltip>Copy invite code</q-tooltip>
+                </q-btn>
+              </q-td>
+            </template>
+            <template #no-data>
+              <div class="text-grey text-caption q-pa-md">
+                Nog geen teams geregistreerd. Gebruik de knop <span class="text-white">NEW TEAM</span> om een eerste team aan te maken.
+              </div>
+            </template>
+          </q-table>
+        </q-card-section>
+      </q-card>
+
+      <!-- Team dialog -->
+      <q-dialog v-model="teamDialogOpen" persistent>
+        <q-card class="user-dialog-card" dark style="min-width: 360px">
+          <q-card-section>
+            <div class="text-h6">Nieuw Team</div>
+            <div class="text-caption text-grey q-mt-xs">
+              Koppel een coach en stel een limiet voor leden in.
+            </div>
+          </q-card-section>
+          <q-card-section class="q-pt-none">
+            <q-input
+              v-model="teamForm.name"
+              label="Teamnaam"
+              outlined
+              dark
+              class="q-mb-md"
+            />
+            <q-input
+              v-model="teamForm.coachEmail"
+              label="Coach e-mail"
+              type="email"
+              outlined
+              dark
+              class="q-mb-md"
+            />
+            <q-input
+              v-model.number="teamForm.memberLimit"
+              label="Max leden (default 10)"
+              type="number"
+              outlined
+              dark
+              class="q-mb-md"
+            />
+          </q-card-section>
+          <q-card-actions align="right">
+            <q-btn flat label="Annuleren" :disable="teamsLoading" v-close-popup />
+            <q-btn
+              label="Bevestigen"
+              color="primary"
+              :loading="teamsLoading"
+              @click="submitTeam"
+            />
+          </q-card-actions>
+        </q-card>
+      </q-dialog>
+
       <!-- Weekly Report Dialog -->
       <q-dialog v-model="weeklyReportOpen" maximized persistent>
         <q-card class="user-dialog-card" dark>
@@ -634,6 +735,7 @@ import CycleCalendar from '../../components/CycleCalendar.vue'
 import CycleComparisonChart from '../../components/CycleComparisonChart.vue'
 import { Notify } from 'quasar'
 import { API_URL } from '../../config/api.js'
+import { useTeamsStore } from '../../stores/teams'
 import {
   fetchAllUsers,
   getUserDetails,
@@ -892,6 +994,111 @@ const trendsSeries = computed(() => {
     { name: 'RHR', data: rhrData }
   ]
 })
+
+// Teams store
+const teamsStore = useTeamsStore()
+const teamDialogOpen = ref(false)
+const teamForm = ref({
+  name: '',
+  coachEmail: '',
+  memberLimit: 10,
+})
+
+const teams = computed(() => teamsStore.teams)
+const teamsLoading = computed(() => teamsStore.loading)
+
+const teamColumns = [
+  {
+    name: 'name',
+    label: 'Naam',
+    field: 'name',
+    align: 'left',
+    sortable: true,
+  },
+  {
+    name: 'coachEmail',
+    label: 'Coach E-mail',
+    field: 'coachEmail',
+    align: 'left',
+    sortable: true,
+  },
+  {
+    name: 'memberLimit',
+    label: 'Max Leden',
+    field: (row) => row.memberLimit ?? '—',
+    align: 'right',
+    sortable: true,
+  },
+  {
+    name: 'inviteCode',
+    label: 'Invite Code',
+    field: 'inviteCode',
+    align: 'right',
+    sortable: true,
+  },
+]
+
+const resetTeamForm = () => {
+  teamForm.value = {
+    name: '',
+    coachEmail: '',
+    memberLimit: 10,
+  }
+}
+
+const openTeamDialog = () => {
+  resetTeamForm()
+  teamDialogOpen.value = true
+}
+
+const submitTeam = async () => {
+  if (!teamForm.value.name) {
+    Notify.create({
+      type: 'negative',
+      message: 'Teamnaam is verplicht.',
+    })
+    return
+  }
+
+  try {
+    await teamsStore.createTeam({
+      name: teamForm.value.name,
+      coachEmail: teamForm.value.coachEmail || null,
+      memberLimit: teamForm.value.memberLimit ?? 10,
+    })
+
+    Notify.create({
+      type: 'positive',
+      message: 'Team aangemaakt.',
+    })
+
+    teamDialogOpen.value = false
+  } catch (error) {
+    console.error('Failed to create team:', error)
+    Notify.create({
+      type: 'negative',
+      message: error?.message || 'Team aanmaken mislukt.',
+    })
+  }
+}
+
+const copyTeamInvite = (code) => {
+  if (!code) return
+  navigator.clipboard
+    .writeText(code)
+    .then(() => {
+      Notify.create({
+        type: 'positive',
+        message: 'Invite code gekopieerd.',
+      })
+    })
+    .catch(() => {
+      Notify.create({
+        type: 'negative',
+        message: 'Kopiëren van invite code mislukt.',
+      })
+    })
+}
 
 const trendsChartOptions = computed(() => ({
   chart: { type: 'line', background: 'transparent', toolbar: { show: false }, foreColor: 'rgba(255,255,255,0.75)' },
@@ -1379,6 +1586,9 @@ onMounted(() => {
   }
   hasFetchedOnce.value = true
   loadUsers()
+  teamsStore.fetchTeams().catch((err) => {
+    console.error('Failed to fetch teams on mount:', err)
+  })
 })
 
 // Zodra admin_email beschikbaar is en we nog geen data hebben, alsnog fetchen (bv. na late auth)
@@ -1529,6 +1739,68 @@ watchEffect(() => {
 }
 .users-card :deep(.text-h6) {
   color: #e5e5e5 !important;
+}
+
+.teams-card {
+  margin-top: 24px;
+  background: admin.$admin-card-bg !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 2px !important;
+  box-shadow: none !important;
+}
+
+.teams-header {
+  display: flex;
+  flex-direction: column;
+}
+
+.teams-title {
+  font-family: admin.$admin-font-display;
+  font-size: 0.9rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: admin.$admin-gold;
+}
+
+.teams-subtitle {
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: admin.$admin-text-muted;
+}
+
+.new-team-btn {
+  border-radius: 2px;
+  border-width: 1px;
+  border-color: admin.$admin-gold;
+  font-family: admin.$admin-font-mono !important;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.teams-table :deep(.q-table thead tr th) {
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+  font-weight: 600;
+  font-family: admin.$admin-font-mono !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.teams-table :deep(.q-table tbody tr) {
+  background: rgba(255, 255, 255, 0.02) !important;
+}
+
+.teams-table :deep(.q-table tbody tr:hover) {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.teams-table :deep(.q-table tbody td) {
+  color: rgba(255, 255, 255, 0.9) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  font-family: admin.$admin-font-mono !important;
+}
+
+.team-code {
+  font-family: admin.$admin-font-mono !important;
 }
 
 .user-dialog-card {

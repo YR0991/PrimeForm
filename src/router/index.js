@@ -6,6 +6,7 @@ import {
 } from 'vue-router'
 import routes from './routes'
 import { API_URL } from '../config/api.js'
+import { useAuthStore } from '../stores/auth'
 
 const getOrCreateUserId = () => {
   const key = 'primeform_user_id'
@@ -47,31 +48,55 @@ export default defineRouter(function (/* { store, ssrContext } */) {
     history,
   })
 
-  // Redirect to intake if profile is incomplete
   Router.beforeEach(async (to) => {
     // Only run in browser
     if (process.env.SERVER) return true
 
-    // CRITICAL: Skip ALL checks for admin routes FIRST (admin has its own authentication)
-    if (to.path === '/admin' || to.path.startsWith('/admin')) {
-      return true
+    const authStore = useAuthStore()
+    authStore.init()
+
+    const requiresAuth = to.meta?.requiresAuth === true
+    const requiredRole = to.meta?.role
+
+    // If already authenticated, keep them out of /login
+    if (to.path === '/login' && authStore.isAuthenticated) {
+      if (authStore.isAdmin) return { path: '/admin' }
+      return { path: '/dashboard' }
     }
 
-    // Skip profile check for coach (uses adminGuard)
-    if (to.path === '/coach') {
-      return true
+    // Auth gate
+    if (requiresAuth && !authStore.isAuthenticated) {
+      return {
+        path: '/login',
+        query: { redirect: to.fullPath },
+      }
     }
 
-    // Allow direct access to intake route
+    // Role gate (admin / coach)
+    if (requiredRole && authStore.role !== requiredRole) {
+      // Fallback: send to dashboard if logged in, otherwise to login
+      return authStore.isAuthenticated
+        ? { path: '/dashboard' }
+        : { path: '/login' }
+    }
+
+    // Allow direct access to login & admin/coach routes without profile gating
+    if (to.path === '/login') return true
+    if (to.path === '/admin' || to.path.startsWith('/admin')) return true
+    if (to.path === '/coach') return true
+
+    // Existing intake/profile gating
     if (to.path === '/intake') {
-      // If already complete, bounce to dashboard
       try {
         const userId = getOrCreateUserId()
         const now = Date.now()
-        const shouldRefetch = profileCache.userId !== userId || now - profileCache.fetchedAt > 30_000
+        const shouldRefetch =
+          profileCache.userId !== userId || now - profileCache.fetchedAt > 30_000
 
         if (shouldRefetch) {
-          const resp = await fetch(`${API_URL}/api/profile?userId=${encodeURIComponent(userId)}`)
+          const resp = await fetch(
+            `${API_URL}/api/profile?userId=${encodeURIComponent(userId)}`
+          )
           const json = await resp.json()
           profileCache = {
             userId,
@@ -92,10 +117,13 @@ export default defineRouter(function (/* { store, ssrContext } */) {
     try {
       const userId = getOrCreateUserId()
       const now = Date.now()
-      const shouldRefetch = profileCache.userId !== userId || now - profileCache.fetchedAt > 30_000
+      const shouldRefetch =
+        profileCache.userId !== userId || now - profileCache.fetchedAt > 30_000
 
       if (shouldRefetch) {
-        const resp = await fetch(`${API_URL}/api/profile?userId=${encodeURIComponent(userId)}`)
+        const resp = await fetch(
+          `${API_URL}/api/profile?userId=${encodeURIComponent(userId)}`
+        )
         const json = await resp.json()
         profileCache = {
           userId,

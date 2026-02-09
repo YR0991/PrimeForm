@@ -4,6 +4,11 @@ const adminGuard = () => true
 
 const routes = [
   {
+    path: '/login',
+    component: () => import('layouts/MainLayout.vue'),
+    children: [{ path: '', component: () => import('pages/LoginPage.vue') }],
+  },
+  {
     path: '/intake',
     component: () => import('layouts/MainLayout.vue'),
     children: [{ path: '', component: () => import('pages/IntakeStepper.vue') }],
@@ -13,22 +18,46 @@ const routes = [
     component: () => import('layouts/MainLayout.vue'),
     children: [
       { path: '', redirect: '/dashboard' },
-      { path: 'dashboard', component: () => import('pages/IndexPage.vue') },
-      { path: 'insights', component: () => import('pages/InsightsPage.vue') },
-      { path: 'settings', component: () => import('pages/SettingsPage.vue') },
+      {
+        path: 'dashboard',
+        component: () => import('pages/IndexPage.vue'),
+        meta: { requiresAuth: true },
+      },
+      {
+        path: 'insights',
+        component: () => import('pages/InsightsPage.vue'),
+        meta: { requiresAuth: true },
+      },
+      {
+        path: 'settings',
+        component: () => import('pages/SettingsPage.vue'),
+        meta: { requiresAuth: true },
+      },
     ],
   },
   {
     path: '/admin',
     component: () => import('layouts/MainLayout.vue'),
-    children: [{ path: '', component: () => import('pages/admin/AdminPage.vue') }],
-    beforeEnter: adminGuard
+    children: [
+      {
+        path: '',
+        component: () => import('pages/admin/AdminPage.vue'),
+        meta: { requiresAuth: true, role: 'admin' },
+      },
+    ],
+    beforeEnter: adminGuard,
   },
   {
     path: '/coach',
     component: () => import('layouts/MainLayout.vue'),
-    children: [{ path: '', component: () => import('pages/coach/CoachDashboard.vue') }],
-    beforeEnter: adminGuard
+    children: [
+      {
+        path: '',
+        component: () => import('pages/coach/CoachDashboard.vue'),
+        meta: { requiresAuth: true, role: 'coach' },
+      },
+    ],
+    beforeEnter: adminGuard,
   },
 
   // Always leave this as last one,
