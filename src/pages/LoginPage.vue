@@ -6,35 +6,114 @@
           <div class="logo-text">PRIMEFORM // SYSTEM ACCESS</div>
         </div>
 
-        <div class="status-line">
-          <span class="status-label">AWAITING IDENTITY VERIFICATION</span>
-          <span class="status-cursor"></span>
-        </div>
+        <q-tabs
+          v-model="activeTab"
+          dense
+          align="justify"
+          class="login-tabs"
+          active-color="#fbbf24"
+          indicator-color="#fbbf24"
+          narrow-indicator
+        >
+          <q-tab name="google" label="INSTANT" icon="vpn_key" no-caps />
+          <q-tab name="email" label="MANUAL" icon="mail" no-caps />
+        </q-tabs>
 
-        <div class="action-area">
-          <q-btn
-            class="login-button"
-            :loading="isLoading"
-            no-caps
-            unelevated
-            @click="handleLogin"
-          >
-            <template #loading>
-              <q-spinner size="20px" color="primary" />
-            </template>
-            <q-icon name="vpn_key" class="login-button-icon" />
-            <span class="login-button-label">
-              INITIATE SESSION [GOOGLE]
-            </span>
-          </q-btn>
-        </div>
+        <q-tab-panels v-model="activeTab" animated class="login-panels">
+          <!-- Instant / Google -->
+          <q-tab-panel name="google">
+            <div class="status-line">
+              <span class="status-label">AWAITING IDENTITY VERIFICATION</span>
+              <span class="status-cursor"></span>
+            </div>
+
+            <div class="action-area">
+              <q-btn
+                class="login-button"
+                :loading="isLoading"
+                no-caps
+                unelevated
+                @click="handleGoogleLogin"
+              >
+                <template #loading>
+                  <q-spinner size="20px" color="primary" />
+                </template>
+                <q-icon name="vpn_key" class="login-button-icon" />
+                <span class="login-button-label">
+                  INITIATE SESSION [GOOGLE]
+                </span>
+              </q-btn>
+            </div>
+          </q-tab-panel>
+
+          <!-- Manual / Email -->
+          <q-tab-panel name="email">
+            <div class="manual-form">
+              <q-input
+                v-model="email"
+                type="email"
+                label="Email"
+                outlined
+                dark
+                class="manual-input"
+              />
+              <q-input
+                v-model="password"
+                type="password"
+                label="Password"
+                outlined
+                dark
+                class="manual-input"
+              />
+              <q-input
+                v-if="isRegistering"
+                v-model="fullName"
+                type="text"
+                label="Full Name"
+                outlined
+                dark
+                class="manual-input"
+              />
+
+              <div class="register-toggle" @click="toggleRegistering">
+                <span v-if="!isRegistering">NO ID? REGISTER NEW PROFILE</span>
+                <span v-else>ALREADY HAVE ACCESS? SIGN IN</span>
+              </div>
+
+              <div v-if="authError" class="auth-error">
+                {{ authError }}
+              </div>
+
+              <div class="action-area q-mt-md">
+                <q-btn
+                  class="login-button"
+                  :loading="isLoading"
+                  no-caps
+                  unelevated
+                  @click="handleEmailSubmit"
+                >
+                  <template #loading>
+                    <q-spinner size="20px" color="primary" />
+                  </template>
+                  <q-icon
+                    :name="isRegistering ? 'person_add' : 'login'"
+                    class="login-button-icon"
+                  />
+                  <span class="login-button-label">
+                    {{ isRegistering ? 'CREATE IDENTITY' : 'AUTHENTICATE' }}
+                  </span>
+                </q-btn>
+              </div>
+            </div>
+          </q-tab-panel>
+        </q-tab-panels>
       </q-card>
     </div>
   </q-page>
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
@@ -42,16 +121,40 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 const isLoading = computed(() => authStore.loading)
+const authError = computed(() => authStore.error)
+const activeTab = ref('google')
+const isRegistering = ref(false)
+const email = ref('')
+const password = ref('')
+const fullName = ref('')
 
-const handleLogin = async () => {
+const handleGoogleLogin = async () => {
   if (authStore.loading) return
-  try {
-    await authStore.loginWithGoogle()
+  await authStore.loginWithGoogle()
+  if (authStore.isAuthenticated) {
     router.push('/dashboard')
-  } catch (err) {
-    // Telemetry / toast can be added later
-    console.error('Login failed', err)
   }
+}
+
+const handleEmailSubmit = async () => {
+  if (authStore.loading) return
+  if (!email.value || !password.value) {
+    return
+  }
+
+  if (isRegistering.value) {
+    await authStore.registerWithEmail(email.value, password.value, fullName.value)
+  } else {
+    await authStore.loginWithEmail(email.value, password.value)
+  }
+
+  if (authStore.isAuthenticated && !authStore.error) {
+    router.push('/dashboard')
+  }
+}
+
+const toggleRegistering = () => {
+  isRegistering.value = !isRegistering.value
 }
 
 onMounted(() => {
@@ -95,6 +198,31 @@ onMounted(() => {
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: #fbbf24;
+}
+
+.login-tabs {
+  margin-top: 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.login-tabs :deep(.q-tab) {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.login-tabs :deep(.q-tab--active) {
+  color: #fbbf24;
+}
+
+.login-tabs :deep(.q-tabs__content) {
+  background: transparent;
+}
+
+.login-panels {
+  margin-top: 1.5rem;
 }
 
 .status-line {
@@ -170,6 +298,63 @@ onMounted(() => {
 
 .login-button-label {
   white-space: nowrap;
+}
+
+.manual-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.manual-input {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, 'Liberation Mono', 'Courier New', monospace;
+}
+
+.manual-input :deep(.q-field__control) {
+  background: rgba(15, 15, 15, 0.9);
+  border-radius: 2px;
+}
+
+.manual-input :deep(.q-field__label) {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.manual-input :deep(.q-field__native) {
+  color: #ffffff;
+}
+
+.manual-input :deep(.q-field__inner) {
+  color: #ffffff;
+}
+
+.manual-input :deep(.q-field__control--focused) {
+  border-color: #fbbf24;
+}
+
+.register-toggle {
+  margin-top: 0.25rem;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  text-align: center;
+}
+
+.register-toggle:hover {
+  color: #fbbf24;
+}
+
+.auth-error {
+  margin-top: 0.5rem;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 0.72rem;
+  color: #ef4444;
+  text-align: center;
 }
 </style>
 

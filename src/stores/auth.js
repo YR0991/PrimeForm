@@ -5,6 +5,9 @@ import {
   signInWithPopup,
   signOut,
   onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile,
 } from 'firebase/auth'
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
 
@@ -18,6 +21,7 @@ export const useAuthStore = defineStore('auth', {
     role: null, // 'user' | 'coach' | 'admin' | null
     teamId: null,
     loading: false,
+    error: null,
   }),
 
   getters: {
@@ -43,6 +47,7 @@ export const useAuthStore = defineStore('auth', {
 
     async loginWithGoogle() {
       this.loading = true
+      this.error = null
       try {
         const result = await signInWithPopup(auth, googleProvider)
         const firebaseUser = result.user
@@ -67,6 +72,80 @@ export const useAuthStore = defineStore('auth', {
 
         await setDoc(userRef, newProfile)
         this._setUserFromProfile(firebaseUser, newProfile)
+      } catch (err) {
+        // Log and surface error for UI
+        console.error('Google login failed', err)
+        this.error = err?.message || 'Google login failed'
+      } finally {
+        this.loading = false
+      }
+    },
+
+    async loginWithEmail(email, password) {
+      this.loading = true
+      this.error = null
+      try {
+        const credential = await signInWithEmailAndPassword(auth, email, password)
+        const firebaseUser = credential.user
+        const uid = firebaseUser.uid
+
+        const userRef = doc(db, 'users', uid)
+        const snapshot = await getDoc(userRef)
+
+        if (snapshot.exists()) {
+          const data = snapshot.data()
+          this._setUserFromProfile(firebaseUser, data)
+          return
+        }
+
+        const profile = {
+          email: firebaseUser.email ?? email,
+          displayName: firebaseUser.displayName ?? null,
+          role: 'user',
+          onboardingComplete: false,
+          createdAt: serverTimestamp(),
+        }
+
+        await setDoc(userRef, profile)
+        this._setUserFromProfile(firebaseUser, profile)
+      } catch (err) {
+        console.error('Email login failed', err)
+        this.error = err?.message || 'Email login failed'
+      } finally {
+        this.loading = false
+      }
+    },
+
+    async registerWithEmail(email, password, fullName) {
+      this.loading = true
+      this.error = null
+      try {
+        const credential = await createUserWithEmailAndPassword(auth, email, password)
+        const firebaseUser = credential.user
+
+        if (fullName) {
+          try {
+            await updateProfile(firebaseUser, { displayName: fullName })
+          } catch (err) {
+            console.warn('Failed to update displayName for new user', err)
+          }
+        }
+
+        const uid = firebaseUser.uid
+        const userRef = doc(db, 'users', uid)
+        const profile = {
+          email: firebaseUser.email ?? email,
+          displayName: firebaseUser.displayName ?? fullName ?? null,
+          role: 'user',
+          onboardingComplete: false,
+          createdAt: serverTimestamp(),
+        }
+
+        await setDoc(userRef, profile)
+        this._setUserFromProfile(firebaseUser, profile)
+      } catch (err) {
+        console.error('Email registration failed', err)
+        this.error = err?.message || 'Registration failed'
       } finally {
         this.loading = false
       }
