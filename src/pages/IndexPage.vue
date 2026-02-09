@@ -7,6 +7,46 @@
         <div class="subtitle">Pilot Cockpit</div>
       </div>
 
+      <!-- Pre-Race Briefing -->
+      <q-card class="cockpit-card q-mb-md" flat>
+        <q-card-section class="pre-briefing">
+          <div class="pre-brief-header">
+            <div class="widget-title">PRE-RACE BRIEFING</div>
+            <div class="mono pre-brief-summary">
+              <template v-if="hasTodayCheckIn">
+                Pre-Race Briefing Complete.
+                Readiness:
+                <span class="highlight">{{ readinessTodayDisplay }}</span>.
+                HRV is
+                <span class="highlight">{{ hrvStatusLabel }}</span>
+                relative to your 7-day average.
+              </template>
+              <template v-else>
+                Daily check-in pending. Sync how you feel before you push the engine.
+              </template>
+            </div>
+          </div>
+          <div class="pre-brief-actions">
+            <q-btn
+              v-if="!hasTodayCheckIn"
+              label="START DAILY CHECK-IN"
+              no-caps
+              unelevated
+              class="btn-prebrief"
+              @click="checkinDialog = true"
+            />
+            <q-btn
+              v-else
+              label="VIEW DAILY CHECK-IN"
+              flat
+              no-caps
+              class="btn-prebrief-secondary"
+              @click="checkinDialog = true"
+            />
+          </div>
+        </q-card-section>
+      </q-card>
+
       <q-card class="cockpit-card" flat>
         <q-inner-loading :showing="dashboardStore.loading" color="#fbbf24">
           <q-spinner-gears size="48px" color="#fbbf24" />
@@ -81,6 +121,39 @@
                   ACWR STATUS:
                   <span :class="['status-pill', 'zone-' + (loadZone || 'neutral')]">
                     {{ loadStatusDisplay }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Widget 2c: READINESS GAUGE -->
+            <div class="widget readiness-meter">
+              <div class="widget-title">READINESS GAUGE</div>
+              <div class="readiness-content mono">
+                <div class="readiness-label-row">
+                  <span class="readiness-label">TODAY</span>
+                  <span class="readiness-value">
+                    {{ hasTodayCheckIn ? readinessTodayDisplay : 'PENDING' }}
+                  </span>
+                </div>
+                <div class="readiness-gauge">
+                  <div class="readiness-rail">
+                    <div
+                      class="readiness-fill"
+                      :style="{ width: readinessFillWidth }"
+                      :class="readinessZoneClass"
+                    />
+                  </div>
+                  <div class="readiness-scale">
+                    <span>1</span>
+                    <span>5</span>
+                    <span>10</span>
+                  </div>
+                </div>
+                <div class="readiness-status-row">
+                  <span class="readiness-label">STATUS</span>
+                  <span class="readiness-status" :class="readinessZoneClass">
+                    {{ hasTodayCheckIn ? readinessZoneLabel : 'PENDING' }}
                   </span>
                 </div>
               </div>
@@ -253,14 +326,92 @@
           </div>
         </q-card-section>
       </q-card>
+
+      <!-- Daily Check-in Dialog -->
+      <q-dialog v-model="checkinDialog" persistent>
+        <q-card class="checkin-dialog-card">
+          <q-card-section>
+            <div class="widget-title">DAILY CHECK-IN</div>
+            <div class="mono checkin-subtitle">
+              Sync je readiness en bio-signalen voor vandaag.
+            </div>
+          </q-card-section>
+          <q-card-section class="q-pt-none">
+            <div class="checkin-field">
+              <div class="field-label mono">READINESS (1–10)</div>
+              <div class="row items-center q-gutter-sm">
+                <q-slider
+                  v-model.number="checkinReadiness"
+                  :min="1"
+                  :max="10"
+                  :step="1"
+                  color="#fbbf24"
+                  track-color="grey-8"
+                  thumb-color="amber-5"
+                  class="col"
+                />
+                <span class="mono readiness-slider-value">
+                  {{ checkinReadiness }}/10
+                </span>
+              </div>
+              <div class="mono readiness-hints">
+                <span>1 = Lethargic</span>
+                <span>10 = Peak</span>
+              </div>
+            </div>
+
+            <div class="checkin-field">
+              <div class="field-label mono">HRV (ms)</div>
+              <q-input
+                v-model.number="checkinHrv"
+                type="number"
+                dense
+                outlined
+                dark
+                class="checkin-input"
+                input-class="mono"
+                :min="0"
+              />
+            </div>
+
+            <div class="checkin-field">
+              <div class="field-label mono">RHR (bpm)</div>
+              <q-input
+                v-model.number="checkinRhr"
+                type="number"
+                dense
+                outlined
+                dark
+                class="checkin-input"
+                input-class="mono"
+                :min="0"
+              />
+            </div>
+          </q-card-section>
+          <q-card-actions align="right">
+            <q-btn flat no-caps label="Cancel" @click="checkinDialog = false" />
+            <q-btn
+              unelevated
+              no-caps
+              class="btn-prebrief"
+              label="Save Check-in"
+              :disable="!canSubmitCheckin"
+              :loading="checkinSubmitting"
+              @click="handleSubmitCheckin"
+            />
+          </q-card-actions>
+        </q-card>
+      </q-dialog>
     </div>
   </q-page>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useQuasar } from 'quasar'
 import { useDashboardStore } from '../stores/dashboard'
 
+const $q = useQuasar()
 const dashboardStore = useDashboardStore()
 
 onMounted(() => {
@@ -326,6 +477,109 @@ const loadZone = computed(() => {
 const loadStatusDisplay = computed(() => {
   return dashboardStore.loadStatus || 'NO DATA'
 })
+
+// --- Pre-Race Briefing / Readiness Gauge ---
+const readinessToday = computed(() => {
+  const t = telemetry.value
+  if (t.readinessToday != null) return t.readinessToday
+  const raw = t.raw || {}
+  if (raw.readiness_today != null) return raw.readiness_today
+  if (raw.readiness != null) return raw.readiness
+  return null
+})
+
+const hasTodayCheckIn = computed(() => readinessToday.value != null)
+
+const readinessTodayDisplay = computed(() => {
+  if (readinessToday.value == null) return 'PENDING'
+  const v = Number(readinessToday.value)
+  if (!Number.isFinite(v)) return 'PENDING'
+  return `${Math.round(v)}/10`
+})
+
+const hrvStatusLabel = computed(() => {
+  const raw = telemetry.value.raw || {}
+  const today = Number(raw.hrv_today ?? raw.last_checkin?.hrv)
+  const avg7 = Number(
+    raw.hrv_avg_7d ??
+      raw.metrics?.hrv7d ??
+      raw.metrics?.hrv_7d ??
+      raw.metrics?.hrv_avg_7d
+  )
+  if (!Number.isFinite(today) || !Number.isFinite(avg7) || avg7 <= 0) {
+    return '—'
+  }
+  const deltaPct = ((today - avg7) / avg7) * 100
+  if (deltaPct > 5) return 'HIGH'
+  if (deltaPct < -5) return 'LOW'
+  return 'STABLE'
+})
+
+const readinessZoneClass = computed(() => {
+  const v = Number(readinessToday.value)
+  if (!Number.isFinite(v)) return 'zone-neutral'
+  if (v >= 7) return 'zone-high'
+  if (v <= 4) return 'zone-low'
+  return 'zone-mid'
+})
+
+const readinessZoneLabel = computed(() => {
+  const v = Number(readinessToday.value)
+  if (!Number.isFinite(v)) return 'PENDING'
+  if (v >= 7) return 'PEAK'
+  if (v <= 4) return 'LETHARGIC'
+  return 'BALANCED'
+})
+
+const readinessFillWidth = computed(() => {
+  const v = Number(readinessToday.value)
+  if (!Number.isFinite(v) || v <= 0) return '0%'
+  const pct = Math.min(Math.max((v / 10) * 100, 0), 100)
+  return `${pct}%`
+})
+
+// Daily Check-in dialog state
+const checkinDialog = ref(false)
+const checkinReadiness = ref(7)
+const checkinHrv = ref(null)
+const checkinRhr = ref(null)
+const checkinSubmitting = ref(false)
+
+const canSubmitCheckin = computed(() => {
+  const r = Number(checkinReadiness.value)
+  const h = Number(checkinHrv.value)
+  const rr = Number(checkinRhr.value)
+  if (!Number.isFinite(r) || r < 1 || r > 10) return false
+  if (!Number.isFinite(h) || h <= 0) return false
+  if (!Number.isFinite(rr) || rr <= 0) return false
+  return true
+})
+
+const handleSubmitCheckin = async () => {
+  if (!canSubmitCheckin.value || checkinSubmitting.value) return
+  try {
+    checkinSubmitting.value = true
+    await dashboardStore.submitDailyCheckIn({
+      readiness: checkinReadiness.value,
+      hrv: checkinHrv.value,
+      rhr: checkinRhr.value,
+    })
+    $q.notify({
+      type: 'positive',
+      color: 'amber-5',
+      message: 'Daily check-in opgeslagen',
+    })
+    checkinDialog.value = false
+  } catch (err) {
+    console.error('submitDailyCheckIn failed', err)
+    $q.notify({
+      type: 'negative',
+      message: err?.message || 'Daily check-in opslaan mislukt',
+    })
+  } finally {
+    checkinSubmitting.value = false
+  }
+}
 
 // Strava connection
 const hasStravaConnection = computed(() => {
@@ -461,6 +715,45 @@ const formatActivityDate = (raw) => {
   box-shadow: none !important;
 }
 
+.pre-briefing {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pre-brief-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pre-brief-summary {
+  font-size: 0.8rem;
+  color: rgba(209, 213, 219, 0.95);
+}
+
+.pre-brief-actions {
+  margin-top: 8px;
+}
+
+.btn-prebrief {
+  background: #fbbf24 !important;
+  color: #050505 !important;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-radius: 2px;
+}
+
+.btn-prebrief-secondary {
+  color: #fbbf24 !important;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .cockpit-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -482,6 +775,93 @@ const formatActivityDate = (raw) => {
   text-transform: uppercase;
   color: rgba(156, 163, 175, 0.9);
   margin-bottom: 10px;
+}
+
+/* Readiness Gauge */
+.readiness-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: rgba(243, 244, 246, 0.96);
+}
+
+.readiness-label-row,
+.readiness-status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.readiness-label {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(156, 163, 175, 0.9);
+}
+
+.readiness-value {
+  font-weight: 600;
+}
+
+.readiness-gauge {
+  margin: 4px 0;
+}
+
+.readiness-rail {
+  position: relative;
+  height: 4px;
+  background: rgba(31, 41, 55, 0.9);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.readiness-fill {
+  height: 100%;
+  transition: width 0.2s ease;
+}
+
+.zone-high.readiness-fill {
+  background: #22c55e;
+}
+
+.zone-mid.readiness-fill {
+  background: #fbbf24;
+}
+
+.zone-low.readiness-fill {
+  background: #ef4444;
+}
+
+.zone-neutral.readiness-fill {
+  background: rgba(156, 163, 175, 0.7);
+}
+
+.readiness-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 0.7rem;
+  color: rgba(156, 163, 175, 0.9);
+}
+
+.readiness-status {
+  font-weight: 600;
+}
+
+.zone-high.readiness-status {
+  color: #22c55e;
+}
+
+.zone-mid.readiness-status {
+  color: #fbbf24;
+}
+
+.zone-low.readiness-status {
+  color: #ef4444;
+}
+
+.zone-neutral.readiness-status {
+  color: rgba(156, 163, 175, 0.9);
 }
 
 .mono {

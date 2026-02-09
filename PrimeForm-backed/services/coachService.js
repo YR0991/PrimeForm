@@ -120,6 +120,12 @@ async function getSquadronData(db, admin) {
         }
         const acwrStatus = acwrToStatus(acwr);
 
+        // Readiness for Squadron View: latest subjective readiness from user doc (set via daily check-in)
+        const readiness =
+          userData.readiness != null && Number.isFinite(Number(userData.readiness))
+            ? Number(userData.readiness)
+            : null;
+
         let athleteLevel = profileData.athlete_level;
         if (athleteLevel == null) {
           athleteLevel = 1;
@@ -154,7 +160,8 @@ async function getSquadronData(db, admin) {
           acwr,
           acwrStatus,
           compliance,
-          lastActivity
+          lastActivity,
+          readiness
         };
       } catch (err) {
         console.error(`coachService: error for user ${uid}:`, err.message);

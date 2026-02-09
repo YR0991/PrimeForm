@@ -90,6 +90,7 @@ function createStravaRoutes(deps) {
   });
 
   // GET /auth/strava/callback — OAuth step 2: exchange code for tokens, save to Firestore
+  // FRONTEND_APP_URL must match the deployed frontend domain (e.g. Vercel URL or app.primeform.nl)
   authRouter.get('/callback', async (req, res) => {
     const frontendUrl = (process.env.FRONTEND_APP_URL || 'http://localhost:9000').replace(/\/$/, '');
     const settingsPath = `${frontendUrl}/settings`;

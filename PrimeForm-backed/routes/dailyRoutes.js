@@ -453,6 +453,79 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
           data: checkinData
         });
       }
+
+      // --- Rolling averages: 7d & 28d HRV/RHR, stored on user metrics ---
+      try {
+        if (db) {
+          const userIdStr = String(userId);
+          const logsSnap = await db
+            .collection('daily_logs')
+            .where('userId', '==', userIdStr)
+            .orderBy('date', 'desc')
+            .limit(60)
+            .get();
+
+          const today = new Date();
+          const toIso = (d) => d.toISOString().slice(0, 10);
+          const cutoff7 = new Date(today);
+          cutoff7.setDate(cutoff7.getDate() - 7);
+          const cutoff28 = new Date(today);
+          cutoff28.setDate(cutoff28.getDate() - 28);
+          const cutoff7Str = toIso(cutoff7);
+          const cutoff28Str = toIso(cutoff28);
+
+          const logs = logsSnap.docs
+            .map((d) => d.data() || {})
+            .filter((d) => typeof d.date === 'string' && d.date.length >= 10);
+
+          const inWindow = (days) => (log) => {
+            const dateStr = log.date.slice(0, 10);
+            return days === 7 ? dateStr >= cutoff7Str : dateStr >= cutoff28Str;
+          };
+
+          const avg = (arr) => {
+            const nums = arr
+              .map((v) => Number(v))
+              .filter((v) => Number.isFinite(v));
+            if (!nums.length) return null;
+            const sum = nums.reduce((s, v) => s + v, 0);
+            return Math.round((sum / nums.length) * 10) / 10;
+          };
+
+          const metrics7 = logs.filter(inWindow(7)).map((l) => l.metrics || {});
+          const metrics28 = logs.filter(inWindow(28)).map((l) => l.metrics || {});
+
+          const hrv7d = avg(metrics7.map((m) => m.hrv));
+          const hrv28d = avg(metrics28.map((m) => m.hrv));
+          const rhr7d = avg(metrics7.map((m) => m.rhr));
+          const rhr28d = avg(metrics28.map((m) => m.rhr));
+
+          const userRef = db.collection('users').doc(userIdStr);
+          await userRef.set(
+            {
+              // Latest subjective readiness for today
+              readiness: numericFields.readiness,
+              metrics: {
+                hrv7d,
+                hrv28d,
+                rhr7d,
+                rhr28d,
+                lastCheckin: {
+                  date: checkinData.date,
+                  readiness: numericFields.readiness,
+                  hrv: numericFields.hrv,
+                  rhr: numericFields.rhr
+                }
+              }
+            },
+            { merge: true }
+          );
+        }
+      } catch (metricsErr) {
+        console.error('Failed to update rolling HRV/RHR metrics on user document:', metricsErr);
+        // Do not fail the check-in response if metric aggregation fails
+      }
+
       res.json({ success: true, message: 'Check-in data saved successfully', data: { id: docRef.id, ...checkinData } });
     } catch (error) {
       console.error('Error saving check-in:', error);

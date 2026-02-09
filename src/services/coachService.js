@@ -43,6 +43,10 @@ export async function getCoachSquad() {
     acwr: Number(row.acwr) || 0,
     acwrStatus: row.acwrStatus || 'sweet',
     compliance: Boolean(row.compliance),
+    readiness:
+      row.readiness != null && Number.isFinite(Number(row.readiness))
+        ? Number(row.readiness)
+        : null,
     lastActivity: row.lastActivity
       ? {
           time: row.lastActivity.time || '',

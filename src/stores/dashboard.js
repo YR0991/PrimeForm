@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { auth, db } from 'boot/firebase'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { API_URL } from '../config/api.js'
+import { useAuthStore } from './auth'
 
 export const useDashboardStore = defineStore('dashboard', {
   state: () => ({
@@ -140,6 +141,101 @@ export const useDashboardStore = defineStore('dashboard', {
         id: docRef.id,
         ...payload,
       }
+    },
+
+    /**
+     * Submit Daily Check-in as primary readiness/telemetry source.
+     * Minimal payload: readiness (1–10), hrv, rhr.
+     * Backend requires lastPeriodDate, cycleLength, sleep and baselines; we derive safe defaults.
+     */
+    async submitDailyCheckIn({ readiness, hrv, rhr }) {
+      const user = auth.currentUser
+      if (!user) {
+        throw new Error('Geen ingelogde gebruiker')
+      }
+
+      const readinessVal = Number(readiness)
+      const hrvVal = Number(hrv)
+      const rhrVal = Number(rhr)
+
+      if (!Number.isFinite(readinessVal) || readinessVal < 1 || readinessVal > 10) {
+        throw new Error('Readiness moet tussen 1 en 10 liggen')
+      }
+      if (!Number.isFinite(hrvVal) || hrvVal <= 0) {
+        throw new Error('Ongeldige HRV-waarde')
+      }
+      if (!Number.isFinite(rhrVal) || rhrVal <= 0) {
+        throw new Error('Ongeldige RHR-waarde')
+      }
+
+      const authStore = useAuthStore()
+      const profile = authStore.profile || {}
+      const todayIso = new Date().toISOString().slice(0, 10)
+
+      const lastPeriodDate =
+        profile.lastPeriodDate ||
+        profile.lastPeriod ||
+        profile.cycleData?.lastPeriodDate ||
+        profile.cycleData?.lastPeriod ||
+        todayIso
+
+      const cycleLength =
+        Number(profile.cycleLength) ||
+        Number(profile.avgDuration) ||
+        Number(profile.cycleData?.avgDuration) ||
+        28
+
+      // Sleep/baselines: if we don't have user-specific values yet, fall back to neutral defaults.
+      const sleepHours = 8
+      const rhrBaseline = rhrVal
+      const hrvBaseline = hrvVal
+
+      const body = {
+        userId: user.uid,
+        lastPeriodDate,
+        cycleLength,
+        sleep: sleepHours,
+        rhr: rhrVal,
+        rhrBaseline,
+        hrv: hrvVal,
+        hrvBaseline,
+        readiness: readinessVal,
+      }
+
+      const res = await fetch(`${API_URL}/api/save-checkin`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      })
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        throw new Error(text || 'Daily check-in opslaan mislukt')
+      }
+
+      const json = await res.json().catch(() => ({}))
+      const data = json?.data || {}
+
+      // Drive cockpit readiness gauge from real check-in data
+      const readinessToday = readinessVal
+
+      this.telemetry = {
+        ...(this.telemetry || {}),
+        readinessToday,
+        raw: {
+          ...(this.telemetry?.raw || {}),
+          last_checkin: {
+            readiness: readinessVal,
+            hrv: hrvVal,
+            rhr: rhrVal,
+            date: data.date || todayIso,
+          },
+        },
+      }
+
+      return data
     },
   },
 })

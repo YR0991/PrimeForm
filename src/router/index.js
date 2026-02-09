@@ -53,9 +53,19 @@ export default defineRouter(function (/* { store, ssrContext } */) {
     if (process.env.SERVER) return true
 
     const authStore = useAuthStore()
-    // Wait for Firebase Auth to fire onAuthStateChanged at least once
+
+    // 1. Force wait for Firebase to initialize if it hasn't yet
     if (!authStore.isInitialized) {
       await authStore.init()
+    }
+
+    let isAuthenticated = !!authStore.user
+
+    // 2. Strava comeback: if we land on /profile?status=strava_connected but auth not ready yet,
+    //    wait briefly for the session to settle before redirecting to login
+    if (!isAuthenticated && to.path === '/profile' && to.query?.status === 'strava_connected') {
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      if (authStore.user) return true
     }
 
     const requiresAuth = to.meta?.requiresAuth === true
