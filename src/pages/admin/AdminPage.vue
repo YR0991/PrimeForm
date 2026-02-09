@@ -106,9 +106,10 @@
             flat
             dark
             dense
-            class="ghost-table"
+            class="ghost-table ghost-table-clickable"
             :loading="adminStore.loading"
             :rows-per-page-options="[5, 10, 25]"
+            @row-click="(evt, row) => { if (!evt.target.closest('.q-select, .q-btn')) openPilotDetail(row) }"
           >
             <template #body-cell-joinedAt="props">
               <q-td :props="props">
@@ -165,6 +166,7 @@
 
         <q-card-section>
           <q-table
+            v-model:expanded="teamsExpanded"
             :rows="teamsWithOccupancy"
             :columns="teamColumns"
             row-key="id"
@@ -174,6 +176,26 @@
             :rows-per-page-options="[5, 10, 25]"
             class="teams-table"
           >
+            <template #expand="props">
+              <div class="team-members-expand q-pa-md">
+                <div class="text-caption text-grey q-mb-sm">PILOTS — click row to open Pilot File</div>
+                <q-table
+                  :rows="membersForTeam(props.row.id)"
+                  :columns="memberColumns"
+                  :row-key="(row) => row.id"
+                  flat
+                  dark
+                  dense
+                  hide-pagination
+                  class="members-table members-table-clickable"
+                  @row-click="(evt, row) => { if (!evt.target.closest('.q-btn')) openPilotDetail(row) }"
+                >
+                  <template #no-data>
+                    <div class="text-caption text-grey q-pa-sm">No pilots assigned yet.</div>
+                  </template>
+                </q-table>
+              </div>
+            </template>
             <template #body-cell-inviteCode="props">
               <q-td :props="props">
                 <span class="team-code">{{ props.row.inviteCode || '—' }}</span>
@@ -264,6 +286,14 @@
           </q-card-actions>
         </q-card>
       </q-dialog>
+
+      <!-- Pilot detail (Profile + Telemetry Injector) -->
+      <PilotDetailDialog
+        v-model="pilotDetailOpen"
+        :user="selectedPilot"
+        :team-options="teamOptions"
+        @updated="onPilotDetailUpdated"
+      />
     </div>
   </q-page>
 </template>
@@ -273,6 +303,7 @@ import { ref as vueRef, computed as vueComputed, onMounted as onMountedHook } fr
 import { Notify, copyToClipboard } from 'quasar'
 import { useTeamsStore } from '../../stores/teams'
 import { useAdminStore } from '../../stores/admin'
+import PilotDetailDialog from '../../components/PilotDetailDialog.vue'
 
 const ADMIN_EMAIL = 'yoramroemersma50@gmail.com'
 
@@ -429,6 +460,17 @@ const ghostColumns = [
   },
 ]
 
+// Pilot detail dialog (Telemetry Injector + Profile)
+const pilotDetailOpen = vueRef(false)
+const selectedPilot = vueRef(null)
+const openPilotDetail = (user) => {
+  selectedPilot.value = user
+  pilotDetailOpen.value = true
+}
+const onPilotDetailUpdated = () => {
+  adminStore.fetchAllData()
+}
+
 // Local select state for assignments
 const userAssignments = vueRef({})
 
@@ -477,7 +519,40 @@ const teamsWithOccupancy = vueComputed(() => {
   })
 })
 
+// Expandable teams: which team rows are expanded (show members)
+const teamsExpanded = vueRef([])
+
+const membersForTeam = (teamId) => {
+  const users = adminStore.users || []
+  return users.filter((u) => u.teamId === teamId)
+}
+
+const memberColumns = [
+  {
+    name: 'name',
+    label: 'Name',
+    field: (row) => row.displayName || row.profile?.fullName || '—',
+    align: 'left',
+    sortable: true,
+  },
+  {
+    name: 'email',
+    label: 'Email',
+    field: (row) => row.email || row.profile?.email || '—',
+    align: 'left',
+    sortable: true,
+  },
+]
+
 const teamColumns = [
+  {
+    name: 'expand',
+    label: '',
+    field: () => '',
+    align: 'left',
+    sortable: false,
+    expand: true,
+  },
   {
     name: 'name',
     label: 'Name',
@@ -691,6 +766,9 @@ onMountedHook(() => {
   background: rgba(255, 255, 255, 0.02) !important;
 }
 
+.ghost-table-clickable :deep(.q-table tbody tr) {
+  cursor: pointer;
+}
 .ghost-table :deep(.q-table tbody tr:hover) {
   background: rgba(255, 255, 255, 0.05) !important;
 }
@@ -755,6 +833,28 @@ onMountedHook(() => {
 
 .teams-table :deep(.q-table tbody tr:hover) {
   background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.team-members-expand {
+  background: rgba(255, 255, 255, 0.02);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.members-table-clickable :deep(.q-table tbody tr) {
+  cursor: pointer;
+}
+
+.members-table :deep(.q-table thead tr th) {
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: rgba(255, 255, 255, 0.85) !important;
+  font-size: 0.7rem;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.members-table :deep(.q-table tbody td) {
+  color: rgba(255, 255, 255, 0.9) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
 
 .teams-table :deep(.q-table tbody td) {
