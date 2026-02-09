@@ -14,6 +14,7 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
 const googleProvider = new GoogleAuthProvider()
 
 let unsubscribeAuthListener = null
+let initPromise = null
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -22,6 +23,7 @@ export const useAuthStore = defineStore('auth', {
     teamId: null,
     loading: false,
     error: null,
+    isAuthReady: false,
   }),
 
   getters: {
@@ -179,38 +181,77 @@ export const useAuthStore = defineStore('auth', {
     },
 
     init() {
-      if (unsubscribeAuthListener) {
-        return
+      // Singleton: reuse existing promise & listener
+      if (initPromise) {
+        return initPromise
       }
 
-      unsubscribeAuthListener = onAuthStateChanged(auth, async (firebaseUser) => {
-        if (!firebaseUser) {
-          this.user = null
-          this.role = null
-          this.teamId = null
-          return
-        }
-
-        // Restore profile on reload
-        const profile = await this.fetchUserProfile(firebaseUser.uid)
-
-        if (!profile) {
-          // If Firestore doc does not exist (user signed in outside loginWithGoogle)
-          const bootstrapProfile = {
-            email: firebaseUser.email ?? null,
-            displayName: firebaseUser.displayName ?? null,
-            role: 'user',
-            onboardingComplete: false,
-            createdAt: serverTimestamp(),
+      initPromise = new Promise((resolve) => {
+        if (unsubscribeAuthListener) {
+          // Listener already active; resolve immediately if we've already run at least once
+          if (this.isAuthReady) {
+            resolve()
           }
-          const userRef = doc(db, 'users', firebaseUser.uid)
-          await setDoc(userRef, bootstrapProfile)
-          this._setUserFromProfile(firebaseUser, bootstrapProfile)
           return
         }
 
-        this._setUserFromProfile(firebaseUser, profile)
+        let resolved = false
+
+        unsubscribeAuthListener = onAuthStateChanged(auth, async (firebaseUser) => {
+          try {
+            if (!firebaseUser) {
+              this.user = null
+              this.role = null
+              this.teamId = null
+              this.isAuthReady = true
+              if (!resolved) {
+                resolved = true
+                resolve()
+              }
+              return
+            }
+
+            // Restore profile on reload
+            const profile = await this.fetchUserProfile(firebaseUser.uid)
+
+            if (!profile) {
+              // If Firestore doc does not exist (user signed in outside loginWithGoogle)
+              const bootstrapProfile = {
+                email: firebaseUser.email ?? null,
+                displayName: firebaseUser.displayName ?? null,
+                role: 'user',
+                onboardingComplete: false,
+                createdAt: serverTimestamp(),
+              }
+              const userRef = doc(db, 'users', firebaseUser.uid)
+              await setDoc(userRef, bootstrapProfile)
+              this._setUserFromProfile(firebaseUser, bootstrapProfile)
+              this.isAuthReady = true
+              if (!resolved) {
+                resolved = true
+                resolve()
+              }
+              return
+            }
+
+            this._setUserFromProfile(firebaseUser, profile)
+            this.isAuthReady = true
+            if (!resolved) {
+              resolved = true
+              resolve()
+            }
+          } catch (err) {
+            console.error('Auth init failed', err)
+            this.isAuthReady = true
+            if (!resolved) {
+              resolved = true
+              resolve()
+            }
+          }
+        })
       })
+
+      return initPromise
     },
   },
 })
