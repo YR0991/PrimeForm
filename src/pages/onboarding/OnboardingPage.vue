@@ -13,6 +13,7 @@
 
         <q-card-section>
           <q-stepper
+            ref="stepper"
             v-model="step"
             vertical
             flat
@@ -200,6 +201,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 const step = ref(1)
+const stepper = ref(null)
 
 // Step 1
 const inviteCode = ref('')
@@ -285,11 +287,18 @@ const verifyCode = async () => {
 }
 
 const onSaveBio = async () => {
+  console.log('onSaveBio triggered')
   submittingBio.value = true
   try {
+    const dateRaw = lastPeriodDate.value
+    const dateStr =
+      dateRaw != null && dateRaw !== ''
+        ? String(dateRaw).trim().replace(/\//g, '-')
+        : null
+
     await authStore.submitBioData({
       teamId: verifiedTeamId.value,
-      date: lastPeriodDate.value || null,
+      date: dateStr,
       length: cycleLength.value,
     })
 
@@ -298,7 +307,11 @@ const onSaveBio = async () => {
       message: 'Biologische kalibratie opgeslagen.',
     })
 
-    step.value = 3
+    if (stepper.value && typeof stepper.value.next === 'function') {
+      stepper.value.next()
+    } else {
+      step.value = 3
+    }
   } catch (err) {
     console.error('onSaveBio failed', err)
     Notify.create({

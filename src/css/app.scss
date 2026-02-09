@@ -28,6 +28,25 @@ body {
   color: #ffffff;
 }
 
+// --- Elite Dark: force transparent backgrounds (fix white blocks) ---
+.q-card,
+.q-item,
+.q-field--filled .q-field__control,
+.q-banner {
+  background-color: transparent !important;
+}
+
+.q-stepper,
+.q-stepper__header,
+.q-stepper__content {
+  background-color: transparent !important;
+}
+
+/* Specifically fix the login 'awaiting identity' block */
+.q-card__section {
+  background: transparent !important;
+}
+
 // --- Mono font for numbers, dates, KPIs ---
 .elite-data,
 .stat-value,
