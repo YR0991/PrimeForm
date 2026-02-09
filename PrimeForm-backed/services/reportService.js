@@ -254,6 +254,80 @@ function buildStats(logs, activities, profile = {}) {
 }
 
 /**
+ * Get dashboard stats only (ACWR, phase, recent activities). No OpenAI. Used by GET /api/dashboard.
+ * @param {object} opts - { db, admin, uid }
+ * @returns {Promise<{ acwr, phase, phaseDay, phaseLength, recent_activities }>}
+ */
+async function getDashboardStats(opts) {
+  const { db, admin, uid } = opts;
+  if (!db || !uid) return { acwr: null, phase: null, phaseDay: null, phaseLength: 28, recent_activities: [] };
+
+  try {
+    const [profileData, logs56, activities56] = await Promise.all([
+      getUserProfile(db, uid),
+      getLast56DaysLogs(db, admin, uid),
+      getLast56DaysActivities(db, uid)
+    ]);
+    const profile = profileData?.profile || {};
+    const cycleData = profile.cycleData && typeof profile.cycleData === 'object' ? profile.cycleData : {};
+    const lastPeriodDate = cycleData.lastPeriodDate || cycleData.lastPeriod || null;
+    const cycleLength = Number(cycleData.avgDuration) || 28;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const phaseInfo = lastPeriodDate
+      ? cycleService.getPhaseForDate(lastPeriodDate, cycleLength, todayStr)
+      : { phaseName: 'Unknown', currentCycleDay: null };
+
+    const logByDate = new Map();
+    for (const l of logs56) {
+      const key = (l.date || (l.timestamp ? String(l.timestamp).slice(0, 10) : '') || '').slice(0, 10);
+      if (key) logByDate.set(key, l);
+    }
+    const maxHr = profile.max_heart_rate != null ? Number(profile.max_heart_rate) : null;
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const sevenDaysAgoStrIso = sevenDaysAgo.toISOString().slice(0, 10);
+    const twentyEightDaysAgo = new Date();
+    twentyEightDaysAgo.setDate(twentyEightDaysAgo.getDate() - 28);
+    const twentyEightDaysAgoStr = twentyEightDaysAgo.toISOString().slice(0, 10);
+
+    const activities56WithPrime = activities56.map((a) => {
+      const dateStr = activityDateString(a);
+      const rawLoad = calculateActivityLoad(a, profile);
+      const phaseInfoForDate = lastPeriodDate && dateStr
+        ? cycleService.getPhaseForDate(lastPeriodDate, cycleLength, dateStr)
+        : { phaseName: null };
+      const phase = phaseInfoForDate.phaseName;
+      const readinessScore = logByDate.get(dateStr)?.readiness ?? 10;
+      const avgHr = a.average_heartrate != null ? Number(a.average_heartrate) : null;
+      const primeLoad = calculatePrimeLoad(rawLoad, phase, readinessScore, avgHr, maxHr);
+      return { ...a, _dateStr: dateStr, _primeLoad: primeLoad };
+    });
+
+    const activitiesLast7 = activities56WithPrime.filter((a) => a._dateStr >= sevenDaysAgoStrIso);
+    const activitiesLast28 = activities56WithPrime.filter((a) => a._dateStr >= twentyEightDaysAgoStr);
+    const acute_load = activitiesLast7.reduce((s, a) => s + a._primeLoad, 0);
+    const chronic_load_raw = activitiesLast28.reduce((s, a) => s + a._primeLoad, 0);
+    const chronic_load = chronic_load_raw / 4;
+    const load_ratio = calculateACWR(acute_load, chronic_load);
+
+    const recent_activities = activitiesLast7
+      .map((a) => ({ id: a.id, ...a, start_date: a.start_date || a.start_date_local, type: a.type, moving_time: a.moving_time, distance: a.distance }))
+      .slice(0, 20);
+
+    return {
+      acwr: Number.isFinite(load_ratio) ? Math.round(load_ratio * 100) / 100 : null,
+      phase: phaseInfo.phaseName || null,
+      phaseDay: phaseInfo.currentCycleDay ?? null,
+      phaseLength: cycleLength,
+      recent_activities
+    };
+  } catch (err) {
+    console.error('getDashboardStats error:', err);
+    return { acwr: null, phase: null, phaseDay: null, phaseLength: 28, recent_activities: [] };
+  }
+}
+
+/**
  * Generate weekly report: aggregate data + OpenAI Race Engineer.
  * @param {object} opts - { db, admin, openai, knowledgeBaseContent, uid }
  * @returns {Promise<{ stats, message }>}
@@ -486,6 +560,7 @@ Antwoord uitsluitend met een geldig JSON-object met exact twee velden: "stats" (
 
 module.exports = {
   generateWeeklyReport,
+  getDashboardStats,
   getUserProfile,
   getLast7DaysLogs,
   getLast56DaysLogs,

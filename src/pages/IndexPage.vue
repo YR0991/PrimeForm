@@ -14,12 +14,21 @@
             <div class="widget-title">PRE-RACE BRIEFING</div>
             <div class="mono pre-brief-summary">
               <template v-if="hasTodayCheckIn">
-                Pre-Race Briefing Complete.
-                Readiness:
-                <span class="highlight">{{ readinessTodayDisplay }}</span>.
-                HRV is
-                <span class="highlight">{{ hrvStatusLabel }}</span>
-                relative to your 7-day average.
+                <template v-if="lastDirective.status">
+                  <span class="directive-label">DIRECTIVE:</span>
+                  <span :class="['directive-status', 'directive-' + (lastDirective.status || '').toLowerCase()]">
+                    {{ lastDirective.status }}
+                  </span>
+                  — Readiness <span class="highlight">{{ readinessTodayDisplay }}</span>.
+                  HRV <span class="highlight">{{ hrvStatusLabel }}</span> vs 7d.
+                </template>
+                <template v-else>
+                  Pre-Race Briefing Complete. Readiness <span class="highlight">{{ readinessTodayDisplay }}</span>.
+                  HRV <span class="highlight">{{ hrvStatusLabel }}</span> vs 7d.
+                </template>
+                <div v-if="lastDirective.aiMessage" class="directive-message">
+                  {{ lastDirective.aiMessage }}
+                </div>
               </template>
               <template v-else>
                 Daily check-in pending. Sync how you feel before you push the engine.
@@ -387,6 +396,44 @@
                 :min="0"
               />
             </div>
+
+            <div class="checkin-field">
+              <div class="field-label mono">SLAAP (uur)</div>
+              <div class="row items-center q-gutter-sm">
+                <q-slider
+                  v-model.number="checkinSleep"
+                  :min="3"
+                  :max="12"
+                  :step="0.5"
+                  color="#fbbf24"
+                  track-color="grey-8"
+                  thumb-color="amber-5"
+                  class="col"
+                />
+                <span class="mono readiness-slider-value">{{ checkinSleep }}h</span>
+              </div>
+            </div>
+
+            <div class="checkin-toggles">
+              <q-btn
+                :outline="!checkinMenstruationStarted"
+                :unelevated="checkinMenstruationStarted"
+                no-caps
+                class="checkin-toggle-btn"
+                :class="{ 'toggle-active': checkinMenstruationStarted }"
+                label="MENSTRUATIE GESTART"
+                @click="checkinMenstruationStarted = !checkinMenstruationStarted"
+              />
+              <q-btn
+                :outline="!checkinIsSick"
+                :unelevated="checkinIsSick"
+                no-caps
+                class="checkin-toggle-btn checkin-toggle-sick"
+                :class="{ 'toggle-active': checkinIsSick }"
+                label="ZIEK / HANDREM"
+                @click="checkinIsSick = !checkinIsSick"
+              />
+            </div>
           </q-card-section>
           <q-card-actions align="right">
             <q-btn flat no-caps label="Cancel" @click="checkinDialog = false" />
@@ -490,6 +537,16 @@ const readinessToday = computed(() => {
 
 const hasTodayCheckIn = computed(() => readinessToday.value != null)
 
+const lastDirective = computed(() => {
+  const raw = telemetry.value.raw || {}
+  const d = raw.last_directive || {}
+  return {
+    status: d.status || null,
+    aiMessage: d.aiMessage || null,
+    cycleInfo: d.cycleInfo || null,
+  }
+})
+
 const readinessTodayDisplay = computed(() => {
   if (readinessToday.value == null) return 'PENDING'
   const v = Number(readinessToday.value)
@@ -541,17 +598,22 @@ const readinessFillWidth = computed(() => {
 // Daily Check-in dialog state
 const checkinDialog = ref(false)
 const checkinReadiness = ref(7)
+const checkinSleep = ref(8)
 const checkinHrv = ref(null)
 const checkinRhr = ref(null)
+const checkinMenstruationStarted = ref(false)
+const checkinIsSick = ref(false)
 const checkinSubmitting = ref(false)
 
 const canSubmitCheckin = computed(() => {
   const r = Number(checkinReadiness.value)
   const h = Number(checkinHrv.value)
   const rr = Number(checkinRhr.value)
+  const s = Number(checkinSleep.value)
   if (!Number.isFinite(r) || r < 1 || r > 10) return false
   if (!Number.isFinite(h) || h <= 0) return false
   if (!Number.isFinite(rr) || rr <= 0) return false
+  if (!Number.isFinite(s) || s < 3 || s > 12) return false
   return true
 })
 
@@ -563,6 +625,9 @@ const handleSubmitCheckin = async () => {
       readiness: checkinReadiness.value,
       hrv: checkinHrv.value,
       rhr: checkinRhr.value,
+      sleep: checkinSleep.value,
+      menstruationStarted: checkinMenstruationStarted.value,
+      isSick: checkinIsSick.value,
     })
     $q.notify({
       type: 'positive',
@@ -752,6 +817,110 @@ const formatActivityDate = (raw) => {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.directive-label {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(156, 163, 175, 0.95);
+  margin-right: 6px;
+}
+
+.directive-status {
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.directive-status.directive-rest {
+  color: #ef4444;
+}
+
+.directive-status.directive-recover {
+  color: #fbbf24;
+}
+
+.directive-status.directive-maintain {
+  color: #fbbf24;
+}
+
+.directive-status.directive-push {
+  color: #22c55e;
+}
+
+.directive-message {
+  margin-top: 8px;
+  padding: 8px 0 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(209, 213, 219, 0.95);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+/* Daily Check-in Dialog (Elite Dark) */
+.checkin-dialog-card {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 2px !important;
+  min-width: 360px;
+}
+
+.checkin-dialog-card .field-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  color: rgba(156, 163, 175, 0.95);
+  margin-bottom: 4px;
+}
+
+.checkin-field {
+  margin-bottom: 16px;
+}
+
+.checkin-input {
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 2px;
+}
+
+.checkin-subtitle {
+  font-size: 0.8rem;
+  color: rgba(156, 163, 175, 0.9);
+  margin-bottom: 12px;
+}
+
+.readiness-slider-value {
+  min-width: 48px;
+  color: #fbbf24;
+  font-size: 0.85rem;
+}
+
+.checkin-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+.checkin-toggle-btn {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(156, 163, 175, 0.95);
+}
+
+.checkin-toggle-btn.toggle-active {
+  background: #fbbf24 !important;
+  color: #050505 !important;
+  border-color: #fbbf24;
+}
+
+.checkin-toggle-btn.checkin-toggle-sick.toggle-active {
+  background: #ef4444 !important;
+  color: #fff !important;
+  border-color: #ef4444;
 }
 
 .cockpit-grid {

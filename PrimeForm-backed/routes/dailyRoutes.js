@@ -127,10 +127,20 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
     }
   });
 
-  // POST /api/daily-advice — full PrimeForm logic, Menstruatie Reset, Ziek/Geblesseerd, Lethargy/Elite overrides
+  /**
+   * @deprecated Use POST /api/save-checkin instead. This endpoint is kept for backward compatibility
+   * but will return 410 Gone. Save-checkin now performs full advice logic, AI generation, and dual storage.
+   */
   router.post('/daily-advice', async (req, res) => {
-    console.log('🚀 BINNENKOMEND VERZOEK OP /api/daily-advice');
-    console.log('📦 req.body:', req.body);
+    return res.status(410).json({
+      deprecated: true,
+      message: 'Use POST /api/save-checkin instead. This endpoint has been deprecated.',
+      alternative: 'POST /api/save-checkin'
+    });
+  });
+
+  // POST /api/save-checkin — unified daily check-in: full advice logic, Handrem, Period reset, AI, dual storage
+  router.post('/save-checkin', async (req, res) => {
     try {
       const {
         userId,
@@ -142,8 +152,8 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
         hrv,
         hrvBaseline,
         readiness,
-        menstruationStartedToday = false,
-        isSickOrInjured = false
+        menstruationStarted = false,
+        isSick = false
       } = req.body;
 
       const requiredFields = { userId, lastPeriodDate, sleep, rhr, rhrBaseline, hrv, hrvBaseline, readiness };
@@ -155,7 +165,7 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
       }
 
       const todayIso = new Date().toISOString().split('T')[0];
-      const periodStarted = Boolean(menstruationStartedToday);
+      const periodStarted = Boolean(menstruationStarted);
       const effectiveLastPeriodDate = periodStarted ? todayIso : lastPeriodDate;
 
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
@@ -176,19 +186,91 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
         readiness: parseInt(readiness)
       };
       for (const [key, value] of Object.entries(numericFields)) {
+        if (key === 'readiness') {
+          if (isNaN(value) || value < 1 || value > 10) {
+            return res.status(400).json({ error: 'Readiness must be between 1 and 10.' });
+          }
+          continue;
+        }
         if (isNaN(value) || value < 0) {
           return res.status(400).json({ error: `Invalid value for ${key}. Must be a positive number.` });
         }
       }
+      if (numericFields.sleep < 3 || numericFields.sleep > 12) {
+        return res.status(400).json({ error: 'Sleep must be between 3 and 12 hours.' });
+      }
+
       const cycleLengthNum = cycleLength ? parseInt(cycleLength) : 28;
       if (cycleLength && (isNaN(cycleLengthNum) || cycleLengthNum < 21 || cycleLengthNum > 35)) {
         return res.status(400).json({ error: 'Cycle length must be a number between 21 and 35 days.' });
       }
-      if (numericFields.readiness < 1 || numericFields.readiness > 10) {
-        return res.status(400).json({ error: 'Readiness must be between 1 and 10.' });
-      }
 
+      const isSickFlag = Boolean(isSick);
       const cycleInfo = cycleService.calculateLutealPhase(effectiveLastPeriodDate, cycleLengthNum);
+
+      let recommendation;
+      let redFlags;
+      let adviceContext = 'STANDARD';
+      const metricsForAI = {
+        readiness: numericFields.readiness,
+        sleep: numericFields.sleep,
+        rhr: { current: numericFields.rhr, baseline: numericFields.rhrBaseline, adjustedBaseline: null, lutealCorrection: false },
+        hrv: { current: numericFields.hrv, baseline: numericFields.hrvBaseline, adjustedBaseline: null, lutealOffsetApplied: false }
+      };
+
+      // Handrem (Sick): bypass red-flag/recommendation logic; hardcode REST + recovery message; no AI call
+      if (isSickFlag) {
+        recommendation = { status: 'REST', reasons: ['Gebruiker heeft ziek/geblesseerd gemeld – Handrem: Rust & Herstel.'] };
+        adviceContext = 'SICK_OVERRIDE';
+        redFlags = { count: 0, reasons: [], details: { rhr: {}, hrv: {} } };
+      } else {
+        redFlags = cycleService.calculateRedFlags(
+          numericFields.sleep,
+          numericFields.rhr,
+          numericFields.rhrBaseline,
+          numericFields.hrv,
+          numericFields.hrvBaseline,
+          cycleInfo.isInLutealPhase
+        );
+        metricsForAI.rhr.adjustedBaseline = redFlags.details.rhr.adjustedBaseline;
+        metricsForAI.rhr.lutealCorrection = redFlags.details.rhr.lutealCorrection;
+        metricsForAI.hrv.adjustedBaseline = redFlags.details.hrv.adjustedBaseline;
+        metricsForAI.hrv.lutealOffsetApplied = redFlags.details.hrv.lutealOffsetApplied;
+
+        recommendation = cycleService.determineRecommendation(
+          numericFields.readiness,
+          redFlags.count,
+          cycleInfo.phaseName
+        );
+
+        // Lethargy Override
+        const isLutealPhase = cycleInfo.phaseName === 'Luteal' || cycleInfo.isInLutealPhase === true;
+        if (isLutealPhase && numericFields.readiness >= 4 && numericFields.readiness <= 6) {
+          const baselineHRV = metricsForAI.hrv.adjustedBaseline ?? metricsForAI.hrv.baseline;
+          const currentHRV = metricsForAI.hrv.current;
+          if (typeof baselineHRV === 'number' && baselineHRV > 0 && typeof currentHRV === 'number' && currentHRV >= baselineHRV * 1.05) {
+            recommendation = {
+              status: 'MAINTAIN',
+              reasons: [...(recommendation.reasons || []), 'Lethargy Override: Luteale fase, readiness 4–6 maar HRV > 105% van baseline — MAINTAIN (Aerobic Flow).']
+            };
+            adviceContext = 'LETHARGY_OVERRIDE';
+          }
+        }
+
+        // Elite Override
+        if (cycleInfo.phaseName === 'Menstrual') {
+          const baselineHRV = metricsForAI.hrv.baseline ?? metricsForAI.hrv.adjustedBaseline;
+          const currentHRV = metricsForAI.hrv.current;
+          const hrvSafe = typeof baselineHRV === 'number' && baselineHRV > 0 && typeof currentHRV === 'number' && currentHRV >= baselineHRV * 0.98;
+          if (numericFields.readiness >= 8 && hrvSafe) {
+            recommendation = {
+              status: 'PUSH',
+              reasons: [...(recommendation.reasons || []), 'Elite Override: Menstruale fase, readiness 8+ en HRV ≥ 98% baseline — PUSH (Elite Rebound).']
+            };
+            adviceContext = 'ELITE_REBOUND';
+          }
+        }
+      }
 
       let profileContext = null;
       try {
@@ -197,7 +279,7 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
           if (userSnap.exists) profileContext = (userSnap.data() || {}).profile || null;
         }
       } catch (e) {
-        console.error('❌ FIRESTORE FOUT:', e);
+        console.error('Profile fetch failed:', e);
       }
 
       let detectedWorkout = '';
@@ -207,220 +289,68 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
         console.error('Detected workout fetch failed:', e);
       }
 
-      const redFlags = cycleService.calculateRedFlags(
-        numericFields.sleep,
-        numericFields.rhr,
-        numericFields.rhrBaseline,
-        numericFields.hrv,
-        numericFields.hrvBaseline,
-        cycleInfo.isInLutealPhase
-      );
-      const isSickFlag = Boolean(isSickOrInjured);
-
-      let recommendation = cycleService.determineRecommendation(
-        numericFields.readiness,
-        redFlags.count,
-        cycleInfo.phaseName
-      );
-
-      const metricsForAI = {
-        readiness: numericFields.readiness,
-        sleep: numericFields.sleep,
-        rhr: {
-          current: numericFields.rhr,
-          baseline: numericFields.rhrBaseline,
-          adjustedBaseline: redFlags.details.rhr.adjustedBaseline,
-          lutealCorrection: redFlags.details.rhr.lutealCorrection
-        },
-        hrv: {
-          current: numericFields.hrv,
-          baseline: numericFields.hrvBaseline,
-          adjustedBaseline: redFlags.details.hrv.adjustedBaseline,
-          lutealOffsetApplied: redFlags.details.hrv.lutealOffsetApplied
-        }
-      };
-      let adviceContext = 'STANDARD';
-
-      // Lethargy Override
-      try {
-        const isLutealPhase = cycleInfo.phaseName === 'Luteal' || cycleInfo.isInLutealPhase === true;
-        if (!isSickFlag && isLutealPhase && numericFields.readiness >= 4 && numericFields.readiness <= 6) {
-          const baselineHRV = metricsForAI.hrv.adjustedBaseline ?? metricsForAI.hrv.baseline;
-          const currentHRV = metricsForAI.hrv.current;
-          if (typeof baselineHRV === 'number' && baselineHRV > 0 && typeof currentHRV === 'number' && currentHRV >= baselineHRV * 1.05) {
-            recommendation = {
-              status: 'MAINTAIN',
-              reasons: [...(recommendation.reasons || []), 'Lethargy Override: Luteale fase, readiness 4–6 maar HRV > 105% van baseline — hormonale lethargie, geen echte vermoeidheid. Focus op MAINTAIN (Aerobic Flow).']
-            };
-            adviceContext = 'LETHARGY_OVERRIDE';
-          }
-        }
-      } catch (lethErr) {
-        console.error('Lethargy Override evaluatie mislukt:', lethErr);
-      }
-
-      // Elite Override
-      try {
-        if (!isSickFlag && cycleInfo.phaseName === 'Menstrual') {
-          const baselineHRV = metricsForAI.hrv.baseline ?? metricsForAI.hrv.adjustedBaseline;
-          const currentHRV = metricsForAI.hrv.current;
-          const hrvSafe = typeof baselineHRV === 'number' && baselineHRV > 0 && typeof currentHRV === 'number' && currentHRV >= baselineHRV * 0.98;
-          if (numericFields.readiness >= 8 && hrvSafe) {
-            recommendation = {
-              status: 'PUSH',
-              reasons: [...(recommendation.reasons || []), 'Elite Override: Menstruale fase, readiness 8+ en HRV ≥ 98% baseline — hormonale rebound, inflammatie onder controle. PUSH - ELITE REBOUND. Guardrail: houd data morgen in de gaten (mogelijke dip).']
-            };
-            adviceContext = 'ELITE_REBOUND';
-          }
-        }
-      } catch (eliteErr) {
-        console.error('Elite Override evaluatie mislukt:', eliteErr);
-      }
-
-      // Ziek/Geblesseerd — hard override
+      let aiMessage;
       if (isSickFlag) {
-        recommendation = {
-          status: 'REST',
-          reasons: [...(recommendation.reasons || []), 'Gebruiker heeft ziek/geblesseerd gemeld – algoritme forceert Rust & Herstel.']
-        };
-        adviceContext = 'SICK_OVERRIDE';
+        aiMessage = 'Systeem in herstelmodus. Geen training vandaag. Focus op slaap en hydratatie.';
+      } else {
+        aiMessage = await generateAICoachingMessage(
+          recommendation.status,
+          cycleInfo.phaseName,
+          metricsForAI,
+          { count: redFlags.count, reasons: redFlags.reasons },
+          profileContext,
+          detectedWorkout,
+          { isSickOrInjured: isSickFlag, periodStarted }
+        );
       }
 
-      const aiMessage = await generateAICoachingMessage(
-        recommendation.status,
-        cycleInfo.phaseName,
-        metricsForAI,
-        { count: redFlags.count, reasons: redFlags.reasons },
-        profileContext,
-        detectedWorkout,
-        { isSickOrInjured: isSickFlag, periodStarted }
-      );
-
-      const responsePayload = {
-        success: true,
-        data: {
-          status: recommendation.status,
-          reasons: recommendation.reasons,
-          aiMessage,
-          cycleInfo: { phase: cycleInfo.phaseName, isLuteal: cycleInfo.isInLutealPhase, currentCycleDay: cycleInfo.currentCycleDay },
-          metrics: {
-            readiness: numericFields.readiness,
-            redFlags: redFlags.count,
-            redFlagDetails: redFlags.reasons,
-            sleep: numericFields.sleep,
-            rhr: { current: numericFields.rhr, baseline: numericFields.rhrBaseline, adjustedBaseline: redFlags.details.rhr.adjustedBaseline, lutealCorrection: redFlags.details.rhr.lutealCorrection },
-            hrv: { current: numericFields.hrv, baseline: numericFields.hrvBaseline }
-          }
-        }
+      const payloadMetrics = {
+        readiness: numericFields.readiness,
+        redFlags: redFlags.count,
+        redFlagDetails: redFlags.reasons,
+        sleep: numericFields.sleep,
+        rhr: { current: numericFields.rhr, baseline: numericFields.rhrBaseline, adjustedBaseline: metricsForAI.rhr.adjustedBaseline, lutealCorrection: metricsForAI.rhr.lutealCorrection },
+        hrv: { current: numericFields.hrv, baseline: numericFields.hrvBaseline }
       };
 
-      try {
-        if (!db) throw new Error('Firestore is not initialized (db is null)');
-        const userDocRef = db.collection('users').doc(String(userId));
-        await userDocRef.collection('dailyLogs').add({
-          timestamp: FieldValue.serverTimestamp(),
-          date: new Date().toISOString().split('T')[0],
-          userId: String(userId),
-          metrics: responsePayload.data.metrics,
-          cycleInfo: { ...responsePayload.data.cycleInfo, lastPeriodDate: effectiveLastPeriodDate, cycleLength: cycleLengthNum },
-          cyclePhase: periodStarted ? 'Menstrual' : responsePayload.data.cycleInfo.phase,
-          periodStarted,
-          isSickOrInjured: isSickFlag,
-          recommendation: { status: recommendation.status, reasons: recommendation.reasons },
-          adviceContext,
-          aiMessage,
-          advice: aiMessage
-        });
-        if (periodStarted) {
-          try {
-            await userDocRef.set(
-              {
-                profile: {
-                  ...(profileContext || {}),
-                  cycleData: {
-                    ...(profileContext?.cycleData || {}),
-                    lastPeriod: effectiveLastPeriodDate,
-                    lastPeriodDate: effectiveLastPeriodDate,
-                    avgDuration: cycleLengthNum
-                  }
-                }
-              },
-              { merge: true }
-            );
-          } catch (cycleErr) {
-            console.error('⚠️ Kon cycleData niet bijwerken:', cycleErr);
-          }
-        }
-      } catch (error) {
-        console.error('❌ FIRESTORE FOUT:', error);
-      }
-
-      res.json(responsePayload);
-    } catch (error) {
-      console.error('Error calculating daily advice:', error);
-      res.status(500).json({ error: 'An error occurred while calculating daily advice.', message: error.message });
-    }
-  });
-
-  // POST /api/save-checkin — save to root collection daily_logs (no overrides, adviceContext STANDARD)
-  router.post('/save-checkin', async (req, res) => {
-    try {
-      const { userId, lastPeriodDate, cycleLength, sleep, rhr, rhrBaseline, hrv, hrvBaseline, readiness } = req.body;
-      const requiredFields = { userId, lastPeriodDate, sleep, rhr, rhrBaseline, hrv, hrvBaseline, readiness };
-      const missingFields = Object.entries(requiredFields)
-        .filter(([key, value]) => value === undefined || value === null)
-        .map(([key]) => key);
-      if (missingFields.length > 0) {
-        return res.status(400).json({ error: 'Missing required fields', missingFields });
-      }
-      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-      if (!dateRegex.test(lastPeriodDate)) {
-        return res.status(400).json({ error: 'Invalid date format. Please use YYYY-MM-DD format.' });
-      }
-      const testDate = new Date(lastPeriodDate);
-      if (isNaN(testDate.getTime())) {
-        return res.status(400).json({ error: 'Invalid date. Please provide a valid date.' });
-      }
-      const numericFields = {
-        sleep: parseFloat(sleep),
-        rhr: parseFloat(rhr),
-        rhrBaseline: parseFloat(rhrBaseline),
-        hrv: parseFloat(hrv),
-        hrvBaseline: parseFloat(hrvBaseline),
-        readiness: parseInt(readiness)
+      const cycleInfoPayload = {
+        phase: cycleInfo.phaseName,
+        isLuteal: cycleInfo.isInLutealPhase,
+        currentCycleDay: cycleInfo.currentCycleDay,
+        lastPeriodDate: effectiveLastPeriodDate,
+        cycleLength: cycleLengthNum
       };
-      for (const [key, value] of Object.entries(numericFields)) {
-        if (isNaN(value) || value < 0) {
-          return res.status(400).json({ error: `Invalid value for ${key}. Must be a positive number.` });
-        }
-      }
-      const cycleLengthNum = cycleLength ? parseInt(cycleLength) : 28;
-      if (cycleLength && (isNaN(cycleLengthNum) || cycleLengthNum < 21 || cycleLengthNum > 35)) {
-        return res.status(400).json({ error: 'Cycle length must be a number between 21 and 35 days.' });
-      }
-      if (numericFields.readiness < 1 || numericFields.readiness > 10) {
-        return res.status(400).json({ error: 'Readiness must be between 1 and 10.' });
-      }
 
-      const cycleInfo = cycleService.calculateLutealPhase(lastPeriodDate, cycleLengthNum);
-      const redFlags = cycleService.calculateRedFlags(
-        numericFields.sleep,
-        numericFields.rhr,
-        numericFields.rhrBaseline,
-        numericFields.hrv,
-        numericFields.hrvBaseline,
-        cycleInfo.isInLutealPhase
-      );
-      const recommendation = cycleService.determineRecommendation(
-        numericFields.readiness,
-        redFlags.count,
-        cycleInfo.phaseName
-      );
-
-      const checkinData = {
-        userId,
+      const docData = {
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        date: new Date().toISOString().split('T')[0],
+        date: todayIso,
+        userId: String(userId),
+        metrics: payloadMetrics,
+        cycleInfo: cycleInfoPayload,
+        cyclePhase: periodStarted ? 'Menstrual' : cycleInfo.phaseName,
+        periodStarted,
+        isSickOrInjured: isSickFlag,
+        recommendation: { status: recommendation.status, reasons: recommendation.reasons },
+        adviceContext,
+        aiMessage,
+        advice: aiMessage,
+        redFlags: { count: redFlags.count, reasons: redFlags.reasons, details: redFlags.details }
+      };
+
+      if (!db) {
+        return res.status(503).json({ error: 'Firestore not initialized' });
+      }
+
+      const userDocRef = db.collection('users').doc(String(userId));
+
+      // 1) users/{uid}/dailyLogs (for weekly reports)
+      const userLogRef = await userDocRef.collection('dailyLogs').add(docData);
+
+      // 2) Root daily_logs (legacy)
+      const rootLogData = {
+        userId: docData.userId,
+        timestamp: docData.timestamp,
+        date: docData.date,
         metrics: {
           sleep: numericFields.sleep,
           rhr: numericFields.rhr,
@@ -429,104 +359,106 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
           hrvBaseline: numericFields.hrvBaseline,
           readiness: numericFields.readiness
         },
-        cycleInfo: {
-          lastPeriodDate,
-          cycleLength: cycleLengthNum,
-          phase: cycleInfo.phaseName,
-          isLuteal: cycleInfo.isInLutealPhase,
-          currentCycleDay: cycleInfo.currentCycleDay
-        },
-        redFlags: { count: redFlags.count, reasons: redFlags.reasons, details: redFlags.details },
-        recommendation: { status: recommendation.status, reasons: recommendation.reasons },
-        adviceContext: 'STANDARD'
+        cycleInfo: { ...cycleInfoPayload },
+        redFlags: docData.redFlags,
+        recommendation: docData.recommendation,
+        adviceContext: docData.adviceContext
       };
+      await db.collection('daily_logs').add(rootLogData);
 
-      let docRef;
-      try {
-        docRef = await db.collection('daily_logs').add(checkinData);
-      } catch (firestoreError) {
-        console.error('Firestore save failed (save-checkin):', firestoreError);
-        return res.status(200).json({
-          success: false,
-          message: 'Check-in berekend, maar opslaan in Firestore is mislukt.',
-          firestoreError: firestoreError.message,
-          data: checkinData
-        });
-      }
-
-      // --- Rolling averages: 7d & 28d HRV/RHR, stored on user metrics ---
-      try {
-        if (db) {
-          const userIdStr = String(userId);
-          const logsSnap = await db
-            .collection('daily_logs')
-            .where('userId', '==', userIdStr)
-            .orderBy('date', 'desc')
-            .limit(60)
-            .get();
-
-          const today = new Date();
-          const toIso = (d) => d.toISOString().slice(0, 10);
-          const cutoff7 = new Date(today);
-          cutoff7.setDate(cutoff7.getDate() - 7);
-          const cutoff28 = new Date(today);
-          cutoff28.setDate(cutoff28.getDate() - 28);
-          const cutoff7Str = toIso(cutoff7);
-          const cutoff28Str = toIso(cutoff28);
-
-          const logs = logsSnap.docs
-            .map((d) => d.data() || {})
-            .filter((d) => typeof d.date === 'string' && d.date.length >= 10);
-
-          const inWindow = (days) => (log) => {
-            const dateStr = log.date.slice(0, 10);
-            return days === 7 ? dateStr >= cutoff7Str : dateStr >= cutoff28Str;
-          };
-
-          const avg = (arr) => {
-            const nums = arr
-              .map((v) => Number(v))
-              .filter((v) => Number.isFinite(v));
-            if (!nums.length) return null;
-            const sum = nums.reduce((s, v) => s + v, 0);
-            return Math.round((sum / nums.length) * 10) / 10;
-          };
-
-          const metrics7 = logs.filter(inWindow(7)).map((l) => l.metrics || {});
-          const metrics28 = logs.filter(inWindow(28)).map((l) => l.metrics || {});
-
-          const hrv7d = avg(metrics7.map((m) => m.hrv));
-          const hrv28d = avg(metrics28.map((m) => m.hrv));
-          const rhr7d = avg(metrics7.map((m) => m.rhr));
-          const rhr28d = avg(metrics28.map((m) => m.rhr));
-
-          const userRef = db.collection('users').doc(userIdStr);
-          await userRef.set(
+      // Period reset: update profile cycleData
+      if (periodStarted && profileContext) {
+        try {
+          await userDocRef.set(
             {
-              // Latest subjective readiness for today
-              readiness: numericFields.readiness,
-              metrics: {
-                hrv7d,
-                hrv28d,
-                rhr7d,
-                rhr28d,
-                lastCheckin: {
-                  date: checkinData.date,
-                  readiness: numericFields.readiness,
-                  hrv: numericFields.hrv,
-                  rhr: numericFields.rhr
+              profile: {
+                ...profileContext,
+                cycleData: {
+                  ...(profileContext.cycleData || {}),
+                  lastPeriod: effectiveLastPeriodDate,
+                  lastPeriodDate: effectiveLastPeriodDate,
+                  avgDuration: cycleLengthNum
                 }
               }
             },
             { merge: true }
           );
+        } catch (cycleErr) {
+          console.error('Period reset profile update failed:', cycleErr);
         }
-      } catch (metricsErr) {
-        console.error('Failed to update rolling HRV/RHR metrics on user document:', metricsErr);
-        // Do not fail the check-in response if metric aggregation fails
       }
 
-      res.json({ success: true, message: 'Check-in data saved successfully', data: { id: docRef.id, ...checkinData } });
+      // Rolling averages: 7d & 28d HRV/RHR on user doc
+      try {
+        const userIdStr = String(userId);
+        const logsSnap = await db
+          .collection('daily_logs')
+          .where('userId', '==', userIdStr)
+          .orderBy('date', 'desc')
+          .limit(60)
+          .get();
+
+        const toIso = (d) => d.toISOString().slice(0, 10);
+        const cutoff7 = new Date();
+        cutoff7.setDate(cutoff7.getDate() - 7);
+        const cutoff28 = new Date();
+        cutoff28.setDate(cutoff28.getDate() - 28);
+        const cutoff7Str = toIso(cutoff7);
+        const cutoff28Str = toIso(cutoff28);
+
+        const logs = logsSnap.docs
+          .map((d) => d.data() || {})
+          .filter((d) => typeof d.date === 'string' && d.date.length >= 10);
+
+        const inWindow = (days) => (log) => {
+          const dateStr = log.date.slice(0, 10);
+          return days === 7 ? dateStr >= cutoff7Str : dateStr >= cutoff28Str;
+        };
+
+        const avg = (arr) => {
+          const nums = arr.map((v) => Number(v)).filter((v) => Number.isFinite(v));
+          if (!nums.length) return null;
+          return Math.round((nums.reduce((s, v) => s + v, 0) / nums.length) * 10) / 10;
+        };
+
+        const metrics7 = logs.filter(inWindow(7)).map((l) => l.metrics || {});
+        const metrics28 = logs.filter(inWindow(28)).map((l) => l.metrics || {});
+
+        await userDocRef.set(
+          {
+            readiness: numericFields.readiness,
+            metrics: {
+              hrv7d: avg(metrics7.map((m) => m.hrv)),
+              hrv28d: avg(metrics28.map((m) => m.hrv)),
+              rhr7d: avg(metrics7.map((m) => m.rhr)),
+              rhr28d: avg(metrics28.map((m) => m.rhr)),
+              lastCheckin: {
+                date: todayIso,
+                readiness: numericFields.readiness,
+                hrv: numericFields.hrv,
+                rhr: numericFields.rhr
+              }
+            }
+          },
+          { merge: true }
+        );
+      } catch (metricsErr) {
+        console.error('Rolling averages update failed:', metricsErr);
+      }
+
+      res.json({
+        success: true,
+        message: 'Check-in saved successfully',
+        data: {
+          id: userLogRef.id,
+          status: recommendation.status,
+          aiMessage,
+          cycleInfo: cycleInfoPayload,
+          date: todayIso,
+          recommendation: recommendation,
+          metrics: payloadMetrics
+        }
+      });
     } catch (error) {
       console.error('Error saving check-in:', error);
       res.status(500).json({ error: 'An error occurred while saving check-in data.', message: error.message });

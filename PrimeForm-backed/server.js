@@ -14,6 +14,7 @@ const { createAdminRouter } = require('./routes/adminRoutes');
 const { createCoachRouter } = require('./routes/coachRoutes');
 const { createStravaRoutes } = require('./routes/stravaRoutes');
 const { createDailyRouter } = require('./routes/dailyRoutes');
+const { createDashboardRouter } = require('./routes/dashboardRoutes');
 
 // SMTP transporter (placeholders – set SMTP_HOST, SMTP_USER, SMTP_PASS in env)
 const mailTransporter = nodemailer.createTransport({
@@ -402,6 +403,7 @@ app.get('/', (req, res) => {
   app.use('/api/strava', stravaRoutes.apiRouter);
   app.use('/auth/strava', stravaRoutes.authRouter);
   const dailyRouter = createDailyRouter({ db, admin, openai, knowledgeBaseContent, FieldValue });
+  app.use('/api', createDashboardRouter({ db, admin }));
   app.use('/api', dailyRouter);
   app.use('/api/coach', createCoachRouter({ db, admin }));
   app.use('/api/admin', createAdminRouter({

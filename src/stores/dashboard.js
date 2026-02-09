@@ -70,6 +70,24 @@ export const useDashboardStore = defineStore('dashboard', {
         const json = await res.json()
         const data = json?.data || json
 
+        const raw = { ...data }
+        if (data.todayLog) {
+          const tl = data.todayLog
+          raw.last_checkin = {
+            readiness: tl.metrics?.readiness ?? null,
+            hrv: tl.metrics?.hrv ?? null,
+            rhr: tl.metrics?.rhr ?? null,
+            sleep: tl.metrics?.sleep ?? null,
+            date: new Date().toISOString().slice(0, 10),
+          }
+          const status = tl.recommendation?.status ?? null
+          raw.last_directive = {
+            status,
+            aiMessage: tl.aiMessage ?? null,
+            cycleInfo: tl.cycleInfo ?? null,
+          }
+        }
+
         this.telemetry = {
           acwr: data.acwr ?? data.ACWR ?? null,
           phase: data.phase || data.current_phase || null,
@@ -77,7 +95,7 @@ export const useDashboardStore = defineStore('dashboard', {
           phaseLength: data.phaseLength ?? data.cycle_length ?? 28,
           readinessToday: data.readiness_today ?? data.readiness ?? null,
           activities: data.recent_activities || data.activities || [],
-          raw: data,
+          raw,
         }
       } catch (err) {
         console.error('fetchUserDashboard failed', err)
@@ -144,11 +162,10 @@ export const useDashboardStore = defineStore('dashboard', {
     },
 
     /**
-     * Submit Daily Check-in as primary readiness/telemetry source.
-     * Minimal payload: readiness (1–10), hrv, rhr.
-     * Backend requires lastPeriodDate, cycleLength, sleep and baselines; we derive safe defaults.
+     * Submit Daily Check-in: full directive flow (sleep, menstruation, sick/Handrem).
+     * Backend returns status, aiMessage, cycleInfo; we store them for the Pre-Race card.
      */
-    async submitDailyCheckIn({ readiness, hrv, rhr }) {
+    async submitDailyCheckIn({ readiness, hrv, rhr, sleep = 8, menstruationStarted = false, isSick = false }) {
       const user = auth.currentUser
       if (!user) {
         throw new Error('Geen ingelogde gebruiker')
@@ -157,6 +174,7 @@ export const useDashboardStore = defineStore('dashboard', {
       const readinessVal = Number(readiness)
       const hrvVal = Number(hrv)
       const rhrVal = Number(rhr)
+      const sleepVal = Number(sleep)
 
       if (!Number.isFinite(readinessVal) || readinessVal < 1 || readinessVal > 10) {
         throw new Error('Readiness moet tussen 1 en 10 liggen')
@@ -166,6 +184,9 @@ export const useDashboardStore = defineStore('dashboard', {
       }
       if (!Number.isFinite(rhrVal) || rhrVal <= 0) {
         throw new Error('Ongeldige RHR-waarde')
+      }
+      if (!Number.isFinite(sleepVal) || sleepVal < 3 || sleepVal > 12) {
+        throw new Error('Slaap moet tussen 3 en 12 uur liggen')
       }
 
       const authStore = useAuthStore()
@@ -185,8 +206,6 @@ export const useDashboardStore = defineStore('dashboard', {
         Number(profile.cycleData?.avgDuration) ||
         28
 
-      // Sleep/baselines: if we don't have user-specific values yet, fall back to neutral defaults.
-      const sleepHours = 8
       const rhrBaseline = rhrVal
       const hrvBaseline = hrvVal
 
@@ -194,12 +213,14 @@ export const useDashboardStore = defineStore('dashboard', {
         userId: user.uid,
         lastPeriodDate,
         cycleLength,
-        sleep: sleepHours,
+        sleep: sleepVal,
         rhr: rhrVal,
         rhrBaseline,
         hrv: hrvVal,
         hrvBaseline,
         readiness: readinessVal,
+        menstruationStarted: Boolean(menstruationStarted),
+        isSick: Boolean(isSick),
       }
 
       const res = await fetch(`${API_URL}/api/save-checkin`, {
@@ -218,19 +239,22 @@ export const useDashboardStore = defineStore('dashboard', {
       const json = await res.json().catch(() => ({}))
       const data = json?.data || {}
 
-      // Drive cockpit readiness gauge from real check-in data
-      const readinessToday = readinessVal
-
       this.telemetry = {
         ...(this.telemetry || {}),
-        readinessToday,
+        readinessToday: readinessVal,
         raw: {
           ...(this.telemetry?.raw || {}),
           last_checkin: {
             readiness: readinessVal,
             hrv: hrvVal,
             rhr: rhrVal,
+            sleep: sleepVal,
             date: data.date || todayIso,
+          },
+          last_directive: {
+            status: data.status || null,
+            aiMessage: data.aiMessage || null,
+            cycleInfo: data.cycleInfo || null,
           },
         },
       }
