@@ -195,6 +195,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useAuthStore } from '../../stores/auth'
+import { API_URL } from '../../config/api.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -336,7 +337,7 @@ const onConnectStrava = () => {
   }
 
   const userId = encodeURIComponent(authStore.user.uid)
-  window.location.href = `https://primeform-backend.onrender.com/auth/strava?userId=${userId}`
+  window.location.href = `${API_URL}/auth/strava/connect?userId=${userId}`
 }
 
 const onSkipStrava = async () => {
