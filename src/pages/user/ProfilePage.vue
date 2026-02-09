@@ -138,8 +138,9 @@ async function updateCalibration() {
       lastPeriodDate: localLastPeriod.value || null,
       cycleLength: localCycleLength.value,
     })
-  } catch (_) {
-    // Notify handled in store
+  } catch (err) {
+    // Fallback logging; primary Notify is in the store
+    console.error('updatePilotProfile failed in ProfilePage', err)
   }
 }
 
@@ -152,8 +153,9 @@ function connectStrava() {
 async function disconnectStrava() {
   try {
     await authStore.disconnectStrava()
-  } catch (_) {
-    // Notify handled in store
+  } catch (err) {
+    // Fallback logging; primary Notify is in the store
+    console.error('disconnectStrava failed in ProfilePage', err)
   }
 }
 
