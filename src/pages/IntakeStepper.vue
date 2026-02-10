@@ -267,10 +267,13 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { API_URL } from '../config/api.js'
+import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
+const authStore = useAuthStore()
 
 const getOrCreateUserId = () => {
+  if (authStore.user?.uid) return authStore.user.uid
   const key = 'primeform_user_id'
   const existing = localStorage.getItem(key)
   if (existing) return existing
@@ -323,7 +326,16 @@ const form = ref({
 onMounted(async () => {
   userId.value = getOrCreateUserId()
 
-  // Preload existing profile if present
+  // Pre-fill from auth store profile (cycle / bio data) so returning users see their data
+  const authProfile = authStore.profile || {}
+  if (authProfile.lastPeriodDate || authProfile.lastPeriod) {
+    form.value.lastPeriod = form.value.lastPeriod || authProfile.lastPeriodDate || authProfile.lastPeriod || ''
+  }
+  if (authProfile.cycleLength != null && authProfile.cycleLength > 0) {
+    form.value.cycleAvgDuration = form.value.cycleAvgDuration ?? authProfile.cycleLength
+  }
+
+  // Preload full profile from API (overwrites with server state when present)
   try {
     const resp = await axios.get(`${API_URL}/api/profile`, {
       params: { userId: userId.value }
@@ -333,9 +345,8 @@ onMounted(async () => {
       form.value = {
         ...form.value,
         ...profile,
-        // keep defaults for missing keys
         cycleAvgDuration: profile?.cycleData?.avgDuration ?? form.value.cycleAvgDuration,
-        lastPeriod: profile?.cycleData?.lastPeriod ?? form.value.lastPeriod,
+        lastPeriod: profile?.cycleData?.lastPeriod ?? profile?.lastPeriod ?? form.value.lastPeriod,
         contraception: profile?.cycleData?.contraception ?? form.value.contraception,
         hrvBaseline: profile?.hrvBaseline ?? form.value.hrvBaseline,
         rhrBaseline: profile?.rhrBaseline ?? form.value.rhrBaseline
@@ -454,7 +465,9 @@ const saveProfile = async () => {
         lastPeriod: form.value.lastPeriod,
         avgDuration: Number(form.value.cycleAvgDuration),
         contraception: form.value.contraception
-      }
+      },
+
+      onboardingCompleted: true
     }
 
     await axios.put(`${API_URL}/api/profile`, {
@@ -462,8 +475,11 @@ const saveProfile = async () => {
       profilePatch
     })
 
-    // After intake completion, go to dashboard
-    router.push('/')
+    if (authStore.user) {
+      authStore.onboardingComplete = true
+    }
+
+    router.replace('/dashboard')
   } catch (e) {
     console.error('Profile save failed:', e)
     saveError.value = e.response?.data?.error || 'Opslaan mislukt. Probeer opnieuw.'

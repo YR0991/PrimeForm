@@ -238,19 +238,22 @@ app.put('/api/profile', async (req, res) => {
     const existing = await userDocRef.get();
     const existingProfile = existing.exists ? (existing.data()?.profile || {}) : {};
 
-    const mergedProfile = { ...existingProfile, ...profilePatch };
-    if (existingProfile.cycleData || profilePatch.cycleData) {
+    const { onboardingCompleted, onboardingComplete, ...profileOnly } = profilePatch;
+    const mergedProfile = { ...existingProfile, ...profileOnly };
+    if (existingProfile.cycleData || profileOnly.cycleData) {
       mergedProfile.cycleData = {
         ...(existingProfile.cycleData || {}),
-        ...(profilePatch.cycleData || {})
+        ...(profileOnly.cycleData || {})
       };
     }
     const profileComplete = isProfileComplete(mergedProfile);
+    const forceOnboardingComplete = onboardingCompleted === true || onboardingComplete === true;
 
     await userDocRef.set(
       {
         profile: mergedProfile,
         profileComplete,
+        ...(profileComplete || forceOnboardingComplete ? { onboardingComplete: true } : {}),
         createdAt: existing.exists ? (existing.data()?.createdAt || new Date()) : new Date(),
         updatedAt: new Date()
       },
