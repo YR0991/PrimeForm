@@ -129,6 +129,9 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 
+// Trigger session recovery as soon as Login page is created
+authStore.init()
+
 const isLoading = computed(() => authStore.loading)
 const authError = computed(() => authStore.error)
 const activeTab = ref('google')
@@ -140,7 +143,11 @@ const fullName = ref('')
 const stravaFallbackToForm = ref(false)
 const stravaTimeoutId = ref(null)
 
-const isStravaReturn = computed(() => route.query?.status === 'strava_connected')
+const isStravaReturn = computed(() => {
+  if (route.query?.status === 'strava_connected') return true
+  const redirect = route.query?.redirect
+  return typeof redirect === 'string' && redirect.includes('strava_connected')
+})
 const showStravaPending = computed(
   () => isStravaReturn.value && !stravaFallbackToForm.value,
 )
@@ -175,7 +182,6 @@ const toggleRegistering = () => {
 }
 
 onMounted(() => {
-  authStore.init()
   if (isStravaReturn.value) {
     stravaTimeoutId.value = window.setTimeout(() => {
       stravaFallbackToForm.value = true
@@ -193,7 +199,7 @@ watch(
   () => authStore.isAuthenticated,
   (val) => {
     if (!val) return
-    if (route.query?.status === 'strava_connected') {
+    if (isStravaReturn.value) {
       router.replace('/profile')
       return
     }

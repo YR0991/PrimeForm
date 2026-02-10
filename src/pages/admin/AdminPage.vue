@@ -280,7 +280,7 @@
             </template>
 
             <template #body-cell-actions="props">
-              <q-td :props="props">
+              <q-td :props="props" @click.stop>
                 <div class="row justify-end q-gutter-xs">
                   <q-btn
                     dense
@@ -288,7 +288,7 @@
                     size="sm"
                     icon="edit"
                     color="amber-4"
-                    @click.stop="promptRenameTeam(props.row)"
+                    @click.stop="handleRenameTeam(props.row)"
                   >
                     <q-tooltip>Teamnaam wijzigen</q-tooltip>
                   </q-btn>
@@ -298,7 +298,7 @@
                     size="sm"
                     icon="delete"
                     color="negative"
-                    @click.stop="confirmDeleteTeam(props.row)"
+                    @click.stop="handleDeleteTeam(props.row)"
                   >
                     <q-tooltip>Team verwijderen</q-tooltip>
                   </q-btn>
@@ -739,11 +739,11 @@ const occupancyColor = (ratio) => {
   return 'positive' // <80%
 }
 
-const promptRenameTeam = (team) => {
+const handleRenameTeam = (team) => {
   if (!team?.id) return
   $q.dialog({
-    title: 'Teamnaam wijzigen',
-    message: 'Voer een nieuwe teamnaam in.',
+    title: 'Team hernoemen',
+    message: 'Voer de nieuwe naam in voor dit team:',
     prompt: {
       model: team.name || '',
       type: 'text',
@@ -751,10 +751,10 @@ const promptRenameTeam = (team) => {
     cancel: true,
     persistent: true,
   }).onOk(async (val) => {
-    const name = (val || '').trim()
-    if (!name || name === team.name) return
+    const newName = (val || '').trim()
+    if (!newName || newName === team.name) return
     try {
-      await adminStore.renameTeam(team.id, name)
+      await adminStore.renameTeam(team.id, newName)
       Notify.create({
         type: 'positive',
         message: 'Teamnaam bijgewerkt.',
@@ -770,12 +770,16 @@ const promptRenameTeam = (team) => {
   })
 }
 
-const confirmDeleteTeam = (team) => {
+const handleDeleteTeam = (team) => {
   if (!team?.id) return
   $q.dialog({
-    title: 'Team verwijderen?',
+    title: 'Team verwijderen',
     message:
-      'Weet je het zeker? De atleten in dit team worden ongekoppeld maar niet verwijderd.',
+      'Weet je het zeker? De atleten in dit team worden ongekoppeld (Ghosts) maar niet verwijderd.',
+    ok: {
+      label: 'Verwijderen',
+      color: 'negative',
+    },
     cancel: true,
     persistent: true,
   }).onOk(async () => {

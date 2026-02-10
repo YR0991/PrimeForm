@@ -62,9 +62,9 @@ export default defineRouter(function (/* { store, ssrContext } */) {
     let isAuthenticated = !!authStore.user
 
     // 2. Strava comeback: if we land on /profile?status=strava_connected but auth not ready yet,
-    //    wait briefly for the session to settle before redirecting to login
+    //    geef Firebase extra ademruimte voordat we naar /login sturen
     if (!isAuthenticated && to.path === '/profile' && to.query?.status === 'strava_connected') {
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      await new Promise((resolve) => setTimeout(resolve, 800))
       if (authStore.user) return true
     }
 
