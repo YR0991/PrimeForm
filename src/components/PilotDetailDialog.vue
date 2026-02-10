@@ -33,6 +33,7 @@
         indicator-color="primary"
       >
         <q-tab name="profile" label="Profiel" />
+        <q-tab name="status" label="Status" />
         <q-tab name="injector" label="Geschiedenis / Import" />
       </q-tabs>
 
@@ -42,6 +43,8 @@
         <!-- Tab 1: Profile -->
         <q-tab-panel name="profile" class="q-pa-lg">
           <div class="profile-fields">
+            <!-- Account -->
+            <div class="section-header">ACCOUNT</div>
             <q-input
               :model-value="pilotName"
               label="Naam"
@@ -86,6 +89,58 @@
               options-dense
               class="profile-input"
               @update:model-value="onRoleChange"
+            />
+
+            <q-separator dark inset class="q-my-md" />
+
+            <!-- Bio-Clock configuratie -->
+            <div class="section-header">BIO-CLOCK CONFIGURATIE</div>
+            <q-input
+              v-model.number="localCycleLength"
+              label="Cyclustijd (dagen)"
+              type="number"
+              outlined
+              dark
+              dense
+              class="profile-input"
+            />
+            <q-input
+              v-model="localLastPeriodDate"
+              label="Laatste menstruatie (YYYY-MM-DD)"
+              type="date"
+              outlined
+              dark
+              dense
+              class="profile-input"
+            />
+            <q-toggle
+              v-model="localOnboardingCompleted"
+              color="amber"
+              label="Intake voltooid"
+              class="profile-toggle"
+            />
+
+            <q-separator dark inset class="q-my-md" />
+
+            <!-- Fysieke kenmerken -->
+            <div class="section-header">FYSIEKE KENMERKEN</div>
+            <q-input
+              v-model="localBirthDate"
+              label="Geboortedatum"
+              type="date"
+              outlined
+              dark
+              dense
+              class="profile-input"
+            />
+            <q-input
+              v-model.number="localWeight"
+              label="Gewicht (kg)"
+              type="number"
+              outlined
+              dark
+              dense
+              class="profile-input"
             />
           </div>
           <div class="profile-actions row items-center justify-between q-mt-md">
@@ -206,6 +261,45 @@
           </q-dialog>
         </q-tab-panel>
 
+        <!-- Tab 2: Recente status -->
+        <q-tab-panel name="status" class="q-pa-lg">
+          <div class="status-section">
+            <div class="status-header">RECENTE STATUS (LAATSTE 7 LOGS)</div>
+            <div v-if="historyLoading" class="status-loading">
+              Laden...
+            </div>
+            <div v-else-if="recentLogs.length === 0" class="status-empty">
+              Geen logs gevonden voor deze atleet.
+            </div>
+            <div v-else class="status-table-wrap q-mt-sm">
+              <table class="status-table">
+                <thead>
+                  <tr>
+                    <th>Datum</th>
+                    <th>HRV</th>
+                    <th>RHR</th>
+                    <th>Readiness</th>
+                    <th>Directive</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="log in recentLogs.slice(0, 7)" :key="log.id">
+                    <td>{{ formatLogDate(log) }}</td>
+                    <td>{{ formatMetric(log?.metrics?.hrv) }}</td>
+                    <td>{{ formatMetric(log?.metrics?.rhr?.current) }}</td>
+                    <td>{{ formatMetric(log?.metrics?.readiness) }}</td>
+                    <td>
+                      <span :class="['status-pill', directiveClass(log)]">
+                        {{ (log?.recommendation?.status || '—').toUpperCase() }}
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </q-tab-panel>
+
         <!-- Tab 2: Telemetry Injector -->
         <q-tab-panel name="injector" class="q-pa-lg">
           <div class="injector-section">
@@ -267,7 +361,7 @@
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Notify } from 'quasar'
-import { injectHistory, updateUserProfile, migrateUserData } from '../services/adminService'
+import { injectHistory, updateUserProfile, migrateUserData, getUserDetails, getUserHistory } from '../services/adminService'
 import { useAdminStore } from '../stores/admin'
 import { useAuthStore } from '../stores/auth'
 
@@ -294,6 +388,14 @@ const deleting = ref(false)
 const migrateDialog = ref(false)
 const migrateTargetUid = ref(null)
 const migrating = ref(false)
+const localCycleLength = ref(null)
+const localLastPeriodDate = ref('')
+const localOnboardingCompleted = ref(false)
+const localBirthDate = ref('')
+const localWeight = ref(null)
+const backendProfile = ref(null)
+const recentLogs = ref([])
+const historyLoading = ref(false)
 
 const LINE_REGEX = /(\d{4}-\d{2}-\d{2})\s+(\d+)\s+(\d+)/
 
@@ -331,7 +433,29 @@ const targetPilotName = computed(() => {
 const profileDirty = computed(() => {
   const u = props.user
   if (!u) return false
-  return localTeamId.value !== (u.teamId ?? null) || localRole.value !== (u.profile?.role ?? 'user')
+  const p = backendProfile.value || u.profile || {}
+  const cycle = p.cycleData || {}
+
+  const origTeam = u.teamId ?? null
+  const origRole = p.role ?? 'user'
+  const origCycleLength = cycle.avgDuration ?? null
+  const origLastPeriod = cycle.lastPeriod || ''
+  const origOnboarding = p.onboardingCompleted ?? u.profileComplete ?? false
+  const origBirthDate = p.birthDate || ''
+  const origWeight = p.weight != null ? Number(p.weight) : null
+
+  const curCycleLength = localCycleLength.value != null ? Number(localCycleLength.value) : null
+  const curWeight = localWeight.value != null ? Number(localWeight.value) : null
+
+  return (
+    localTeamId.value !== origTeam ||
+    localRole.value !== origRole ||
+    curCycleLength !== origCycleLength ||
+    (localLastPeriodDate.value || '') !== origLastPeriod ||
+    Boolean(localOnboardingCompleted.value) !== Boolean(origOnboarding) ||
+    (localBirthDate.value || '') !== origBirthDate ||
+    curWeight !== origWeight
+  )
 })
 
 const roleOptions = [
@@ -340,17 +464,42 @@ const roleOptions = [
   { label: 'Admin', value: 'admin' }
 ]
 
+function hydrateFromProfile(profileOverride) {
+  const u = props.user
+  const p = profileOverride || u?.profile || {}
+  const cycle = p.cycleData || {}
+
+  localTeamId.value = u?.teamId ?? null
+  localRole.value = p.role ?? 'user'
+
+  localCycleLength.value = cycle.avgDuration ?? null
+  localLastPeriodDate.value = cycle.lastPeriod || ''
+  localOnboardingCompleted.value = p.onboardingCompleted ?? u?.profileComplete ?? false
+
+  localBirthDate.value = p.birthDate || ''
+  localWeight.value = p.weight != null ? Number(p.weight) : null
+
+  injectorRaw.value = ''
+  recognizedEntries.value = []
+}
+
 watch(
   () => props.user,
   (u) => {
     if (u) {
-      localTeamId.value = u.teamId ?? null
-      localRole.value = u.profile?.role ?? 'user'
-      injectorRaw.value = ''
-      recognizedEntries.value = []
+      hydrateFromProfile(backendProfile.value)
     }
   },
   { immediate: true }
+)
+
+watch(
+  () => props.modelValue,
+  (visible) => {
+    if (visible && props.user?.id) {
+      loadProfileAndHistory()
+    }
+  }
 )
 
 const canImpersonate = computed(() => authStore.isAdmin)
@@ -386,16 +535,96 @@ function openMigrateDialog() {
   migrateDialog.value = true
 }
 
+async function loadProfileAndHistory() {
+  const uid = props.user?.id
+  if (!uid) return
+
+  try {
+    const [profile, history] = await Promise.all([
+      getUserDetails(uid).catch((e) => {
+        console.error('Failed to load profile details', e)
+        return null
+      }),
+      (async () => {
+        historyLoading.value = true
+        try {
+          return await getUserHistory(uid)
+        } catch (e) {
+          console.error('Failed to load history', e)
+          return []
+        } finally {
+          historyLoading.value = false
+        }
+      })(),
+    ])
+
+    if (profile) {
+      backendProfile.value = profile
+      hydrateFromProfile(profile)
+    }
+    recentLogs.value = Array.isArray(history) ? history : []
+  } catch (e) {
+    console.error('loadProfileAndHistory error', e)
+  }
+}
+
 async function saveProfile() {
   const uid = props.user?.id
   if (!uid) return
   profileSaving.value = true
   try {
-    if (localTeamId.value !== (props.user?.teamId ?? null)) {
+    const u = props.user
+    const p = backendProfile.value || u?.profile || {}
+    const cycle = p.cycleData || {}
+
+    if (localTeamId.value !== (u?.teamId ?? null)) {
       await adminStore.assignUserToTeam(uid, localTeamId.value)
     }
-    if (localRole.value !== (props.user?.profile?.role ?? 'user')) {
-      await updateUserProfile(uid, { role: localRole.value })
+
+    const profilePatch = {}
+
+    if (localRole.value !== (p.role ?? 'user')) {
+      profilePatch.role = localRole.value
+    }
+
+    const cyclePatch = {}
+    const curCycleLength = localCycleLength.value != null ? Number(localCycleLength.value) : null
+    if (curCycleLength !== (cycle.avgDuration ?? null)) {
+      cyclePatch.avgDuration = curCycleLength
+    }
+    if ((localLastPeriodDate.value || '') !== (cycle.lastPeriod || '')) {
+      cyclePatch.lastPeriod = localLastPeriodDate.value || null
+    }
+    if (Object.keys(cyclePatch).length > 0) {
+      profilePatch.cycleData = cyclePatch
+    }
+
+    const origOnboarding = p.onboardingCompleted ?? u?.profileComplete ?? false
+    if (Boolean(localOnboardingCompleted.value) !== Boolean(origOnboarding)) {
+      profilePatch.onboardingCompleted = Boolean(localOnboardingCompleted.value)
+    }
+
+    const origBirthDate = p.birthDate || ''
+    if ((localBirthDate.value || '') !== origBirthDate) {
+      profilePatch.birthDate = localBirthDate.value || null
+    }
+
+    const origWeight = p.weight != null ? Number(p.weight) : null
+    const curWeight = localWeight.value != null ? Number(localWeight.value) : null
+    if (curWeight !== origWeight) {
+      profilePatch.weight = curWeight
+    }
+
+    if (Object.keys(profilePatch).length > 0) {
+      await updateUserProfile(uid, profilePatch)
+      backendProfile.value = {
+        ...(backendProfile.value || p),
+        ...profilePatch,
+        cycleData: {
+          ...(p.cycleData || {}),
+          ...(profilePatch.cycleData || {}),
+        },
+      }
     }
     Notify.create({ type: 'positive', message: 'Profiel opgeslagen.' })
     emit('updated')
@@ -507,6 +736,29 @@ async function handleImpersonate() {
     console.error('Navigation to /dashboard failed', e)
   }
 }
+
+function formatLogDate(log) {
+  if (!log) return '—'
+  if (typeof log.date === 'string' && log.date.length >= 10) {
+    return log.date.slice(0, 10)
+  }
+  if (typeof log.timestamp === 'string' && log.timestamp.length >= 10) {
+    return log.timestamp.slice(0, 10)
+  }
+  return '—'
+}
+
+function formatMetric(value) {
+  if (value == null || Number.isNaN(Number(value))) return '—'
+  return Math.round(Number(value))
+}
+
+function directiveClass(log) {
+  const status = (log?.recommendation?.status || '').toUpperCase()
+  if (status === 'PUSH') return 'status-pill-push'
+  if (status === 'REST' || status === 'RECOVER') return 'status-pill-rest'
+  return 'status-pill-neutral'
+}
 </script>
 
 <style scoped lang="scss">
@@ -575,6 +827,20 @@ async function handleImpersonate() {
 
 .profile-actions {
   max-width: 400px;
+}
+
+.section-header {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #fbbf24;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.profile-toggle {
+  margin-top: 4px;
 }
 
 .profile-input :deep(.q-field__control) {
@@ -680,5 +946,86 @@ async function handleImpersonate() {
   border-radius: 2px !important;
   border: 1px solid rgba(239, 68, 68, 0.6) !important;
   box-shadow: none !important;
+}
+
+.status-section {
+  max-width: 560px;
+}
+
+.status-header {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #fbbf24;
+  font-weight: 700;
+}
+
+.status-loading,
+.status-empty {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: rgba(156, 163, 175, 0.9);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.status-table-wrap {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+
+.status-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+
+.status-table th {
+  text-align: left;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.status-table td {
+  padding: 6px 10px;
+  color: rgba(255, 255, 255, 0.9);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.status-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.status-pill {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.status-pill-push {
+  color: #22c55e;
+  border-color: #22c55e;
+}
+
+.status-pill-rest {
+  color: #ef4444;
+  border-color: #ef4444;
+}
+
+.status-pill-neutral {
+  color: #9ca3af;
+  border-color: rgba(255, 255, 255, 0.16);
 }
 </style>
