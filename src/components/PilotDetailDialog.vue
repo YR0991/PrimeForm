@@ -202,6 +202,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { Notify } from 'quasar'
 import { injectHistory, updateUserProfile } from '../services/adminService'
 import { useAdminStore } from '../stores/admin'
@@ -215,6 +216,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'updated'])
 
+const router = useRouter()
 const adminStore = useAdminStore()
 const authStore = useAuthStore()
 const activeTab = ref('profile')
@@ -365,10 +367,22 @@ async function handleDeletePilot() {
   }
 }
 
-function handleImpersonate() {
-  if (!props.user || !props.user.id) return
+async function handleImpersonate() {
+  if (!props.user?.id) return
+  console.log('Button clicked for user:', props.user.id)
+
+  // 1. Set the state in the store
   authStore.startImpersonation(props.user)
+
+  // 2. Close the dialog manually
   emit('update:modelValue', false)
+
+  // 3. Force navigation from the component (more reliable)
+  try {
+    await router.push('/dashboard')
+  } catch (e) {
+    console.error('Navigation to /dashboard failed', e)
+  }
 }
 </script>
 

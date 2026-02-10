@@ -67,6 +67,7 @@ export const useDashboardStore = defineStore('dashboard', {
         }
 
         const uid = authStore.activeUid || user.uid
+        console.log('Dashboard fetch for UID:', uid)
         const token = await user.getIdToken?.()
 
         const headers = token

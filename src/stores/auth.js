@@ -532,6 +532,7 @@ export const useAuthStore = defineStore('auth', {
      * Expects a user-like object with an id field.
      */
     startImpersonation(user) {
+      console.log('Starting impersonation for:', user?.id)
       if (!this.isAdmin) {
         Notify.create({
           type: 'negative',
@@ -555,8 +556,6 @@ export const useAuthStore = defineStore('auth', {
           user.profile?.email ||
           'Atleet',
       }
-      // Navigate to dashboard so Shadow Mode is immediately visible
-      this.router?.push('/dashboard')
     },
 
     /**

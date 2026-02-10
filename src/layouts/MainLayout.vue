@@ -148,6 +148,8 @@ const handleStopImpersonation = () => {
   authStore.stopImpersonation?.()
   router.push('/admin')
 }
+
+console.log('Is Impersonating:', authStore.isImpersonating)
 </script>
 
 <style scoped lang="scss">
@@ -164,6 +166,8 @@ const handleStopImpersonation = () => {
   justify-content: space-between;
   align-items: center;
   padding: 6px 16px;
+  position: relative;
+  z-index: 9999;
   background: #fbbf24;
   color: #111827;
   font-family: q.$mono-font;
