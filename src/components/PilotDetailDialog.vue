@@ -9,7 +9,7 @@
     <q-card class="pilot-detail-card" dark flat>
       <q-card-section class="dialog-header row items-center justify-between">
         <div>
-          <div class="dialog-title">PILOT FILE</div>
+          <div class="dialog-title">ATLEET DOSSIER</div>
           <div class="dialog-subtitle">
             {{ pilotName }} • {{ pilotEmail }}
           </div>
@@ -32,8 +32,8 @@
         active-color="primary"
         indicator-color="primary"
       >
-        <q-tab name="profile" label="Profile" />
-        <q-tab name="injector" label="History / Import" />
+        <q-tab name="profile" label="Profiel" />
+        <q-tab name="injector" label="Geschiedenis / Import" />
       </q-tabs>
 
       <q-separator dark />
@@ -44,7 +44,7 @@
           <div class="profile-fields">
             <q-input
               :model-value="pilotName"
-              label="Name"
+              label="Naam"
               outlined
               dark
               readonly
@@ -66,7 +66,7 @@
               :options="teamOptions"
               emit-value
               map-options
-              label="Team (Squadron)"
+              label="Team"
               outlined
               dark
               dense
@@ -79,7 +79,7 @@
               :options="roleOptions"
               emit-value
               map-options
-              label="Role"
+              label="Rol"
               outlined
               dark
               dense
@@ -91,7 +91,7 @@
           <div class="profile-actions row items-center justify-between q-mt-md">
             <q-btn
               v-if="profileDirty"
-              label="Save profile"
+              label="Profiel opslaan"
               color="primary"
               unelevated
               :loading="profileSaving"
@@ -102,7 +102,7 @@
               outline
               color="negative"
               icon="delete"
-              label="Delete Pilot"
+              label="Verwijder Atleet"
               no-caps
               @click="confirmDelete = true"
             />
@@ -111,11 +111,11 @@
           <q-dialog v-model="confirmDelete" persistent>
             <q-card class="confirm-delete-card" dark>
               <q-card-section>
-                <div class="text-h6">Piloot verwijderen?</div>
+                <div class="text-h6">Atleet verwijderen?</div>
               </q-card-section>
               <q-card-section class="q-pt-none">
                 <div class="text-body2">
-                  Weet je zeker dat je deze piloot en alle gekoppelde data wilt verwijderen?
+                  Weet je zeker dat je deze atleet en alle gekoppelde data wilt verwijderen?
                   Deze actie kan niet ongedaan worden gemaakt.
                 </div>
               </q-card-section>
@@ -235,7 +235,7 @@ const profileDirty = computed(() => {
 })
 
 const roleOptions = [
-  { label: 'User (Pilot)', value: 'user' },
+  { label: 'User (Atleet)', value: 'user' },
   { label: 'Coach', value: 'coach' },
   { label: 'Admin', value: 'admin' }
 ]
@@ -290,7 +290,7 @@ async function saveProfile() {
     if (localRole.value !== (props.user?.profile?.role ?? 'user')) {
       await updateUserProfile(uid, { role: localRole.value })
     }
-    Notify.create({ type: 'positive', message: 'Profile saved.' })
+    Notify.create({ type: 'positive', message: 'Profiel opgeslagen.' })
     emit('updated')
   } catch (e) {
     Notify.create({ type: 'negative', message: e?.message || 'Failed to save profile' })
@@ -312,7 +312,7 @@ async function injectData() {
     const result = await injectHistory(uid, payload)
     Notify.create({
       type: 'positive',
-      message: `Injected ${result.injected} day(s) of telemetry.`
+      message: `Geïnjecteerd: ${result.injected} dag(en) aan telemetry.`
     })
     emit('updated')
     emit('update:modelValue', false)
@@ -334,7 +334,7 @@ async function handleDeletePilot() {
     await adminStore.deleteUser(uid)
     Notify.create({
       type: 'positive',
-      message: 'Pilot verwijderd.',
+      message: 'Atleet verwijderd.',
     })
     confirmDelete.value = false
     emit('updated')

@@ -33,7 +33,7 @@
         <div>
           <div class="admin-title">SUPER ADMIN • MISSION CONTROL</div>
           <div class="admin-subtitle">
-            Global Telemetry • Squadrons • Pilots
+            Global Telemetry • Teams • Atleten
           </div>
         </div>
         <q-btn
@@ -50,14 +50,14 @@
       <div class="kpi-grid q-mb-lg">
         <q-card class="kpi-card" flat>
           <q-card-section>
-            <div class="kpi-label">TOTAL SQUADRONS</div>
+            <div class="kpi-label">TOTAAL TEAMS</div>
             <div class="kpi-value">{{ adminStore.totalTeams }}</div>
           </q-card-section>
         </q-card>
 
         <q-card class="kpi-card" flat>
           <q-card-section>
-            <div class="kpi-label">ACTIVE PILOTS</div>
+            <div class="kpi-label">ACTIEVE ATLETEN</div>
             <div class="kpi-value">{{ adminStore.totalUsers }}</div>
           </q-card-section>
         </q-card>
@@ -72,11 +72,55 @@
               <span v-else>—</span>
             </div>
             <div class="kpi-caption" v-if="systemCapacity > 0">
-              {{ adminStore.totalUsers }} / {{ systemCapacity }} pilots
+              {{ adminStore.totalUsers }} / {{ systemCapacity }} atleten
             </div>
           </q-card-section>
         </q-card>
       </div>
+
+      <!-- MASTER LIJST -->
+      <q-card class="users-card q-mb-lg" flat>
+        <q-card-section>
+          <div class="row items-center justify-between q-mb-sm">
+            <div>
+              <div class="teams-title">MASTER LIJST</div>
+              <div class="teams-subtitle">
+                Overzicht van alle atleten • zoeken en open Atleet Dossier
+              </div>
+            </div>
+            <q-input
+              v-model="masterSearch"
+              dense
+              outlined
+              dark
+              class="q-ml-md"
+              placeholder="Zoek op naam of e-mail"
+            >
+              <template #prepend>
+                <q-icon name="search" />
+              </template>
+            </q-input>
+          </div>
+          <q-table
+            :rows="masterRosterRows"
+            :columns="masterColumns"
+            row-key="id"
+            flat
+            dark
+            dense
+            class="admin-table"
+            :loading="adminStore.loading"
+            :rows-per-page-options="[10, 25, 50]"
+            @row-click="(evt, row) => { if (!evt.target.closest('.q-btn, .q-select')) openPilotDetail(row) }"
+          >
+            <template #no-data>
+              <div class="text-grey text-caption q-pa-md">
+                Geen atleten gevonden in het systeem.
+              </div>
+            </template>
+          </q-table>
+        </q-card-section>
+      </q-card>
 
       <!-- Ghost Grid: Orphaned Users -->
       <q-card
@@ -88,10 +132,10 @@
           <div class="ghost-header row items-center justify-between q-mb-md">
             <div>
               <div class="ghost-title">
-                ⚠️ UNASSIGNED PILOTS (ACTION REQUIRED)
+                ⚠️ ONGEKOPPELDE ATLETEN (ACTIE VEREIST)
               </div>
               <div class="ghost-subtitle">
-                Pilots without a Constructor assignment are invisible to squad telemetry.
+                Atleten zonder Team-koppeling zijn onzichtbaar in de teamtelemetrie.
               </div>
             </div>
             <div class="ghost-count">
@@ -128,7 +172,7 @@
                   outlined
                   dark
                   options-dense
-                  placeholder="Assign Squad"
+                  placeholder="Koppel aan team"
                   @update:model-value="(val) => onAssignTeam(props.row.id, val)"
                 />
               </q-td>
@@ -136,7 +180,7 @@
 
             <template #no-data>
               <div class="text-grey text-caption q-pa-md">
-                All pilots are assigned. No ghosts in the system.
+                Alle atleten zijn gekoppeld. Geen ghosts in het systeem.
               </div>
             </template>
           </q-table>
@@ -147,9 +191,9 @@
       <q-card class="teams-card" flat>
         <q-card-section class="row items-center justify-between">
           <div class="teams-header">
-            <div class="teams-title">CONSTRUCTOR CONFIGURATION</div>
+            <div class="teams-title">TEAM CONFIGURATIE</div>
             <div class="teams-subtitle">
-              Active Squadrons • Coaches • Codes • Occupancy — click squad row to view pilots
+              Actieve Teams • Coaches • Codes • Bezetting — klik op een teamrij om atleten te zien
             </div>
           </div>
           <q-btn
@@ -175,10 +219,13 @@
             :loading="adminStore.loading || teamsLoading"
             :rows-per-page-options="[5, 10, 25]"
             class="teams-table"
+            @row-click="toggleTeamExpand"
           >
             <template #expand="props">
               <div class="team-members-expand q-pa-md">
-                <div class="text-caption text-grey q-mb-sm">PILOTS — click row to open Pilot File</div>
+                <div class="text-caption text-grey q-mb-sm">
+                  ATLETEN — klik op een rij om het Atleet Dossier te openen
+                </div>
                 <q-table
                   :rows="membersForTeam(props.row.id)"
                   :columns="memberColumns"
@@ -191,7 +238,9 @@
                   @row-click="(evt, row) => { if (!evt.target.closest('.q-btn')) openPilotDetail(row) }"
                 >
                   <template #no-data>
-                    <div class="text-caption text-grey q-pa-sm">No pilots assigned yet.</div>
+                    <div class="text-caption text-grey q-pa-sm">
+                      Nog geen atleten gekoppeld aan dit team.
+                    </div>
                   </template>
                 </q-table>
               </div>
@@ -234,7 +283,7 @@
               <div class="text-grey text-caption q-pa-md">
                 Nog geen teams geregistreerd. Gebruik de knop
                 <span class="text-white">DEPLOY NEW TEAM</span>
-                om een eerste squadron te activeren.
+                om het eerste team te activeren.
               </div>
             </template>
           </q-table>
@@ -419,6 +468,61 @@ const toDateFromFirestore = (value) => {
 // Ghost Grid data
 const orphanedUsers = vueComputed(() => adminStore.orphanedUsers || [])
 
+// MASTER ROSTER (global user list)
+const masterSearch = vueRef('')
+
+const allUsers = vueComputed(() => adminStore.users || [])
+
+const teamNameFor = (teamId) => {
+  if (!teamId) return 'Geen'
+  const teams = adminStore.teams || []
+  const team = teams.find((t) => t.id === teamId)
+  return team?.name || 'Geen'
+}
+
+const masterRosterRows = vueComputed(() => {
+  const term = masterSearch.value.trim().toLowerCase()
+  if (!term) return allUsers.value
+
+  return allUsers.value.filter((u) => {
+    const name =
+      (u.displayName || u.profile?.fullName || '').toString().toLowerCase()
+    const email = (u.email || u.profile?.email || '').toString().toLowerCase()
+    return name.includes(term) || email.includes(term)
+  })
+})
+
+const masterColumns = [
+  {
+    name: 'name',
+    label: 'Naam',
+    field: (row) => row.displayName || row.profile?.fullName || '—',
+    align: 'left',
+    sortable: true,
+  },
+  {
+    name: 'email',
+    label: 'Email',
+    field: (row) => row.email || row.profile?.email || '—',
+    align: 'left',
+    sortable: true,
+  },
+  {
+    name: 'team',
+    label: 'Huidig Team',
+    field: (row) => teamNameFor(row.teamId),
+    align: 'left',
+    sortable: true,
+  },
+  {
+    name: 'role',
+    label: 'Rol',
+    field: (row) => row.profile?.role || 'user',
+    align: 'left',
+    sortable: true,
+  },
+]
+
 const formatJoinedAt = (user) => {
   const raw = user.createdAt || user.joinedAt
   const date = toDateFromFirestore(raw)
@@ -521,6 +625,17 @@ const teamsWithOccupancy = vueComputed(() => {
 
 // Expandable teams: which team rows are expanded (show members)
 const teamsExpanded = vueRef([])
+
+const toggleTeamExpand = (_evt, row) => {
+  const id = row.id
+  if (!id) return
+  const idx = teamsExpanded.value.indexOf(id)
+  if (idx === -1) {
+    teamsExpanded.value = [...teamsExpanded.value, id]
+  } else {
+    teamsExpanded.value = teamsExpanded.value.filter((x) => x !== id)
+  }
+}
 
 const membersForTeam = (teamId) => {
   const users = adminStore.users || []
