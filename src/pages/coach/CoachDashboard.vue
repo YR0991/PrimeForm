@@ -37,7 +37,7 @@
 
         <q-card-section class="q-pa-none">
           <q-table
-            :rows="squadronStore.athletes"
+            :rows="rows"
             :columns="columns"
             row-key="id"
             flat
@@ -46,6 +46,7 @@
             :rows-per-page-options="[10, 25, 50]"
             class="telemetry-table"
             :grid="$q.screen.xs"
+            :hide-header="$q.screen.xs"
             @row-click="onRowClick"
           >
             <!-- PILOT -->
@@ -119,7 +120,12 @@
 
             <!-- Card view for mobile (grid mode) -->
             <template #item="props">
-              <div class="pilot-card" @click="onRowClick(null, props.row)">
+              <q-card
+                class="pilot-card"
+                flat
+                bordered
+                @click="onRowClick(null, props.row)"
+              >
                 <div class="pilot-card-header row items-center justify-between">
                   <div>
                     <div class="pilot-name">
@@ -129,7 +135,11 @@
                       {{ pilotEmail(props.row) }}
                     </div>
                   </div>
-                  <div v-if="telemetry(props.row).hasData" class="directive-badge" :class="directiveClass(telemetry(props.row).directive)">
+                  <div
+                    v-if="telemetry(props.row).hasData"
+                    class="directive-badge"
+                    :class="directiveClass(telemetry(props.row).directive)"
+                  >
                     <span class="mono-text directive-label">
                       {{ telemetry(props.row).directive }}
                     </span>
@@ -141,30 +151,40 @@
 
                 <div class="pilot-card-body">
                   <div class="pilot-card-metric">
-                    <div class="metric-label mono-text">ACWR</div>
-                    <div class="metric-value mono-text" :class="acwrColorClass(telemetry(props.row).acwr)">
-                      {{ telemetry(props.row).acwr != null ? telemetry(props.row).acwr.toFixed(2) : '—' }}
-                    </div>
-                  </div>
-                  <div class="pilot-card-metric">
-                    <div class="metric-label mono-text">FORM</div>
-                    <div class="metric-value mono-text" :class="readinessColorClass(telemetry(props.row).readiness)">
-                      {{ telemetry(props.row).readiness ?? '—' }}
-                    </div>
-                  </div>
-                  <div class="pilot-card-metric">
                     <div class="metric-label mono-text">BIO-CLOCK</div>
                     <div class="metric-value mono-text">
                       {{ cycleDisplay(props.row) }}
                     </div>
                   </div>
+                  <div class="pilot-card-metric">
+                    <div class="metric-label mono-text">READINESS</div>
+                    <div
+                      class="metric-value mono-text"
+                      :class="readinessColorClass(telemetry(props.row).readiness)"
+                    >
+                      {{ telemetry(props.row).readiness != null ? `${telemetry(props.row).readiness}/10` : '—' }}
+                    </div>
+                  </div>
+                  <div class="pilot-card-metric">
+                    <div class="metric-label mono-text">ACWR</div>
+                    <div
+                      class="metric-value mono-text"
+                      :class="acwrColorClass(telemetry(props.row).acwr)"
+                    >
+                      {{
+                        telemetry(props.row).acwr != null
+                          ? telemetry(props.row).acwr.toFixed(2)
+                          : '—'
+                      }}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </q-card>
             </template>
 
             <template #no-data>
-              <div class="text-grey text-caption q-pa-md mono-text">
-                No pilots found for this squadron.
+              <div class="no-pilots-state mono-text">
+                No pilots assigned yet.
               </div>
             </template>
           </q-table>
@@ -185,6 +205,8 @@ import CoachDeepDive from '../../components/CoachDeepDive.vue'
 
 const squadronStore = useSquadronStore()
 const $q = useQuasar()
+
+const rows = computed(() => squadronStore.athletes || [])
 
 const columns = [
   {
@@ -549,5 +571,57 @@ const onRowClick = async (_evt, row) => {
   border-color: rgba(148, 163, 184, 0.7);
   background-color: rgba(30, 64, 175, 0.15);
   color: rgba(209, 213, 219, 0.9);
+}
+
+.pilot-card {
+  background: #111827;
+  border-radius: 6px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  color: #f9fafb;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease,
+    transform 0.1s ease;
+}
+
+.pilot-card:hover {
+  border-color: #fbbf24;
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.3);
+  transform: translateY(-1px);
+}
+
+.pilot-card-header {
+  margin-bottom: 8px;
+}
+
+.pilot-card-body {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pilot-card-metric {
+  flex: 1;
+}
+
+.metric-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(156, 163, 175, 0.9);
+}
+
+.metric-value {
+  margin-top: 2px;
+  font-size: 0.85rem;
+  color: #e5e7eb;
+}
+
+.no-pilots-state {
+  padding: 16px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: rgba(148, 163, 184, 0.9);
 }
 </style>

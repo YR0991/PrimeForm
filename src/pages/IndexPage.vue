@@ -28,7 +28,7 @@
                   HRV <span class="highlight">{{ hrvStatusLabel }}</span> vs 7d.
                 </template>
                 <div v-if="lastDirective.aiMessage" class="directive-message">
-                  {{ lastDirective.aiMessage }}
+                  <div v-html="renderedAiMessage" class="markdown-content" />
                 </div>
               </template>
               <template v-else>
@@ -487,6 +487,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
+import { marked } from 'marked'
 import { useAuthStore } from '../stores/auth'
 import { useDashboardStore } from '../stores/dashboard'
 import CoachDashboard from './coach/CoachDashboard.vue'
@@ -613,6 +614,18 @@ const lastDirective = computed(() => {
     aiMessage: d.aiMessage || null,
     cycleInfo: d.cycleInfo || null,
   }
+})
+
+// Safely render AI markdown advice
+marked.setOptions({
+  mangle: false,
+  headerIds: false,
+})
+
+const renderedAiMessage = computed(() => {
+  const msg = lastDirective.value.aiMessage
+  if (!msg || typeof msg !== 'string') return ''
+  return marked.parse(msg)
 })
 
 const readinessTodayDisplay = computed(() => {
@@ -913,6 +926,53 @@ const formatActivityDate = (raw) => {
   color: rgba(209, 213, 219, 0.95);
   font-size: 0.85rem;
   line-height: 1.4;
+}
+
+.markdown-content {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: rgba(229, 231, 235, 0.95);
+}
+
+.markdown-content h3 {
+  margin: 4px 0 6px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #fbbf24;
+}
+
+.markdown-content p {
+  margin: 2px 0 6px;
+}
+
+.markdown-content strong,
+.markdown-content b {
+  font-weight: 700;
+  color: #f9fafb;
+}
+
+.markdown-content ul {
+  list-style: none;
+  padding-left: 0;
+  margin: 4px 0 6px;
+}
+
+.markdown-content li {
+  position: relative;
+  padding-left: 14px;
+  margin: 2px 0;
+}
+
+.markdown-content li::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 0.55em;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background-color: #fbbf24;
 }
 
 /* Daily Check-in Dialog (Elite Dark — opaque, readable) */
