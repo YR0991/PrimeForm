@@ -1,0 +1,44 @@
+---
+description: PrimeForm Elite Dark Mode — F1/terminal aesthetic, colors, typography, Tailwind & Quasar rules
+alwaysApply: true
+---
+
+# PrimeForm Elite Dark Mode Design System
+
+## 1. Core Philosophy
+- **Vibe:** F1 Telemetry / Bloomberg Terminal / SpaceX Interface.
+- **Anti-Patterns:** NO Material Design shadows, NO rounded buttons (>2px), NO soft gradients.
+- **Key Principle:** Data density over whitespace. Sharp contrast over grey zones.
+
+## 2. Color Palette (Strict)
+### Backgrounds
+- **Global Body:** `#050505` (Deep Black — NOT #000000).
+- **Surface/Card:** `rgba(255, 255, 255, 0.03)` (Glass panel).
+- **Borders:** `rgba(255, 255, 255, 0.08)` (Subtle definition).
+
+### Accents (Functional)
+- **Prime Gold:** `#fbbf24` (Brand, Active States, Key Metrics).
+- **Signal Red:** `#ef4444` (Recovery, Error, Stop).
+- **Signal Green:** `#22c55e` (Push, Success, Go).
+- **Muted Text:** `#9ca3af` (Labels, secondary).
+- **Bright Text:** `#ffffff` (Primary headers).
+
+## 3. Typography
+- **UI / Headings:** `Inter`. Use `uppercase` + `tracking-wide` for headers.
+- **Data / Numbers:** `JetBrains Mono` (fixed width) for: Load, ACWR ratios, timestamps, table data.
+
+## 4. Implementation
+
+### Tailwind (Website)
+- Use tokens or arbitrary values: `bg-[#050505]`, `text-[#fbbf24]`.
+- Gradients: `via-transparent` for vignettes over images.
+- Buttons: `rounded-sm`, `uppercase`, `tracking-widest`, `font-bold`.
+
+### Quasar (App/Admin)
+- Override Material defaults.
+- **Cards (`.q-card`):** `background: rgba(255,255,255,0.03) !important`, `border: 1px solid rgba(255,255,255,0.08)`, `box-shadow: none !important`, `border-radius: 2px`.
+- **Tables:** Headers — `font-family: 'Inter'`, `text-transform: uppercase`, `font-size: 0.75rem`, `color: #9ca3af`. Cells — `font-family: 'JetBrains Mono'`.
+
+## 5. UI Patterns
+- **Status Badges:** Rectangular, 1px border. No rounded pills.
+- **Charts (ApexCharts):** Theme `dark`, background transparent, grid lines `#333`.

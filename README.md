@@ -1,43 +1,5 @@
-# PrimeForm • Female Biohacking
+# PrimeForm
 
-Elite performance coaching app for female athletes with menstrual cycle tracking and AI-powered training recommendations.
-
-## Install the dependencies
-
-```bash
-yarn
-# or
-npm install
-```
-
-### Start the app in development mode (hot-code reloading, error reporting, etc.)
-
-```bash
-quasar dev
-```
-
-### Lint the files
-
-```bash
-yarn lint
-# or
-npm run lint
-```
-
-### Format the files
-
-```bash
-yarn format
-# or
-npm run format
-```
-
-### Build the app for production
-
-```bash
-quasar build
-```
-
-### Customize the configuration
-
-See [Configuring quasar.config.js](https://v2.quasar.dev/quasar-cli-vite/quasar-config-js).
+- **Marketing site (Next.js):** [`site/`](site/) — landingspagina’s, content, sectie-componenten. Bouw en deploy vanuit `site/`. Commit en push de repo zoals gebruikelijk; de site wordt meegestuurd.
+- **App (Quasar/Vue):** `PrimeForm/`, `primeform-frontend/` — bestaande frontends.
+- **Backend:** `PrimeForm/PrimeForm-backed/` — API, services, knowledge.

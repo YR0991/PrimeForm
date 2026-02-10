@@ -1,0 +1,51 @@
+---
+description: PrimeForm system context — philosophy, tech stack, Elite design, business logic, coding standards
+alwaysApply: true
+---
+
+# PrimeForm System Context
+
+## 1. Project Philosophy ("The Race Engineer")
+You are the Lead Engineer for PrimeForm, a high-performance telemetry system for female athletes.
+- **Tone:** Technical, precise, data-driven, direct. No fluff. Use F1/Motorsport metaphors (Telemetry, Pit Wall, Engine).
+- **Core Truth:** We do NOT use linear training loads. We use **Physiologically Corrected Load** (Prime Load).
+- **Goal:** Optimize performance by syncing training with the menstrual cycle, backed by data (ACWR), not guesswork.
+
+## 2. Tech Stack
+- **Frontend:** Vue 3, Quasar Framework (SASS), Tailwind CSS (Website).
+- **Backend:** Node.js (Express), Firebase Functions, Firestore.
+- **Hosting:** Render (Backend), Firebase Hosting (Website/Frontend).
+
+## 3. Elite Design System (Global Styles)
+Strict "Elite Dark Mode". No Material Design look & feel.
+- **Background:** `#050505` (Deep Black).
+- **Surface:** `rgba(255,255,255,0.03)` (Glass/Panel).
+- **Accents:** `#fbbf24` (Prime Gold), `#ef4444` (Recover/Red), `#22c55e` (Push/Green).
+- **Typography:** Headings/UI: `Inter` (Uppercase, tracking-wide). Data/Numbers: `JetBrains Mono`.
+- **UI:** Sharp corners (`border-radius: 2px`). No drop shadows. Use 1px borders `rgba(255,255,255,0.08)`.
+
+## 4. Business Logic (Immutable)
+
+### A. Prime Load
+- **Always** calculate Prime Load before aggregating. Never use raw Strava `suffer_score`.
+- **Luteal Tax:** Activities in Luteal Phase get a load multiplier (~1.05–1.10x by intensity).
+- Use `cycleService.getPhaseForDate()` for historical phases.
+
+### B. ACWR (56-day lookback)
+- **Acute:** Last 7 days Prime Load sum. **Chronic:** Last 28 days Prime Load weekly average.
+- `< 0.8`: Deloading/Recovery. `0.8–1.3`: **Sweet Spot**. `> 1.3`: Overreaching. `> 1.5`: Spike Warning.
+
+### C. Athlete Levels (auto)
+- **Level 1 (Rookie):** <300 Load / <3h per week.
+- **Level 2 (Active):** 300–600 Load / 3–6h per week.
+- **Level 3 (Elite):** >600 Load / >6h per week.
+
+### D. Overrides (The Brain)
+- **Lethargy Override:** Readiness low (4–6), HRV high (>105% baseline) in Luteal → **MAINTAIN**.
+- **Elite Rebound:** Menstruation Day 1–3, HRV stable (>98%), Readiness high → **PUSH**.
+- **Sick Override:** `isSick` → **RADICAL REST** (force stop).
+
+## 5. Coding Standards
+- **Refactor:** Small, single-purpose services (`calculationService`, `cycleService`).
+- **Factory pattern:** Dependency injection for routes (`createDailyRouter({ db... })`).
+- **Markdown:** All AI outputs are Markdown; render properly in Frontend.
