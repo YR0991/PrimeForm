@@ -1,7 +1,15 @@
 <template>
   <q-page class="login-page">
     <div class="login-container">
-      <q-card class="login-card">
+      <!-- Strava return: show spinner until auth ready or 5s timeout -->
+      <q-card v-if="showStravaPending" class="login-card strava-pending-card">
+        <div class="strava-pending-content">
+          <q-spinner color="#fbbf24" size="48px" />
+          <div class="strava-pending-text">Strava koppeling verwerken...</div>
+        </div>
+      </q-card>
+
+      <q-card v-else class="login-card">
         <div class="login-header">
           <div class="logo-text">PRIMEFORM // SYSTEM ACCESS</div>
         </div>
@@ -113,10 +121,11 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
+const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 
@@ -127,6 +136,14 @@ const isRegistering = ref(false)
 const email = ref('')
 const password = ref('')
 const fullName = ref('')
+
+const stravaFallbackToForm = ref(false)
+const stravaTimeoutId = ref(null)
+
+const isStravaReturn = computed(() => route.query?.status === 'strava_connected')
+const showStravaPending = computed(
+  () => isStravaReturn.value && !stravaFallbackToForm.value,
+)
 
 const handleGoogleLogin = async () => {
   if (authStore.loading) return
@@ -159,14 +176,28 @@ const toggleRegistering = () => {
 
 onMounted(() => {
   authStore.init()
+  if (isStravaReturn.value) {
+    stravaTimeoutId.value = window.setTimeout(() => {
+      stravaFallbackToForm.value = true
+    }, 5000)
+  }
+})
+
+onUnmounted(() => {
+  if (stravaTimeoutId.value) {
+    clearTimeout(stravaTimeoutId.value)
+  }
 })
 
 watch(
   () => authStore.isAuthenticated,
   (val) => {
-    if (val) {
-      router.replace('/dashboard')
+    if (!val) return
+    if (route.query?.status === 'strava_connected') {
+      router.replace('/profile')
+      return
     }
+    router.replace('/dashboard')
   },
   { immediate: true },
 )
@@ -378,6 +409,30 @@ watch(
   font-size: 0.72rem;
   color: #ef4444;
   text-align: center;
+}
+
+.strava-pending-card {
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.strava-pending-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+}
+
+.strava-pending-text {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.9);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
 }
 </style>
 
