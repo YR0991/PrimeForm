@@ -7,7 +7,8 @@
 
 const express = require('express');
 const cycleService = require('../services/cycleService');
-const { calculateActivityLoad, calculatePrimeLoad } = require('../services/calculationService');
+const { calculateActivityLoad, calculatePrimeLoad, calculateACWR } = require('../services/calculationService');
+const reportService = require('../services/reportService');
 
 /**
  * @param {object} deps - { db, admin, openai, knowledgeBaseContent, FieldValue }
@@ -557,6 +558,118 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
     } catch (error) {
       console.error('Error saving check-in:', error);
       res.status(500).json({ error: 'An error occurred while saving check-in data.', message: error.message });
+    }
+  });
+
+  // POST /api/update-user-stats — aggregate latest check-in + 28d workouts, write user.stats for coach grid
+  router.post('/update-user-stats', async (req, res) => {
+    try {
+      const { userId } = req.body || {};
+      if (!userId || !db) {
+        return res.status(400).json({ error: 'Missing userId' });
+      }
+
+      const uid = String(userId);
+      const userRef = db.collection('users').doc(uid);
+
+      // 1) Latest check-in: users/{uid}/dailyLogs orderBy timestamp desc limit 1
+      const latestLogSnap = await userRef.collection('dailyLogs').orderBy('timestamp', 'desc').limit(1).get();
+      let currentReadiness = null;
+      let currentRHR = null;
+      if (!latestLogSnap.empty) {
+        const logData = latestLogSnap.docs[0].data() || {};
+        const metrics = logData.metrics || {};
+        currentReadiness = metrics.readiness != null ? Number(metrics.readiness) : null;
+        currentRHR = metrics.rhr != null ? (typeof metrics.rhr === 'object' ? metrics.rhr.current : Number(metrics.rhr)) : null;
+      }
+
+      // 2) Profile + logs (for prime load) and activities
+      const [profileData, logs56, subActivities] = await Promise.all([
+        reportService.getUserProfile(db, uid),
+        reportService.getLast56DaysLogs(db, admin, uid),
+        reportService.getLast56DaysActivities(db, uid)
+      ]);
+
+      // Root activities (manual workouts): activities collection where userId == uid
+      const rootSnap = await db.collection('activities').where('userId', '==', uid).get();
+      const rootActivities = rootSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+      const profile = (profileData && profileData.profile) || {};
+      const cycleData = profile.cycleData && typeof profile.cycleData === 'object' ? profile.cycleData : {};
+      const lastPeriodDate = cycleData.lastPeriodDate || cycleData.lastPeriod || null;
+      const cycleLength = Number(cycleData.avgDuration) || 28;
+      const maxHr = profile.max_heart_rate != null ? Number(profile.max_heart_rate) : null;
+
+      const logByDate = new Map();
+      for (const l of logs56) {
+        const key = (l.date || (l.timestamp ? String(l.timestamp).slice(0, 10) : '') || '').slice(0, 10);
+        if (key) logByDate.set(key, l);
+      }
+
+      function activityDateStr(a) {
+        if (a.date && typeof a.date === 'string') return a.date.slice(0, 10);
+        const raw = a.start_date_local ?? a.start_date;
+        if (raw == null) return '';
+        if (typeof raw === 'string') return raw.slice(0, 10);
+        if (typeof raw.toDate === 'function') return raw.toDate().toISOString().slice(0, 10);
+        if (typeof raw === 'number') return new Date(raw * 1000).toISOString().slice(0, 10);
+        return String(raw).slice(0, 10);
+      }
+
+      const twentyEightDaysAgo = new Date();
+      twentyEightDaysAgo.setDate(twentyEightDaysAgo.getDate() - 28);
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const cutoff28Str = twentyEightDaysAgo.toISOString().slice(0, 10);
+      const cutoff7Str = sevenDaysAgo.toISOString().slice(0, 10);
+
+      const allActivities = [];
+      for (const a of subActivities) {
+        const dateStr = activityDateStr(a);
+        if (!dateStr || dateStr < cutoff28Str) continue;
+        const rawLoad = calculateActivityLoad(a, profile);
+        const phaseInfo = lastPeriodDate && dateStr ? cycleService.getPhaseForDate(lastPeriodDate, cycleLength, dateStr) : { phaseName: null };
+        const readinessScore = logByDate.get(dateStr)?.readiness ?? 10;
+        const avgHr = a.average_heartrate != null ? Number(a.average_heartrate) : null;
+        const primeLoad = calculatePrimeLoad(rawLoad, phaseInfo.phaseName, readinessScore, avgHr, maxHr);
+        allActivities.push({ _dateStr: dateStr, _primeLoad: primeLoad });
+      }
+      for (const a of rootActivities) {
+        const dateStr = activityDateStr(a);
+        if (!dateStr || dateStr < cutoff28Str) continue;
+        const primeLoad = a.prime_load != null ? Number(a.prime_load) : 0;
+        allActivities.push({ _dateStr: dateStr, _primeLoad: primeLoad });
+      }
+
+      const activitiesLast7 = allActivities.filter((a) => a._dateStr >= cutoff7Str);
+      const activitiesLast28 = allActivities.filter((a) => a._dateStr >= cutoff28Str);
+      const acuteLoad = Math.round(activitiesLast7.reduce((s, a) => s + a._primeLoad, 0) * 10) / 10;
+      const chronicLoadRaw = activitiesLast28.reduce((s, a) => s + a._primeLoad, 0);
+      const chronicLoad = chronicLoadRaw / 4;
+      const acwr = calculateACWR(acuteLoad, chronicLoad);
+
+      function directiveFromAcwr(v) {
+        if (!Number.isFinite(v)) return 'MAINTAIN';
+        if (v > 1.5) return 'REST';
+        if (v >= 0.8 && v <= 1.3) return 'PUSH';
+        return 'MAINTAIN';
+      }
+
+      const stats = {
+        currentReadiness: currentReadiness,
+        currentRHR: currentRHR,
+        acuteLoad,
+        chronicLoad: Math.round(chronicLoad * 10) / 10,
+        acwr: Math.round(acwr * 100) / 100,
+        directive: directiveFromAcwr(acwr)
+      };
+
+      await userRef.set({ stats }, { merge: true });
+
+      res.json({ success: true, data: { userId: uid, stats } });
+    } catch (err) {
+      console.error('update-user-stats error:', err);
+      res.status(500).json({ error: 'Failed to update user stats', message: err.message });
     }
   });
 

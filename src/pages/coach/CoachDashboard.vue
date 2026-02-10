@@ -303,10 +303,21 @@ const cycleDisplay = (row) => {
 }
 
 const telemetry = (row) => {
-  const realAcwr = typeof row.acwr === 'number' ? row.acwr : Number(row.acwr)
+  const stats = row.stats || {}
+  const realAcwr =
+    typeof stats.acwr === 'number'
+      ? stats.acwr
+      : typeof row.acwr === 'number'
+        ? row.acwr
+        : Number(row.acwr)
   const realReadiness =
-    typeof row.readiness === 'number' ? row.readiness : Number(row.readiness)
-  const realDirective = row.directive || row.status || row.recommendation?.status
+    typeof stats.currentReadiness === 'number'
+      ? stats.currentReadiness
+      : typeof row.readiness === 'number'
+        ? row.readiness
+        : Number(row.readiness)
+  const realDirective =
+    stats.directive || row.directive || row.status || row.recommendation?.status
 
   const hasReal =
     (Number.isFinite(realAcwr) && realAcwr > 0) ||

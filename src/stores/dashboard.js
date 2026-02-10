@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { auth, db } from 'boot/firebase'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { API_URL } from '../config/api.js'
+import { updateUserStats } from '../services/telemetryService'
 import { useAuthStore } from './auth'
 import { watch } from 'vue'
 
@@ -207,6 +208,10 @@ export const useDashboardStore = defineStore('dashboard', {
         }
       }
 
+      updateUserStats(uid).catch((err) =>
+        console.warn('updateUserStats after manual workout:', err)
+      )
+
       return {
         id: docRef.id,
         ...payload,
@@ -322,6 +327,10 @@ export const useDashboardStore = defineStore('dashboard', {
       if (menstruationStarted) {
         await authStore.fetchUserProfile(authStore.activeUid || user.uid)
       }
+
+      updateUserStats(authStore.activeUid || user.uid).catch((err) =>
+        console.warn('updateUserStats after check-in:', err)
+      )
 
       return data
     },
