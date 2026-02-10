@@ -20,7 +20,11 @@ export const useAdminStore = defineStore('admin', {
   getters: {
     totalUsers: (state) => state.users.length,
     totalTeams: (state) => state.teams.length,
-    orphanedUsers: (state) => state.users.filter((u) => !u.teamId),
+    orphanedUsers: (state) =>
+      state.users.filter((u) => {
+        const role = u.profile?.role ?? u.role ?? 'user'
+        return !u.teamId && role !== 'admin' && role !== 'coach'
+      }),
     systemCapacity: (state) =>
       state.teams.reduce((sum, team) => {
         const limit = Number(team.memberLimit)

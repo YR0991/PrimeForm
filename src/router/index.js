@@ -98,7 +98,7 @@ export default defineRouter(function (/* { store, ssrContext } */) {
     if (to.path === '/admin' || to.path.startsWith('/admin')) return true
     if (to.path === '/coach') return true
 
-    // Onboarding route: coaches/admins/Shadow Mode skip it; redirect completed athletes away
+    // Onboarding route: admins and coaches NEVER see intake (even if onboardingCompleted is false)
     if (to.path === '/onboarding') {
       if (!authStore.isAuthenticated) {
         return {
@@ -106,7 +106,7 @@ export default defineRouter(function (/* { store, ssrContext } */) {
           query: { redirect: to.fullPath },
         }
       }
-      if (authStore.isCoach || authStore.isAdmin || authStore.isImpersonating) {
+      if (authStore.isAdmin || authStore.isCoach || authStore.isImpersonating) {
         return { path: '/dashboard' }
       }
       if (authStore.isOnboardingComplete) {
