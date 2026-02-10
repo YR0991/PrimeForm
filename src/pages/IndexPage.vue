@@ -108,7 +108,18 @@
 
             <!-- Widget 2: LOAD METER -->
             <div class="widget load-meter">
-              <div class="widget-title">THE LOAD METER</div>
+              <div class="widget-title">
+                THE LOAD METER
+                <q-icon
+                  name="help_outline"
+                  size="16px"
+                  class="q-ml-xs"
+                >
+                  <q-tooltip anchor="top middle" self="bottom middle" class="mono">
+                    De verhouding tussen je belasting van de afgelopen 7 dagen versus 28 dagen.
+                  </q-tooltip>
+                </q-icon>
+              </div>
               <div class="load-content">
                 <div class="acwr-label mono">ACWR</div>
                 <div class="acwr-value mono">
@@ -175,12 +186,12 @@
               :rhr-baseline28d="telemetry.raw?.rhr_baseline_28d ?? null"
             />
 
-            <!-- Widget 2b: MANUAL DATA INJECTION (primary when no Strava) -->
+            <!-- Widget 2b: Handmatige workout toevoegen (primary when no Strava) -->
             <div
               v-if="showManualInjectionPrimary"
               class="widget manual-injection"
             >
-              <div class="widget-title">MANUAL DATA INJECTION</div>
+              <div class="widget-title">HANDMATIG WORKOUT TOEVOEGEN</div>
               <div class="manual-body mono">
                 <div class="manual-row">
                   <span class="manual-label">DURATION (MIN)</span>
@@ -236,7 +247,7 @@
             </div>
 
             <!-- Widget 3: RECENT TELEMETRY -->
-            <div class="widget telemetry-feed">
+              <div class="widget telemetry-feed">
               <div class="telemetry-header">
                 <div class="widget-title">RECENT TELEMETRY</div>
                 <q-btn
@@ -244,7 +255,7 @@
                   dense
                   flat
                   class="manual-toggle-btn mono"
-                  label="Add Manual"
+                  label="Handmatig workout toevoegen"
                   @click="manualPanelOpen = !manualPanelOpen"
                 />
               </div>
@@ -371,14 +382,14 @@
       <q-dialog v-model="checkinDialog" persistent class="checkin-dialog-dark">
         <q-card class="checkin-dialog-card" dark>
           <q-card-section class="checkin-dialog-section text-white">
-            <div class="widget-title checkin-dialog-title">DAILY CHECK-IN</div>
+            <div class="checkin-dialog-title">DAILY CHECK-IN</div>
             <div class="mono checkin-subtitle text-white">
               Sync je readiness en bio-signalen voor vandaag.
             </div>
           </q-card-section>
           <q-card-section class="q-pt-none checkin-dialog-section text-white">
             <div class="checkin-field">
-              <div class="field-label mono">READINESS (1–10)</div>
+              <div class="field-label mono">TRAININGSBEREIDHEID (1–10)</div>
               <div class="row items-center q-gutter-sm">
                 <q-slider
                   v-model.number="checkinReadiness"
@@ -391,12 +402,26 @@
                   class="col"
                 />
                 <span class="mono readiness-slider-value">
-                  {{ checkinReadiness }}/10
+                  {{ checkinReadiness }}/10 — {{ readinessLabelFor(checkinReadiness) }}
                 </span>
               </div>
               <div class="mono readiness-hints">
-                <span>1 = Lethargic</span>
-                <span>10 = Peak</span>
+                <div class="readiness-scale-row">
+                  <span class="readiness-scale-label">1–3:</span>
+                  <span class="readiness-scale-text">Herstel / Buiten gebruik</span>
+                </div>
+                <div class="readiness-scale-row">
+                  <span class="readiness-scale-label">4–6:</span>
+                  <span class="readiness-scale-text">Lage energie / Matig</span>
+                </div>
+                <div class="readiness-scale-row">
+                  <span class="readiness-scale-label">7–8:</span>
+                  <span class="readiness-scale-text">Stabiel / Heel goed</span>
+                </div>
+                <div class="readiness-scale-row">
+                  <span class="readiness-scale-label">9–10:</span>
+                  <span class="readiness-scale-text">Topvorm / Onstuitbaar</span>
+                </div>
               </div>
             </div>
 
@@ -581,7 +606,10 @@ const acwr = computed(() => {
 })
 
 const acwrDisplay = computed(() => {
-  return acwr.value != null ? acwr.value.toFixed(2) : '--'
+  if (acwr.value == null) return '--'
+  const v = Number(acwr.value)
+  if (!Number.isFinite(v) || v === 0) return '--'
+  return v.toFixed(2)
 })
 
 const loadZone = computed(() => {
@@ -591,7 +619,11 @@ const loadZone = computed(() => {
 })
 
 const loadStatusDisplay = computed(() => {
-  return dashboardStore.loadStatus || 'NO DATA'
+  const v = acwr.value
+  if (v == null || !Number.isFinite(Number(v)) || Number(v) === 0) {
+    return 'GEEN DATA'
+  }
+  return dashboardStore.loadStatus || 'GEEN DATA'
 })
 
 // --- Pre-Race Briefing / Readiness Gauge ---
@@ -698,6 +730,22 @@ const canSubmitCheckin = computed(() => {
   return true
 })
 
+function readinessLabelFor(vRaw) {
+  const v = Number(vRaw)
+  if (!Number.isFinite(v)) return ''
+  if (v === 10) return 'Onstuitbaar'
+  if (v === 9) return 'Topvorm'
+  if (v === 8) return 'Heel goed'
+  if (v === 7) return 'Stabiel'
+  if (v === 6) return 'Voldoende'
+  if (v === 5) return 'Matig'
+  if (v === 4) return 'Lage energie'
+  if (v === 3) return 'Herstel nodig'
+  if (v === 2) return 'Overbelast'
+  if (v === 1) return 'Buiten gebruik'
+  return ''
+}
+
 const handleSubmitCheckin = async () => {
   if (!canSubmitCheckin.value || checkinSubmitting.value) return
   try {
@@ -710,6 +758,7 @@ const handleSubmitCheckin = async () => {
       menstruationStarted: checkinMenstruationStarted.value,
       isSick: checkinIsSick.value,
     })
+    await dashboardStore.fetchUserDashboard().catch(() => {})
     $q.notify({
       type: 'positive',
       color: 'amber-5',
@@ -994,7 +1043,12 @@ const formatActivityDate = (raw) => {
 }
 
 .checkin-dialog-title {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.9rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
   color: #fbbf24 !important;
+  margin-bottom: 4px;
 }
 
 .checkin-dialog-card .field-label {
@@ -1036,15 +1090,38 @@ const formatActivityDate = (raw) => {
 }
 
 .checkin-dialog-card .checkin-subtitle {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: rgba(255, 255, 255, 0.85);
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .readiness-slider-value {
   min-width: 48px;
   color: #fbbf24;
   font-size: 0.85rem;
+}
+
+.readiness-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.7rem;
+  color: rgba(156, 163, 175, 0.9);
+}
+
+.readiness-scale-row {
+  display: flex;
+  gap: 4px;
+}
+
+.readiness-scale-label {
+  width: 56px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.readiness-scale-text {
+  flex: 1;
 }
 
 .checkin-toggles {

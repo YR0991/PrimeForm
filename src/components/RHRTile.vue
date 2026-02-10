@@ -1,6 +1,6 @@
 <template>
   <div class="widget rhr-tile">
-    <div class="widget-title">RHR</div>
+    <div class="widget-title">RUSTHARTSLAG</div>
     <div class="rhr-content mono">
       <div class="rhr-value">{{ rhrDisplay }}</div>
       <div v-if="baselineDelta !== null" class="rhr-badge" :class="badgeClass">
