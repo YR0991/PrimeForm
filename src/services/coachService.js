@@ -60,15 +60,14 @@ export async function getCoachSquad() {
 
 /**
  * Generate AI weekly report for an athlete.
- * Requires admin/coach email in localStorage (adminEmail or coachEmail).
+ * Requires admin/coach email in localStorage (admin_email).
  * @param {string} athleteId - Firestore user document ID
  * @returns {Promise<{ stats: string, message: string }>}
  */
 export async function fetchWeekReport(athleteId) {
-  const adminEmail = localStorage.getItem('adminEmail') ?? ''
-  const coachEmail = localStorage.getItem('coachEmail') ?? ''
+  const adminEmail = localStorage.getItem('admin_email') ?? ''
 
-  if (!adminEmail && !coachEmail) {
+  if (!adminEmail) {
     throw new Error('Coach email not found. Log in via Admin first.')
   }
 
@@ -79,15 +78,13 @@ export async function fetchWeekReport(athleteId) {
       {
         headers: {
           'x-admin-email': adminEmail,
-          'x-coach-email': coachEmail,
         },
       }
     )
     return res.data
   } catch (err) {
     if (err.response?.status === 403) {
-      localStorage.removeItem('adminEmail')
-      localStorage.removeItem('coachEmail')
+      localStorage.removeItem('admin_email')
       throw new Error('Unauthorized: Admin or Coach access required')
     }
     const msg = err.response?.data?.error || err.response?.data?.message || err.message

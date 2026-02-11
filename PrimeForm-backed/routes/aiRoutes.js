@@ -6,7 +6,12 @@
 const express = require('express');
 const aiService = require('../services/aiService');
 
-const ADMIN_EMAIL = 'yoramroemersma50@gmail.com';
+/** Basic email format validation (RFC 5322 simplified). */
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+function isValidEmail(str) {
+  return typeof str === 'string' && EMAIL_REGEX.test(str.trim());
+}
 
 /**
  * Middleware: require Admin or Coach.
@@ -15,20 +20,22 @@ const ADMIN_EMAIL = 'yoramroemersma50@gmail.com';
 function requireAdminOrCoach(req, res, next) {
   console.log('Auth Check Headers:', req.headers);
 
-  const email = (
+  const raw =
     req.headers['x-admin-email'] ||
     req.headers['x-coach-email'] ||
     (req.body && (req.body.adminEmail || req.body.coachEmail)) ||
-    ''
-  ).trim();
+    '';
+  const email = raw.trim();
 
-  if (email !== ADMIN_EMAIL) {
+  if (!isValidEmail(email)) {
     return res.status(403).json({
       success: false,
       error: 'Unauthorized: Admin or Coach access required',
       code: 'ADMIN_OR_COACH_REQUIRED'
     });
   }
+
+  console.log('Toegang verleend voor: ' + email);
   next();
 }
 
