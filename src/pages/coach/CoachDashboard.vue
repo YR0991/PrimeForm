@@ -64,7 +64,7 @@
             <!-- BIO-CLOCK -->
             <template #body-cell-cyclePhase="props">
               <q-td :props="props" class="text-center">
-                <div class="mono-text">
+                <div class="mono-text" :class="bioClockColorClass(props.row)">
                   {{ cycleDisplay(props.row) }}
                 </div>
               </q-td>
@@ -284,6 +284,12 @@ const pilotName = (row) =>
 const pilotEmail = (row) => row.email || row.profile?.email || '—'
 
 const cycleDisplay = (row) => {
+  const bc = row.stats?.bioClock
+  if (bc && bc.phase && bc.day != null) {
+    return `${bc.phase} (Dag ${bc.day})`
+  }
+
+  // Fallback to legacy cycleData if present
   const cd = row.cycleData || row.profile?.cycleData || {}
   const day = cd.cycleDay ?? cd.day ?? null
   const phaseRaw = cd.currentPhase || cd.phase || ''
@@ -300,6 +306,14 @@ const cycleDisplay = (row) => {
   if (!day) return phaseCode
   if (!phaseCode) return `Day ${day}`
   return `Day ${day} • ${phaseCode}`
+}
+
+const bioClockColorClass = (row) => {
+  const color = row.stats?.bioClock?.color
+  if (color === 'negative') return 'text-negative'
+  if (color === 'positive') return 'text-positive'
+  if (color === 'warning') return 'text-warning'
+  return 'text-grey-6'
 }
 
 const telemetry = (row) => {

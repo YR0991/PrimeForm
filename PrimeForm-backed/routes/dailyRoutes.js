@@ -655,13 +655,50 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
         return 'MAINTAIN';
       }
 
+      // 3) BioClock (simple phase buckets) for coach grid
+      let bioClock = null;
+      const gender = (profile.gender || '').toString().toLowerCase();
+      if (gender === 'female' && lastPeriodDate && Number.isFinite(cycleLength) && cycleLength > 0) {
+        try {
+          const last = new Date(lastPeriodDate);
+          const today = new Date();
+          const startLast = new Date(last.getFullYear(), last.getMonth(), last.getDate());
+          const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+          const diffMs = startToday - startLast;
+          const daysSinceLastPeriod = Math.max(0, Math.floor(diffMs / (24 * 60 * 60 * 1000)));
+          const cycleDay = (daysSinceLastPeriod % cycleLength) + 1;
+
+          let phaseLabel = 'Luteaal';
+          let color = 'warning';
+          if (cycleDay >= 1 && cycleDay <= 5) {
+            phaseLabel = 'Menstruatie';
+            color = 'negative';
+          } else if (cycleDay >= 6 && cycleDay <= 12) {
+            phaseLabel = 'Folliculair';
+            color = 'positive';
+          } else if (cycleDay >= 13 && cycleDay <= 15) {
+            phaseLabel = 'Ovulatie';
+            color = 'positive';
+          }
+
+          bioClock = {
+            phase: phaseLabel,
+            day: cycleDay,
+            color,
+          };
+        } catch (e) {
+          console.error('BioClock calculation failed for user', uid, e);
+        }
+      }
+
       const stats = {
         currentReadiness: currentReadiness,
         currentRHR: currentRHR,
         acuteLoad,
         chronicLoad: Math.round(chronicLoad * 10) / 10,
         acwr: Math.round(acwr * 100) / 100,
-        directive: directiveFromAcwr(acwr)
+        directive: directiveFromAcwr(acwr),
+        bioClock,
       };
 
       await userRef.set({ stats }, { merge: true });
