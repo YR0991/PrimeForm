@@ -4,6 +4,7 @@
 
 import axios from 'axios'
 import { API_URL } from '../config/api.js'
+import { useAuthStore } from '../stores/auth.js'
 
 /**
  * Get squadron data for coach dashboard.
@@ -59,15 +60,29 @@ export async function getCoachSquad() {
 }
 
 /**
+ * Get first available email: localStorage (admin_email, coach_email, user_email) or auth store.
+ */
+function getEmailForRequest() {
+  const fromStorage =
+    (localStorage.getItem('admin_email') || '').trim() ||
+    (localStorage.getItem('coach_email') || '').trim() ||
+    (localStorage.getItem('user_email') || '').trim()
+  if (fromStorage) return fromStorage
+
+  const authStore = useAuthStore()
+  return (authStore.user?.email || '').trim()
+}
+
+/**
  * Generate AI weekly report for an athlete.
- * Requires admin/coach email in localStorage (admin_email).
+ * Uses any available email: admin_email, coach_email, user_email (localStorage) or auth store.
  * @param {string} athleteId - Firestore user document ID
  * @returns {Promise<{ stats: string, message: string }>}
  */
 export async function fetchWeekReport(athleteId) {
-  const adminEmail = localStorage.getItem('admin_email') ?? ''
+  const email = getEmailForRequest()
 
-  if (!adminEmail) {
+  if (!email) {
     throw new Error('Coach email not found. Log in via Admin first.')
   }
 
@@ -77,7 +92,7 @@ export async function fetchWeekReport(athleteId) {
       { athleteId },
       {
         headers: {
-          'x-admin-email': adminEmail,
+          'x-admin-email': email,
         },
       }
     )
@@ -85,6 +100,8 @@ export async function fetchWeekReport(athleteId) {
   } catch (err) {
     if (err.response?.status === 403) {
       localStorage.removeItem('admin_email')
+      localStorage.removeItem('coach_email')
+      localStorage.removeItem('user_email')
       throw new Error('Unauthorized: Admin or Coach access required')
     }
     const msg = err.response?.data?.error || err.response?.data?.message || err.message

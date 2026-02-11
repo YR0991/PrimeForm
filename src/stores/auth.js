@@ -70,6 +70,20 @@ export const useAuthStore = defineStore('auth', {
         }
         : null
 
+      const email = firebaseUser?.email ?? ''
+      if (email) {
+        localStorage.setItem('user_email', email)
+        const role = profileData?.role ?? profileData?.profile?.role
+        if (role === 'coach') {
+          localStorage.setItem('coach_email', email)
+        } else {
+          localStorage.removeItem('coach_email')
+        }
+      } else {
+        localStorage.removeItem('user_email')
+        localStorage.removeItem('coach_email')
+      }
+
       const rootRole = profileData?.role
       const profileRole = profileData?.profile?.role
       this.role = rootRole ?? profileRole ?? null
@@ -271,6 +285,8 @@ export const useAuthStore = defineStore('auth', {
         this.role = null
         this.teamId = null
         this.impersonatingUser = null
+        localStorage.removeItem('user_email')
+        localStorage.removeItem('coach_email')
       } finally {
         this.loading = false
       }
