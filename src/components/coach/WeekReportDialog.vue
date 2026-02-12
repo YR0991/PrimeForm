@@ -3,12 +3,12 @@
     :model-value="modelValue"
     persistent
     class="week-report-dialog"
-    @update:model-value="(v) => $emit('update:modelValue', v)"
+    @update:model-value="(v) => emit('update:modelValue', v)"
   >
     <q-card class="week-report-card" flat dark>
       <q-card-section class="week-report-header">
         <div class="week-report-title">WEEKRAPPORT</div>
-        <q-btn flat round icon="close" color="grey" @click="$emit('update:modelValue', false)" />
+        <q-btn flat round icon="close" color="grey" @click="emit('update:modelValue', false)" />
       </q-card-section>
 
       <q-card-section v-if="loading" class="week-report-loading">
@@ -62,7 +62,7 @@
           @click="doCopy"
         />
         <q-space />
-        <q-btn flat label="Sluiten" color="grey" @click="$emit('update:modelValue', false)" />
+        <q-btn flat label="Sluiten" color="grey" @click="emit('update:modelValue', false)" />
       </q-card-actions>
     </q-card>
   </q-dialog>
