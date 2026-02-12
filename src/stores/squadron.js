@@ -217,7 +217,7 @@ export const useSquadronStore = defineStore('squadron', {
         const copy = JSON.parse(JSON.stringify(row))
         copy.activities = []
         this.selectedPilot = copy
-      } catch (_) {
+      } catch {
         this.selectedPilot = {
           id: row.id || row.uid,
           name: row.displayName || row.name || row.email || '—',
