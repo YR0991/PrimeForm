@@ -196,6 +196,9 @@
           </q-table>
         </q-card-section>
       </q-card>
+
+      <!-- Detail modal: opent bij klik op rij via onRowClick -> fetchPilotDeepDive -->
+      <CoachDeepDive />
     </div>
   </q-page>
 </template>
@@ -204,6 +207,7 @@
 import { computed, onMounted as onMountedHook } from 'vue'
 import { Notify, useQuasar } from 'quasar'
 import { useSquadronStore } from '../../stores/squadron'
+import CoachDeepDive from '../../components/CoachDeepDive.vue'
 
 const squadronStore = useSquadronStore()
 const $q = useQuasar()
