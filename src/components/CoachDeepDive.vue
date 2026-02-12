@@ -13,16 +13,25 @@
               [{{ directiveLabel }}]
             </div>
             <div class="compliance-wrap row items-center q-gutter-xs">
-              <span class="compliance-label">7-d Compliance:</span>
+              <span class="compliance-label">Consistentie:</span>
               <div class="compliance-bars row no-wrap q-gutter-x-xs">
                 <div
-                  v-for="i in 7"
-                  :key="i"
+                  v-for="(filled, idx) in (pilot?.complianceDays ?? Array(7).fill(false))"
+                  :key="idx"
                   class="compliance-bar"
-                  :class="{ filled: i <= (pilot?.complianceLast7 ?? 0) }"
+                  :class="{ filled }"
                 />
               </div>
-              <span class="compliance-value mono-text">{{ pilot?.complianceLast7 ?? 0 }}/7</span>
+              <span
+                class="compliance-value mono-text"
+                :class="{ 'compliance-full': (pilot?.complianceLast7 ?? 0) === 7 }"
+              >
+                {{ pilot?.complianceLast7 ?? 0 }}/7
+                <template v-if="(pilot?.complianceLast7 ?? 0) === 7"> CONSISTENTIE</template>
+              </span>
+              <span v-if="(pilot?.currentStreak ?? 0) > 7" class="streak-badge mono-text">
+                🔥 {{ pilot.currentStreak }} DAGEN STREAK
+              </span>
             </div>
           </div>
         </q-card-section>
@@ -55,12 +64,12 @@
                 </div>
                 <div class="chart-sub">Opbouw t.o.v. chronische load</div>
               </div>
-              <div class="chart-tile">
+              <div class="chart-tile chart-tile-cxc">
                 <div class="chart-title">CxC (Cycle-over-Cycle)</div>
-                <div v-if="ghostComparison.length" class="apex-wrap">
+                <div v-if="ghostComparison.length" class="apex-wrap apex-wrap-cxc">
                   <VueApexCharts
                     type="line"
-                    height="120"
+                    height="450"
                     :options="cxcChartOptions"
                     :series="cxcSeries"
                   />
@@ -287,18 +296,122 @@ const cxcSeries = computed(() => {
   ]
 })
 
-const cxcChartOptions = computed(() => ({
-  chart: { type: 'line', background: 'transparent', toolbar: { show: false } },
-  stroke: { width: 2 },
-  colors: ['#22c55e', '#9ca3af'],
-  xaxis: {
-    categories: ghostComparison.value.map((r) => (r.date || '').slice(5)),
-    labels: { style: { colors: '#9ca3af', fontSize: '10px' } }
-  },
-  yaxis: { labels: { style: { colors: '#9ca3af' } } },
-  grid: { borderColor: 'rgba(255,255,255,0.06)' },
-  legend: { position: 'top', fontSize: '11px' }
-}))
+const cxcChartOptions = computed(() => {
+  const categories = ghostComparison.value.map((r) => (r.date || '').slice(5))
+  const rows = ghostComparison.value
+
+  // Phase markers: vertical line at first cycleDay >= 15 (Luteal start), label at top
+  let lutealCategory = null
+  for (let i = 0; i < rows.length; i++) {
+    const d = rows[i].cycleDay
+    if (d != null && d >= 15) {
+      lutealCategory = categories[i] ?? ''
+      break
+    }
+  }
+  const follicularCategory = categories[0] ?? ''
+  const xaxisAnnotations = []
+  if (lutealCategory != null && lutealCategory !== follicularCategory) {
+    xaxisAnnotations.push({
+      x: lutealCategory,
+      borderColor: 'rgba(255, 255, 255, 0.2)',
+      strokeDashArray: 2,
+      label: {
+        borderColor: '#fbbf24',
+        style: {
+          background: '#050505',
+          color: '#ffffff',
+          fontSize: '10px',
+          fontWeight: 700,
+          fontFamily: 'Inter, sans-serif'
+        },
+        text: 'LUTEAL',
+        position: 'top',
+        offsetY: 0
+      }
+    })
+    xaxisAnnotations.push({
+      x: follicularCategory,
+      borderColor: 'transparent',
+      label: {
+        borderColor: '#fbbf24',
+        style: {
+          background: '#050505',
+          color: '#ffffff',
+          fontSize: '10px',
+          fontWeight: 700,
+          fontFamily: 'Inter, sans-serif'
+        },
+        text: 'FOLLICULAR',
+        position: 'top',
+        offsetY: 0
+      }
+    })
+  }
+
+  return {
+    chart: { type: 'line', background: 'transparent', toolbar: { show: false } },
+    stroke: {
+      curve: 'smooth',
+      width: [3, 2],
+      dashArray: [0, 6]
+    },
+    colors: ['#fbbf24', 'rgba(255, 255, 255, 0.2)'],
+    plotOptions: {
+      line: { dataLabels: { enabled: false } }
+    },
+    markers: {
+      size: 4,
+      hover: { size: 7, sizeOffset: 3 }
+    },
+    xaxis: {
+      categories,
+      labels: {
+        style: {
+          colors: '#9ca3af',
+          fontSize: '11px',
+          fontWeight: 600,
+          fontFamily: 'Inter, sans-serif'
+        }
+      },
+      axisBorder: { show: true, color: 'rgba(255, 255, 255, 0.08)' },
+      axisTicks: { show: true, color: 'rgba(255, 255, 255, 0.08)' }
+    },
+    yaxis: {
+      labels: {
+        style: {
+          colors: '#9ca3af',
+          fontSize: '11px',
+          fontWeight: 600,
+          fontFamily: 'Inter, sans-serif'
+        }
+      },
+      axisBorder: { show: true, color: 'rgba(255, 255, 255, 0.08)' },
+      axisTicks: { show: true, color: 'rgba(255, 255, 255, 0.08)' }
+    },
+    grid: {
+      borderColor: 'rgba(255, 255, 255, 0.05)',
+      strokeDashArray: 1,
+      xaxis: { lines: { show: true } },
+      yaxis: { lines: { show: true } }
+    },
+    legend: {
+      position: 'top',
+      fontSize: '11px',
+      fontWeight: 600,
+      fontFamily: 'Inter, sans-serif',
+      labels: { colors: '#9ca3af' },
+      itemMargin: { horizontal: 12 }
+    },
+    annotations: xaxisAnnotations.length ? { xaxis: xaxisAnnotations } : undefined,
+    tooltip: {
+      theme: 'dark',
+      cssClass: 'cxc-tooltip',
+      style: { fontSize: '12px', fontFamily: 'JetBrains Mono, monospace' },
+      y: { formatter: (v) => (v != null ? String(v) : '—') }
+    }
+  }
+})
 
 function onNotesInput() {
   if (notesDebounceTimer) clearTimeout(notesDebounceTimer)
@@ -454,6 +567,18 @@ watch(
   color: q.$prime-gray;
   margin-left: 4px;
 }
+.compliance-value.compliance-full {
+  color: q.$prime-gold;
+  font-weight: 700;
+}
+.streak-badge {
+  font-size: 0.65rem;
+  color: q.$prime-gold;
+  margin-left: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
 
 .cockpit-body {
   padding: 16px 20px;
@@ -491,6 +616,11 @@ watch(
 }
 .chart-sub { font-size: 0.65rem; color: q.$prime-gray; margin-top: 2px; }
 .apex-wrap { min-height: 100px; }
+.chart-tile-cxc { padding: 12px 14px; }
+.apex-wrap-cxc {
+  min-height: 450px;
+  width: 100%;
+}
 .chart-empty { font-size: 0.75rem; color: q.$prime-gray; padding: 8px 0; }
 .balance-value { font-size: 1.25rem; font-weight: 600; }
 
@@ -571,4 +701,18 @@ watch(
 }
 
 .mono-text { font-family: q.$mono-font; }
+
+/* CxC tooltip: dark bg, white text, gold border (PrimeForm telemetry) */
+:deep(.cxc-tooltip.apexcharts-tooltip) {
+  background: #050505 !important;
+  border: 1px solid q.$prime-gold !important;
+  color: #ffffff !important;
+  font-family: q.$mono-font;
+  padding: 8px 12px;
+  border-radius: 2px;
+}
+:deep(.cxc-tooltip.apexcharts-tooltip .apexcharts-tooltip-title),
+:deep(.cxc-tooltip.apexcharts-tooltip .apexcharts-tooltip-series-group) {
+  color: #ffffff !important;
+}
 </style>

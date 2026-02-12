@@ -51,6 +51,55 @@ function activityTimeStr(a) {
 }
 
 /**
+ * Rolling 7-day compliance: unique days with at least one log in the last 7 days (today + 6 days back).
+ * @param {Array<{ date?: string }>} logs - history_logs (each with .date YYYY-MM-DD)
+ * @returns {{ count: number, complianceDays: boolean[] }} count (max 7), and 7 booleans [oldest..today]
+ */
+function getRollingCompliance(logs) {
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  const windowStart = new Date(now);
+  windowStart.setDate(windowStart.getDate() - 6);
+  const windowStartStr = windowStart.toISOString().slice(0, 10);
+
+  const inWindow = (logs || []).filter((h) => {
+    const d = (h.date || '').slice(0, 10);
+    return d >= windowStartStr && d <= todayStr;
+  });
+  const uniqueDates = new Set(inWindow.map((h) => (h.date || '').slice(0, 10)));
+  const count = Math.min(uniqueDates.size, 7);
+
+  const complianceDays = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - (6 - i));
+    complianceDays.push(uniqueDates.has(d.toISOString().slice(0, 10)));
+  }
+  return { count, complianceDays };
+}
+
+/**
+ * Current streak: consecutive days with at least one log, counting backwards from today.
+ * @param {Array<{ date?: string }>} logs - history_logs
+ * @returns {number}
+ */
+function getCurrentStreak(logs) {
+  const datesSet = new Set(
+    (logs || []).filter((h) => h.date).map((h) => String(h.date).slice(0, 10))
+  );
+  const today = new Date();
+  let streak = 0;
+  const d = new Date(today);
+  while (true) {
+    const dStr = d.toISOString().slice(0, 10);
+    if (!datesSet.has(dStr)) break;
+    streak += 1;
+    d.setDate(d.getDate() - 1);
+  }
+  return streak;
+}
+
+/**
  * Fetch squadron data for all users.
  * @param {FirebaseFirestore.Firestore} db
  * @param {FirebaseAdmin.firestore} admin - for Timestamp
@@ -315,11 +364,8 @@ async function getAthleteDetail(db, admin, athleteId) {
   const acwr = stats?.acwr != null && Number.isFinite(stats.acwr) ? stats.acwr : null;
   const directive = acwr != null ? acwrToDirective(acwr) : 'Niet genoeg data';
 
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const sevenDaysAgoStr = sevenDaysAgo.toISOString().slice(0, 10);
-  const complianceLogs = (stats?.history_logs || []).filter((h) => h.date && h.date >= sevenDaysAgoStr);
-  const complianceLast7 = complianceLogs.length;
+  const { count: complianceLast7, complianceDays } = getRollingCompliance(stats?.history_logs || []);
+  const currentStreak = getCurrentStreak(stats?.history_logs || []);
 
   return {
     id: athleteId,
@@ -339,6 +385,8 @@ async function getAthleteDetail(db, admin, athleteId) {
     activities,
     directive,
     complianceLast7,
+    complianceDays,
+    currentStreak,
     history_logs: stats?.history_logs ?? [],
     ghost_comparison: stats?.ghost_comparison ?? [],
     load_history: stats?.load_history ?? [],
