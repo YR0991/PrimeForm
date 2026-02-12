@@ -15,6 +15,9 @@ const app = initializeApp({
 export const auth = getAuth(app)
 export const analytics = getAnalytics(app)
 
+/** @deprecated Firestore removed (Backend-First). Use API only. Stub for backwards compatibility with any lingering imports. */
+export const db = null
+
 export default () => {
   // Boot: Firebase already initialized above
 }
