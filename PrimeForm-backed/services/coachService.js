@@ -162,12 +162,18 @@ async function getSquadronData(db, admin) {
           }
         }
 
+        // Metrics: always from reportService (ACWR, ATL, CTL, form, cycle) for squadron list
         const acuteLoad =
-          stats?.acute_load != null && Number.isFinite(stats.acute_load) ? stats.acute_load : null;
+          stats?.acute_load != null && Number.isFinite(stats.acute_load)
+            ? Math.round(Number(stats.acute_load) * 10) / 10
+            : null;
         const chronicLoad =
-          stats?.chronic_load != null && Number.isFinite(stats.chronic_load) ? stats.chronic_load : null;
+          stats?.chronic_load != null && Number.isFinite(stats.chronic_load)
+            ? Math.round(Number(stats.chronic_load) * 10) / 10
+            : null;
         const form =
           chronicLoad != null && acuteLoad != null ? Math.round((chronicLoad - acuteLoad) * 10) / 10 : null;
+        const acwrValue = Number.isFinite(acwr) ? Math.round(Number(acwr) * 100) / 100 : null;
 
         const fullName = profileData.displayName || displayNameFromEmail || 'Geen naam';
         const profile = {
@@ -177,7 +183,7 @@ async function getSquadronData(db, admin) {
           avatar: profileData.photoURL || null,
         };
         const metrics = {
-          acwr: Number.isFinite(acwr) ? acwr : null,
+          acwr: acwrValue,
           acuteLoad,
           chronicLoad,
           form,
@@ -186,6 +192,7 @@ async function getSquadronData(db, admin) {
           readiness,
         };
 
+        // Full AthleteDTO: name, profile, metrics so table shows names and numbers without extra fetch
         return {
           id: uid,
           name: fullName,

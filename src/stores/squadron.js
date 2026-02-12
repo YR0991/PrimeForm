@@ -82,23 +82,24 @@ export const useSquadronStore = defineStore('squadron', {
         for (const athlete of filtered) {
           const id = athlete.id ?? athlete.uid
           if (!id) continue
-          const profile = athlete.profile ?? {
-            fullName: athlete.name ?? athlete.displayName ?? null,
-            firstName: null,
-            lastName: null,
-            avatar: athlete.avatar ?? null,
+          // Preserve full API response; only fill name/profile/metrics when missing (never overwrite with empty)
+          const name = athlete.name ?? athlete.profile?.fullName ?? athlete.displayName ?? (athlete.email ? athlete.email.split('@')[0] : null)
+          const profile = {
+            fullName: athlete.profile?.fullName ?? athlete.name ?? athlete.displayName ?? null,
+            firstName: athlete.profile?.firstName ?? null,
+            lastName: athlete.profile?.lastName ?? null,
+            avatar: athlete.profile?.avatar ?? athlete.avatar ?? null,
           }
-          const metrics = athlete.metrics ?? {
-            acwr: athlete.acwr ?? null,
-            acuteLoad: athlete.acuteLoad ?? null,
-            chronicLoad: athlete.chronicLoad ?? null,
-            form: athlete.form ?? null,
-            cyclePhase: athlete.cyclePhase ?? null,
-            cycleDay: athlete.cycleDay ?? null,
-            readiness: athlete.readiness ?? null,
+          const metrics = {
+            acwr: athlete.metrics?.acwr ?? athlete.acwr ?? null,
+            acuteLoad: athlete.metrics?.acuteLoad ?? athlete.acuteLoad ?? null,
+            chronicLoad: athlete.metrics?.chronicLoad ?? athlete.chronicLoad ?? null,
+            form: athlete.metrics?.form ?? athlete.form ?? null,
+            cyclePhase: athlete.metrics?.cyclePhase ?? athlete.cyclePhase ?? null,
+            cycleDay: athlete.metrics?.cycleDay ?? athlete.cycleDay ?? null,
+            readiness: athlete.metrics?.readiness ?? athlete.readiness ?? null,
           }
-          const name = athlete.name ?? profile.fullName ?? athlete.displayName ?? (athlete.email ? athlete.email.split('@')[0] : null)
-          nextById[id] = { ...athlete, name, profile, metrics }
+          nextById[id] = { ...athlete, id, name, profile, metrics }
         }
         this.athletesById = nextById
       } catch (err) {
