@@ -36,7 +36,7 @@
             </span>
           </div>
           <div class="deep-dive-row">
-            <span class="label">CTL</span>
+            <span class="label">Chronic Load (CTL)</span>
             <span class="value elite-data">{{ selectedPilotMapped.ctl != null ? Number(selectedPilotMapped.ctl).toFixed(0) : 'Geen data' }}</span>
           </div>
           <div class="deep-dive-row">
@@ -131,7 +131,11 @@ const selectedPilotMapped = computed(() => {
   if (!p) return null
 
   const { profile = {}, stats = {}, metrics = {}, activities = [] } = p
-  const lastPeriod = profile.lastPeriodDate || profile.lastPeriod || null
+  const lastPeriod =
+    profile.lastPeriodDate ||
+    profile.lastPeriod ||
+    profile.lastMenstruationDate ||
+    null
   const len = Number(profile.cycleLength) || 28
 
   let cyclePhase = '—'
@@ -201,7 +205,7 @@ function formatActivityDate(dateStr) {
   return d.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: '2-digit' })
 }
 
-/** Load voor activiteit: primeLoad, load, trainingLoad of Strava suffer_score; geen eigen berekening. */
+/** Load voor activiteit: primeLoad, load, …; Strava-fallback: (moving_time/60)*7 als geen RPE. */
 function activityLoadDisplay(act) {
   const load =
     act.primeLoad != null ? act.primeLoad
@@ -210,6 +214,9 @@ function activityLoadDisplay(act) {
     : act.suffer_score != null ? act.suffer_score
     : null
   if (load != null && Number.isFinite(Number(load))) return Number(load)
+  if (act.moving_time != null && Number.isFinite(Number(act.moving_time))) {
+    return Math.round((Number(act.moving_time) / 60) * 7)
+  }
   return '—'
 }
 

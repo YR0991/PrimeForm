@@ -100,6 +100,7 @@ export const useSquadronStore = defineStore('squadron', {
         const lastPeriodDate =
           profile.lastPeriodDate ||
           profile.lastPeriod ||
+          profile.lastMenstruationDate ||
           profile.cycleData?.lastPeriodDate ||
           profile.cycleData?.lastPeriod ||
           null
@@ -166,6 +167,7 @@ export const useSquadronStore = defineStore('squadron', {
             load: loadVal,
             primeLoad: loadVal,
             suffer_score: a.suffer_score != null ? a.suffer_score : null,
+            moving_time: a.moving_time != null ? a.moving_time : null,
             _sortKey: dateStr || '0000-00-00',
           }
         })

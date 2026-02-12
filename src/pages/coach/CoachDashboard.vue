@@ -91,33 +91,27 @@
               </q-td>
             </template>
 
-            <!-- LOAD RATIO (ACWR) -->
+            <!-- LOAD RATIO (ACWR) — direct uit row.metrics -->
             <template #body-cell-acwr="props">
               <q-td :props="props" class="text-right">
                 <span
-                  v-if="telemetry(props.row).hasData && telemetry(props.row).acwr != null"
+                  v-if="tableAcwr(props.row) != null"
                   class="mono-text"
-                  :class="acwrColorClass(telemetry(props.row).acwr)"
+                  :class="acwrColorClass(tableAcwr(props.row))"
                 >
-                  {{ telemetry(props.row).acwr.toFixed(2) }}
+                  {{ Number(tableAcwr(props.row)).toFixed(2) }}
                 </span>
-                <span v-else class="mono-text no-data">
-                  NO DATA
-                </span>
+                <span v-else class="mono-text no-data">NO DATA</span>
               </q-td>
             </template>
 
-            <!-- DIRECTIVE -->
+            <!-- DIRECTIVE — afgeleid van metrics.acwr -->
             <template #body-cell-status="props">
               <q-td :props="props" class="text-right">
-                <div v-if="telemetry(props.row).hasData" class="directive-badge" :class="directiveClass(telemetry(props.row).directive)">
-                  <span class="mono-text directive-label">
-                    {{ telemetry(props.row).directive }}
-                  </span>
+                <div v-if="tableAcwr(props.row) != null" class="directive-badge" :class="directiveClass(directiveFromMetrics(props.row))">
+                  <span class="mono-text directive-label">{{ directiveFromMetrics(props.row) }}</span>
                 </div>
-                <div v-else class="mono-text no-data">
-                  NO DATA
-                </div>
+                <div v-else class="mono-text no-data">NO DATA</div>
               </q-td>
             </template>
 
@@ -239,14 +233,14 @@ const columns = [
   {
     name: 'acwr',
     label: 'LOAD RATIO',
-    field: 'acwr',
+    field: (row) => row.metrics?.acwr ?? row.acwr ?? null,
     align: 'right',
     sortable: true,
   },
   {
     name: 'status',
     label: 'DIRECTIVE',
-    field: 'status',
+    field: (row) => directiveFromMetrics(row),
     align: 'right',
     sortable: false,
   },
@@ -356,20 +350,30 @@ const bioClockColorClass = (row) => {
   return 'text-grey-6'
 }
 
-/** Alleen database-metrics; geen herberekening. row.acwr is door store gezet uit row.metrics.acwr. */
+/** ACWR voor tabel: alleen uit Firestore metrics. */
+const tableAcwr = (row) => {
+  const v = row.metrics?.acwr ?? row.acwr
+  return v != null && Number.isFinite(Number(v)) ? Number(v) : null
+}
+
+/** Directive voor tabel: afgeleid van metrics.acwr. */
+const directiveFromMetrics = (row) => {
+  const v = tableAcwr(row)
+  if (v == null) return 'No Data'
+  return inferDirectiveFromAcwr(v)
+}
+
+/** Telemetry voor Readiness en overige velden. */
 const telemetry = (row) => {
-  const metrics = row.metrics || {}
-  const acwr = metrics.acwr != null ? Number(metrics.acwr) : (row.acwr != null ? Number(row.acwr) : null)
+  const acwr = tableAcwr(row)
   const readiness =
     row.readiness != null ? Number(row.readiness)
     : (row.stats?.currentReadiness != null ? Number(row.stats.currentReadiness) : null)
-  const hasAcwr = Number.isFinite(acwr)
   const hasReadiness = Number.isFinite(readiness)
-  const directive = hasAcwr ? inferDirectiveFromAcwr(acwr) : 'NO DATA'
-  const hasData = hasAcwr || hasReadiness
-
+  const directive = acwr != null ? inferDirectiveFromAcwr(acwr) : 'NO DATA'
+  const hasData = acwr != null || hasReadiness
   return {
-    acwr: hasAcwr ? acwr : null,
+    acwr: acwr ?? null,
     readiness: hasReadiness ? Math.round(readiness) : null,
     directive: hasData ? directive : 'NO DATA',
     hasData,
