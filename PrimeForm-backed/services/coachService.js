@@ -71,9 +71,15 @@ async function getSquadronData(db, admin) {
       const profile = userData.profile || {};
 
       try {
+        const displayNameFromProfile = profile.fullName || profile.displayName || null;
+        const displayNameFromEmail = userData.email && typeof userData.email === 'string'
+          ? userData.email.split('@')[0]
+          : null;
+        const resolvedDisplayName = displayNameFromProfile || displayNameFromEmail || 'Geen naam';
+
         const [profileData, todayLogSnap, lastActivitySnap] = await Promise.all([
           Promise.resolve({
-            displayName: profile.fullName || profile.displayName || 'Geen naam',
+            displayName: resolvedDisplayName,
             photoURL: profile.photoURL || profile.avatarUrl || null,
             athlete_level: profile.athlete_level ?? null
           }),
@@ -163,7 +169,7 @@ async function getSquadronData(db, admin) {
         const form =
           chronicLoad != null && acuteLoad != null ? Math.round((chronicLoad - acuteLoad) * 10) / 10 : null;
 
-        const fullName = profileData.displayName || 'Geen naam';
+        const fullName = profileData.displayName || displayNameFromEmail || 'Geen naam';
         const profile = {
           fullName,
           firstName: fullName ? fullName.split(' ')[0] : null,
@@ -182,6 +188,7 @@ async function getSquadronData(db, admin) {
 
         return {
           id: uid,
+          name: fullName,
           profile,
           metrics,
           email: userData.email || null,
@@ -199,9 +206,13 @@ async function getSquadronData(db, admin) {
         const phaseInfo = lastPeriod
           ? cycleService.getPhaseForDate(lastPeriod, cycleLength, todayStr)
           : { phaseName: 'Unknown' };
-        const fallbackName = profile.fullName || profile.displayName || 'Onbekend';
+        const emailPart = userData.email && typeof userData.email === 'string'
+          ? userData.email.split('@')[0]
+          : null;
+        const fallbackName = profile.fullName || profile.displayName || emailPart || 'Geen naam';
         return {
           id: uid,
+          name: fallbackName,
           profile: {
             fullName: fallbackName,
             firstName: fallbackName ? fallbackName.split(' ')[0] : null,

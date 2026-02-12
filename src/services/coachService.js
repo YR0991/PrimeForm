@@ -15,12 +15,15 @@ function requireCoachEmail() {
 
 /**
  * GET /api/coach/squadron
- * Returns response.data directly. No mapping or fallbacks.
+ * Returns the squadron array. Backend sends { success, data: array }.
  */
 export async function getCoachSquad() {
   requireCoachEmail()
   const res = await api.get('/api/coach/squadron')
-  return res.data
+  const body = res.data
+  if (Array.isArray(body)) return body
+  if (body && Array.isArray(body.data)) return body.data
+  return body?.data ?? []
 }
 
 /**

@@ -71,8 +71,11 @@ export const useSquadronStore = defineStore('squadron', {
           throw new Error('No Team Assigned')
         }
 
-        const response = await getCoachSquad()
-        const list = Array.isArray(response) ? response : (response?.data ?? [])
+        const list = await getCoachSquad()
+        if (!Array.isArray(list)) {
+          this.error = 'Invalid squadron response'
+          throw new Error('Invalid squadron response')
+        }
         const filtered = list.filter((row) => row.teamId === teamId)
 
         const nextById = {}
@@ -94,7 +97,8 @@ export const useSquadronStore = defineStore('squadron', {
             cycleDay: athlete.cycleDay ?? null,
             readiness: athlete.readiness ?? null,
           }
-          nextById[id] = { ...athlete, profile, metrics }
+          const name = athlete.name ?? profile.fullName ?? athlete.displayName ?? (athlete.email ? athlete.email.split('@')[0] : null)
+          nextById[id] = { ...athlete, name, profile, metrics }
         }
         this.athletesById = nextById
       } catch (err) {

@@ -280,16 +280,16 @@ onMountedHook(() => {
   }
 })
 
-// Helpers — support both nested (profile.fullName) and flat (row.name) API shape
+// Name for table: row.name is set by store from API profile; fallbacks for legacy/flat shape
 const getName = (row) => {
   if (!row) return '—'
+  if (row.name) return row.name
   const profile = row.profile || {}
+  if (profile.fullName) return profile.fullName
   if (profile.firstName) {
     const full = `${profile.firstName} ${profile.lastName || ''}`.trim()
     if (full) return full
   }
-  if (profile.fullName) return profile.fullName
-  if (row.name) return row.name
   if (row.displayName) return row.displayName
   const email = row.email || profile.email
   if (typeof email === 'string' && email.includes('@')) return email.split('@')[0]
