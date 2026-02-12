@@ -110,10 +110,29 @@ export const useSquadronStore = defineStore('squadron', {
         throw new Error('No Team Assigned')
       }
 
+      console.log('[SquadronStore] calling squadron API, teamId=', teamId)
+
       let usedApi = false
       try {
         const data = await getCoachSquad()
+        const uniqueTeamIds = [...new Set((data || []).map((r) => r.teamId))]
         const filtered = Array.isArray(data) ? data.filter((row) => row.teamId === teamId) : []
+        console.log('[SquadronStore] API success', {
+          dataLength: (data || []).length,
+          uniqueTeamIds,
+          filterTeamId: teamId,
+          filteredLength: filtered.length,
+          usedApi: true,
+        })
+        usedApi = true
+
+        if (filtered.length === 0) {
+          console.warn('[SquadronStore] No athletes for teamId', teamId, '— showing empty table (no Firestore fallback)')
+          this.athletesById = {}
+          this.loading = false
+          return
+        }
+
         const nextById = {}
         filtered.forEach((row) => {
           nextById[row.id] = {
@@ -132,16 +151,22 @@ export const useSquadronStore = defineStore('squadron', {
           }
         })
         this.athletesById = nextById
-        usedApi = true
-      } catch (apiErr) {
-        console.warn('SquadronStore: API squad failed, falling back to Firestore', apiErr?.message)
-      }
-
-      if (usedApi) {
         this.loading = false
         return
+      } catch (apiErr) {
+        const status = apiErr?.response?.status
+        const statusText = apiErr?.response?.statusText
+        const message = apiErr?.message
+        console.warn('[SquadronStore] API failed → Firestore fallback', {
+          reason: status != null ? 'non-2xx' : message?.includes('Network') ? 'network/cors' : 'exception',
+          status,
+          statusText,
+          message,
+          usedApi: false,
+        })
       }
 
+      console.log('[SquadronStore] using Firestore fallback (API failure)')
       try {
         const usersRef = collection(db, USERS_COLLECTION)
         const q = query(usersRef, where('teamId', '==', teamId))

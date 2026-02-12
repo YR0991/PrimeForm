@@ -17,6 +17,11 @@ export async function getCoachSquad() {
   }
 
   const res = await api.get('/api/coach/squadron')
+  console.log('[CoachService] squadron API response', {
+    status: res.status,
+    statusText: res.statusText,
+    ok: res.status >= 200 && res.status < 300,
+  })
   const data = res.data?.data || []
 
   return data.map((row) => ({
