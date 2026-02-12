@@ -196,12 +196,12 @@ import CoachDeepDive from '../../components/CoachDeepDive.vue'
 const squadronStore = useSquadronStore()
 const $q = useQuasar()
 
-// Explicit field: waarde uit row, geen lokale ACWR-berekening
-const acwrValue = (row) => row.metrics?.acwr ?? null
+// Zelfde bron als weekplan: row.metrics.acwr
+const acwrValue = (row) => row.metrics?.acwr ?? row.acwr ?? null
 const formatAcwr = (val) => (val == null ? '—' : Number(val).toFixed(2))
 const readinessValue = (row) => row.readiness ?? row.stats?.currentReadiness ?? null
 const formatReadiness = (val) => (val == null ? '—' : `${Math.round(Number(val))}/10`)
-const directiveLabel = (row) => inferDirectiveFromAcwr(acwrValue(row))
+const directiveLabel = (row) => inferDirectiveFromAcwr(row.metrics?.acwr ?? row.acwr ?? null)
 
 const columns = [
   {
@@ -214,7 +214,7 @@ const columns = [
   {
     name: 'cyclePhase',
     label: 'BIO-CLOCK',
-    field: () => '',
+    field: (row) => row.metrics?.cyclePhase ?? '',
     align: 'center',
     sortable: false,
   },
@@ -229,7 +229,7 @@ const columns = [
   {
     name: 'acwr',
     label: 'LOAD RATIO',
-    field: (row) => row.metrics?.acwr ?? null,
+    field: (row) => row.metrics?.acwr ?? row.acwr ?? 0,
     align: 'right',
     sortable: true,
     format: (val) => (val == null ? '—' : Number(val).toFixed(2)),
@@ -237,7 +237,7 @@ const columns = [
   {
     name: 'status',
     label: 'DIRECTIVE',
-    field: (row) => inferDirectiveFromAcwr(row.metrics?.acwr ?? null),
+    field: (row) => inferDirectiveFromAcwr(row.metrics?.acwr ?? row.acwr ?? null),
     align: 'right',
     sortable: false,
   },
@@ -314,29 +314,14 @@ const athleteLevelClass = (row) => {
   return 'level-rookie'
 }
 
+/** Zelfde bron als weekplan: row.metrics.cyclePhase / row.metrics.cycleDay */
 const cycleDisplay = (row) => {
-  const bc = row.stats?.bioClock
-  if (bc && bc.phase && bc.day != null) {
-    return `${bc.phase} (Dag ${bc.day})`
-  }
-
-  // Fallback to legacy cycleData if present
-  const cd = row.cycleData || row.profile?.cycleData || {}
-  const day = cd.cycleDay ?? cd.day ?? null
-  const phaseRaw = cd.currentPhase || cd.phase || ''
-  const phase = phaseRaw.toLowerCase()
-
-  const phaseCode =
-    phase.startsWith('fol') ? 'FOL' :
-    phase.startsWith('ovu') ? 'OVU' :
-    phase.startsWith('lut') ? 'LUT' :
-    phase.startsWith('men') ? 'MEN' :
-    ''
-
-  if (!day && !phaseCode) return '—'
-  if (!day) return phaseCode
-  if (!phaseCode) return `Day ${day}`
-  return `Day ${day} • ${phaseCode}`
+  const phase = row.metrics?.cyclePhase
+  const day = row.metrics?.cycleDay
+  if (phase != null && day != null) return `${phase} · D${day}`
+  if (phase != null) return String(phase)
+  if (day != null) return `D${day}`
+  return '—'
 }
 
 const bioClockColorClass = (row) => {

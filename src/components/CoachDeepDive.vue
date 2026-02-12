@@ -24,7 +24,7 @@
           <q-spinner-grid size="48px" color="#fbbf24" />
         </q-inner-loading>
 
-        <q-card-section v-if="squadronStore.selectedPilot && !squadronStore.deepDiveLoading" class="deep-dive-body">
+        <q-card-section v-if="squadronStore.selectedPilot" class="deep-dive-body">
           <div class="deep-dive-row">
             <span class="label">Bio-Clock</span>
             <span class="value elite-data">{{ bioClockDisplay }}</span>
@@ -48,32 +48,37 @@
             <span class="value elite-data">{{ readinessDisplay }}</span>
           </div>
           <div class="deep-dive-section-label">ACTIVITEITEN</div>
-          <div
-            v-for="(act, i) in (squadronStore.selectedPilot?.activities || [])"
-            :key="act.id || i"
-            class="deep-dive-activity"
-          >
-            <span class="elite-data">{{ formatActivityDate(act.date) }}</span>
-            <span class="activity-type-cell">
-              <q-icon
-                v-if="act.source === 'manual'"
-                name="auto_awesome"
-                size="xs"
-                class="primeform-icon"
-              />
-              <q-icon
-                v-else
-                name="bolt"
-                size="xs"
-                class="strava-icon"
-              />
-              {{ act.type || 'Session' }}
-            </span>
-            <span class="elite-data prime-load-value">{{ act.load != null ? act.load : '—' }}</span>
+          <div v-if="squadronStore.deepDiveLoading && !(squadronStore.selectedPilot?.activities?.length)" class="no-data mono-text">
+            Laden…
           </div>
-          <div v-if="!(squadronStore.selectedPilot?.activities?.length)" class="no-data mono-text">
-            Geen activiteiten.
-          </div>
+          <template v-else>
+            <div
+              v-for="(act, i) in (squadronStore.selectedPilot?.activities || [])"
+              :key="act.id || i"
+              class="deep-dive-activity"
+            >
+              <span class="elite-data">{{ formatActivityDate(act.date) }}</span>
+              <span class="activity-type-cell">
+                <q-icon
+                  v-if="act.source === 'manual'"
+                  name="auto_awesome"
+                  size="xs"
+                  class="primeform-icon"
+                />
+                <q-icon
+                  v-else
+                  name="bolt"
+                  size="xs"
+                  class="strava-icon"
+                />
+                {{ act.type || 'Session' }}
+              </span>
+              <span class="elite-data prime-load-value">{{ activityLoadDisplay(act) }}</span>
+            </div>
+            <div v-if="!(squadronStore.selectedPilot?.activities?.length)" class="no-data mono-text">
+              Geen activiteiten.
+            </div>
+          </template>
         </q-card-section>
       </q-card>
     </q-dialog>
@@ -171,6 +176,12 @@ function formatActivityDate(dateStr) {
   const d = new Date(String(dateStr).replace(/-/g, '/').slice(0, 10))
   if (Number.isNaN(d.getTime())) return dateStr
   return d.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: '2-digit' })
+}
+
+/** Zelfde als weekplan: load uit activity; Strava-fallback (moving_time/60)*7. */
+function activityLoadDisplay(act) {
+  const load = act.load ?? (act.moving_time != null ? Math.round((Number(act.moving_time) / 60) * 7) : null)
+  return load != null ? load : '—'
 }
 
 function onDeepDiveClose() {

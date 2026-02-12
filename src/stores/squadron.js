@@ -16,6 +16,28 @@ const ACTIVITIES_COLLECTION = 'activities'
 const ACTIVITIES_LIMIT = 10
 const ACTIVITIES_DAYS_CUTOFF = 14
 
+/** Zelfde bron als weekplan: phase + day uit lastPeriod en cycleLength. */
+function cycleFromLMP(lastPeriodDate, cycleLength = 28) {
+  if (!lastPeriodDate) return { cyclePhase: null, cycleDay: null }
+  let dateStr = lastPeriodDate
+  if (dateStr && typeof dateStr === 'object' && 'seconds' in dateStr) {
+    dateStr = new Date(dateStr.seconds * 1000).toISOString().slice(0, 10)
+  } else {
+    dateStr = String(dateStr || '').replace(/-/g, '/').slice(0, 10)
+  }
+  const last = new Date(dateStr)
+  const today = new Date()
+  last.setHours(0, 0, 0, 0)
+  today.setHours(0, 0, 0, 0)
+  const daysSince = Math.floor((today - last) / (1000 * 60 * 60 * 24))
+  const currentCycleDay = (daysSince % cycleLength) + 1
+  const ov = Math.floor(cycleLength / 2)
+  let phaseName = 'Menstrual'
+  if (currentCycleDay > 5 && currentCycleDay <= ov) phaseName = 'Follicular'
+  else if (currentCycleDay > ov && currentCycleDay <= cycleLength) phaseName = 'Luteal'
+  return { cyclePhase: phaseName, cycleDay: currentCycleDay }
+}
+
 /**
  * Normalized Truth: athletesById + activitiesByAthleteId.
  * Data uit Firestore direct gemapt; metrics zoals in DB; acwr ontbreekt → null (geen herberekening).
@@ -96,12 +118,25 @@ export const useSquadronStore = defineStore('squadron', {
         snapshot.docs.forEach((docSnap) => {
           const d = docSnap.data()
           const metrics = d.metrics || {}
-          // Fallback: acwr niet in DB → null (no recalculation)
+          const profile = d.profile || {}
+          const lastPeriod =
+            profile.lastPeriodDate ||
+            profile.lastPeriod ||
+            profile.lastMenstruationDate ||
+            profile.cycleData?.lastPeriodDate ||
+            profile.cycleData?.lastPeriod ||
+            null
+          const cycleLength =
+            Number(profile.cycleLength) ||
+            Number(profile.avgDuration) ||
+            Number(profile.cycleData?.avgDuration) ||
+            28
+          const { cyclePhase, cycleDay } = cycleFromLMP(lastPeriod, cycleLength)
           const acwr = metrics.acwr != null ? Number(metrics.acwr) : null
           nextById[docSnap.id] = {
             id: docSnap.id,
             ...d,
-            metrics: { ...metrics, acwr },
+            metrics: { ...metrics, acwr, cyclePhase, cycleDay },
           }
         })
 
@@ -151,6 +186,7 @@ export const useSquadronStore = defineStore('squadron', {
 
         const metrics = userData.metrics || {}
         const acwr = metrics.acwr != null ? Number(metrics.acwr) : null
+        const { cyclePhase, cycleDay } = cycleFromLMP(lastPeriodDate, cycleLength)
 
         const displayName =
           userData.displayName ||
@@ -160,7 +196,7 @@ export const useSquadronStore = defineStore('squadron', {
           userData.email ||
           'Pilot'
 
-        // Update athlete in normalized state (voor modal: profile + metrics)
+        // Update athlete in normalized state (zelfde metrics-bron als weekplan)
         this.athletesById = {
           ...this.athletesById,
           [pilotId]: {
@@ -178,6 +214,8 @@ export const useSquadronStore = defineStore('squadron', {
             metrics: {
               ...metrics,
               acwr,
+              cyclePhase,
+              cycleDay,
               ctl: metrics.ctl != null ? Number(metrics.ctl) : null,
               atl: metrics.atl != null ? Number(metrics.atl) : null,
             },
