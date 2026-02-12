@@ -265,8 +265,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { doc, setDoc } from 'firebase/firestore'
-import { db } from 'boot/firebase'
 import { Notify } from 'quasar'
 import { api } from '../services/httpClient.js'
 import { useAuthStore } from '../stores/auth'
@@ -475,10 +473,10 @@ const saveProfile = async () => {
     })
 
     if (authStore.user?.uid) {
-      const userRef = doc(db, 'users', authStore.user.uid)
-      await setDoc(userRef, { onboardingComplete: true }, { merge: true })
+      await authStore.fetchUserProfile(authStore.user.uid)
+    } else {
+      authStore.onboardingComplete = true
     }
-    authStore.onboardingComplete = true
 
     router.replace('/dashboard')
   } catch (error) {

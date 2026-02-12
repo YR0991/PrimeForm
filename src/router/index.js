@@ -105,6 +105,13 @@ export default defineRouter(function (/* { store, ssrContext } */) {
     // Strava return: allow through to intake (no onboarding loop)
     if (to.query?.status === 'strava_connected') return true
 
+    // Ensure profile is loaded before any onboarding-based redirect (prevents intake "pop-up" race)
+    if (authStore.isAuthReady && authStore.isAuthenticated && authStore.user?.uid) {
+      if (!authStore.hasProfileLoadedForCurrentUser) {
+        await authStore.fetchUserProfile(authStore.user.uid)
+      }
+    }
+
     // Onboarding route: admins and coaches NEVER see intake
     if (to.path === '/onboarding') {
       if (!authStore.isAuthenticated) {
@@ -130,16 +137,15 @@ export default defineRouter(function (/* { store, ssrContext } */) {
       return true
     }
 
-    // Intake: coaches/admins naar dashboard; geauthenticeerde users met complete onboarding ook
+    // Intake: coaches/admins → dashboard; authenticated users with onboarding complete → dashboard
     if (to.path === '/intake') {
       if (authStore.isCoach || authStore.isAdmin || authStore.isImpersonating) {
         return { path: '/dashboard' }
       }
-      if (authStore.isAuthenticated && authStore.user?.uid) {
-        const profile = await authStore.fetchUserProfile(authStore.user.uid)
-        if (profile && (profile.onboardingComplete === true || profile.profileComplete === true)) {
-          return { path: '/dashboard' }
-        }
+      if (authStore.isAuthenticated && authStore.hasProfileLoadedForCurrentUser && authStore.isOnboardingComplete) {
+        return { path: '/dashboard' }
+      }
+      if (authStore.isAuthenticated && authStore.hasProfileLoadedForCurrentUser) {
         return true
       }
       try {
