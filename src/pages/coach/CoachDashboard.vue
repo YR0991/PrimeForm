@@ -37,7 +37,7 @@
 
         <q-card-section class="q-pa-none">
           <q-table
-            :rows="squadronStore.squadRows"
+            :rows="squadronStore.squadronList"
             :columns="columns"
             row-key="id"
             flat
@@ -73,43 +73,46 @@
               </q-td>
             </template>
 
-            <!-- FORM (Readiness) — explicit field uit row -->
-            <template #body-cell-readiness="props">
+            <!-- FORM (TSB) — row.metrics?.form -->
+            <template #body-cell-form="props">
               <q-td :props="props" class="text-center">
-                <div v-if="readinessValue(props.row) != null" class="readiness-chip">
-                  <span
-                    class="readiness-dot"
-                    :class="readinessColorClass(readinessValue(props.row))"
-                  />
-                  <span class="mono-text readiness-value">
-                    {{ formatReadiness(readinessValue(props.row)) }}
-                  </span>
-                </div>
-                <div v-else class="mono-text no-data">NO DATA</div>
+                <span class="mono-text">{{ formatMetric(props.row.metrics?.form) }}</span>
               </q-td>
             </template>
 
-            <!-- LOAD RATIO (ACWR) — field: row.metrics?.acwr, format in column -->
+            <!-- ACWR — row.metrics?.acwr -->
             <template #body-cell-acwr="props">
               <q-td :props="props" class="text-right">
                 <span
-                  v-if="acwrValue(props.row) != null"
                   class="mono-text"
-                  :class="acwrColorClass(acwrValue(props.row))"
+                  :class="acwrColorClass(props.row.metrics?.acwr)"
                 >
-                  {{ formatAcwr(acwrValue(props.row)) }}
+                  {{ formatMetric(props.row.metrics?.acwr, 2) }}
                 </span>
-                <span v-else class="mono-text no-data">NO DATA</span>
               </q-td>
             </template>
 
-            <!-- DIRECTIVE — field: inferDirectiveFromAcwr(row.metrics?.acwr) -->
+            <!-- CHRONIC LOAD (CTL) — row.metrics?.chronicLoad -->
+            <template #body-cell-chronicLoad="props">
+              <q-td :props="props" class="text-right">
+                <span class="mono-text">{{ formatMetric(props.row.metrics?.chronicLoad, 0) }}</span>
+              </q-td>
+            </template>
+
+            <!-- ACUTE LOAD (ATL) — row.metrics?.acuteLoad -->
+            <template #body-cell-acuteLoad="props">
+              <q-td :props="props" class="text-right">
+                <span class="mono-text">{{ formatMetric(props.row.metrics?.acuteLoad, 0) }}</span>
+              </q-td>
+            </template>
+
+            <!-- DIRECTIVE — from stored ACWR only (display label) -->
             <template #body-cell-status="props">
               <q-td :props="props" class="text-right">
-                <div v-if="acwrValue(props.row) != null" class="directive-badge" :class="directiveClass(directiveLabel(props.row))">
+                <div v-if="metricExists(props.row.metrics?.acwr)" class="directive-badge" :class="directiveClass(directiveLabel(props.row))">
                   <span class="mono-text directive-label">{{ directiveLabel(props.row) }}</span>
                 </div>
-                <div v-else class="mono-text no-data">NO DATA</div>
+                <div v-else class="mono-text no-data">—</div>
               </q-td>
             </template>
 
@@ -134,38 +137,31 @@
                     </div>
                   </div>
                   <div
-                    v-if="acwrValue(props.row) != null || readinessValue(props.row) != null"
+                    v-if="metricExists(props.row.metrics?.acwr)"
                     class="directive-badge"
                     :class="directiveClass(directiveLabel(props.row))"
                   >
                     <span class="mono-text directive-label">{{ directiveLabel(props.row) }}</span>
                   </div>
-                  <div v-else class="mono-text no-data">NO DATA</div>
+                  <div v-else class="mono-text no-data">—</div>
                 </div>
 
                 <div class="athlete-card-body">
                   <div class="athlete-card-metric">
                     <div class="metric-label mono-text">BIO-CLOCK</div>
-                    <div class="metric-value mono-text">
-                      {{ cycleDisplay(props.row) }}
-                    </div>
+                    <div class="metric-value mono-text">{{ cycleDisplay(props.row) }}</div>
                   </div>
                   <div class="athlete-card-metric">
-                    <div class="metric-label mono-text">READINESS</div>
-                    <div
-                      class="metric-value mono-text"
-                      :class="readinessColorClass(readinessValue(props.row))"
-                    >
-                      {{ formatReadiness(readinessValue(props.row)) }}
-                    </div>
+                    <div class="metric-label mono-text">FORM (TSB)</div>
+                    <div class="metric-value mono-text">{{ formatMetric(props.row.metrics?.form) }}</div>
                   </div>
                   <div class="athlete-card-metric">
                     <div class="metric-label mono-text">ACWR</div>
                     <div
                       class="metric-value mono-text"
-                      :class="acwrColorClass(acwrValue(props.row))"
+                      :class="acwrColorClass(props.row.metrics?.acwr)"
                     >
-                      {{ formatAcwr(acwrValue(props.row)) }}
+                      {{ formatMetric(props.row.metrics?.acwr, 2) }}
                     </div>
                   </div>
                 </div>
@@ -192,16 +188,18 @@ import { computed, onMounted as onMountedHook } from 'vue'
 import { Notify, useQuasar } from 'quasar'
 import { useSquadronStore } from '../../stores/squadron'
 import CoachDeepDive from '../../components/CoachDeepDive.vue'
+import { formatMetric } from '../../utils/formatters'
 
 const squadronStore = useSquadronStore()
 const $q = useQuasar()
 
-// Zelfde bron als weekplan: row.metrics.acwr
-const acwrValue = (row) => row.metrics?.acwr ?? row.acwr ?? null
-const formatAcwr = (val) => (val == null ? '—' : Number(val).toFixed(2))
-const readinessValue = (row) => row.readiness ?? row.stats?.currentReadiness ?? null
-const formatReadiness = (val) => (val == null ? '—' : `${Math.round(Number(val))}/10`)
-const directiveLabel = (row) => inferDirectiveFromAcwr(row.metrics?.acwr ?? row.acwr ?? null)
+function metricExists(val) {
+  if (val === null || val === undefined) return false
+  const n = Number(val)
+  return Number.isFinite(n)
+}
+
+const directiveLabel = (row) => inferDirectiveFromAcwr(row.metrics?.acwr ?? null)
 
 const columns = [
   {
@@ -219,25 +217,37 @@ const columns = [
     sortable: false,
   },
   {
-    name: 'readiness',
-    label: 'FORM',
-    field: (row) => readinessValue(row),
+    name: 'form',
+    label: 'FORM (TSB)',
+    field: (row) => row.metrics?.form,
     align: 'center',
     sortable: false,
-    format: (val) => (val == null ? '—' : `${Math.round(Number(val))}/10`),
   },
   {
     name: 'acwr',
-    label: 'LOAD RATIO',
-    field: (row) => row.metrics?.acwr ?? row.acwr ?? 0,
+    label: 'ACWR',
+    field: (row) => row.metrics?.acwr,
     align: 'right',
     sortable: true,
-    format: (val) => (val == null ? '—' : Number(val).toFixed(2)),
+  },
+  {
+    name: 'chronicLoad',
+    label: 'CHRONIC LOAD (CTL)',
+    field: (row) => row.metrics?.chronicLoad,
+    align: 'right',
+    sortable: true,
+  },
+  {
+    name: 'acuteLoad',
+    label: 'ACUTE LOAD (ATL)',
+    field: (row) => row.metrics?.acuteLoad,
+    align: 'right',
+    sortable: true,
   },
   {
     name: 'status',
     label: 'DIRECTIVE',
-    field: (row) => inferDirectiveFromAcwr(row.metrics?.acwr ?? row.acwr ?? null),
+    field: (row) => row.metrics?.acwr,
     align: 'right',
     sortable: false,
   },
@@ -265,7 +275,7 @@ const refresh = async () => {
 }
 
 onMountedHook(() => {
-  if (squadronStore.squadRows.length === 0) {
+  if (squadronStore.squadronList.length === 0) {
     refresh()
   }
 })

@@ -27,25 +27,33 @@
         <q-card-section v-if="squadronStore.selectedPilot" class="deep-dive-body">
           <div class="deep-dive-row">
             <span class="label">Bio-Clock</span>
-            <span class="value elite-data">{{ bioClockDisplay }}</span>
+            <span class="value elite-data">{{ bioClockDisplay(squadronStore.selectedPilot.metrics?.cyclePhase, squadronStore.selectedPilot.metrics?.cycleDay) }}</span>
           </div>
           <div class="deep-dive-row">
             <span class="label">ACWR</span>
-            <span class="value elite-data" :class="acwrClass(acwrValue)">
-              {{ acwrDisplay }}
+            <span class="value elite-data" :class="acwrClass(squadronStore.selectedPilot.metrics?.acwr)">
+              {{ formatMetric(squadronStore.selectedPilot.metrics?.acwr, 2) }}
             </span>
           </div>
           <div class="deep-dive-row">
             <span class="label">Chronic Load (CTL)</span>
-            <span class="value elite-data">{{ ctlDisplay }}</span>
+            <span class="value elite-data">{{ formatMetric(squadronStore.selectedPilot.metrics?.chronicLoad, 0) }}</span>
+          </div>
+          <div class="deep-dive-row">
+            <span class="label">Acute Load (ATL)</span>
+            <span class="value elite-data">{{ formatMetric(squadronStore.selectedPilot.metrics?.acuteLoad, 0) }}</span>
+          </div>
+          <div class="deep-dive-row">
+            <span class="label">Form (TSB)</span>
+            <span class="value elite-data">{{ formatMetric(squadronStore.selectedPilot.metrics?.form, 0) }}</span>
           </div>
           <div class="deep-dive-row">
             <span class="label">RHR</span>
-            <span class="value elite-data">{{ rhrDisplay }}</span>
+            <span class="value elite-data">{{ rhrDisplay(squadronStore.selectedPilot.metrics?.rhr) }}</span>
           </div>
           <div class="deep-dive-row">
             <span class="label">Readiness</span>
-            <span class="value elite-data">{{ readinessDisplay }}</span>
+            <span class="value elite-data">{{ readinessDisplay(squadronStore.selectedPilot.readiness ?? squadronStore.selectedPilot.metrics?.readiness) }}</span>
           </div>
           <div class="deep-dive-section-label">ACTIVITEITEN</div>
           <div v-if="squadronStore.deepDiveLoading && !(squadronStore.selectedPilot?.activities?.length)" class="no-data mono-text">
@@ -73,7 +81,7 @@
                 />
                 {{ act.type || 'Session' }}
               </span>
-              <span class="elite-data prime-load-value">{{ activityLoadDisplay(act) }}</span>
+              <span class="elite-data prime-load-value">{{ formatMetric(act.load, 0) }}</span>
             </div>
             <div v-if="!(squadronStore.selectedPilot?.activities?.length)" class="no-data mono-text">
               Geen activiteiten.
@@ -93,6 +101,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { useSquadronStore } from '../stores/squadron'
+import { formatMetric } from '../utils/formatters'
 import WeekReportDialog from './coach/WeekReportDialog.vue'
 
 const squadronStore = useSquadronStore()
@@ -120,54 +129,28 @@ const pilotDisplayName = computed(() => {
   return 'Onbekend'
 })
 
-/** Direct uit store: athlete.metrics.cyclePhase (en optioneel cycleDay). Geen afleiding. */
-const bioClockDisplay = computed(() => {
-  const m = squadronStore.selectedPilot?.metrics
-  if (!m) return 'NO DATA'
-  const phase = m.cyclePhase
-  const day = m.cycleDay
-  if (phase == null && day == null) return 'NO DATA'
+function bioClockDisplay(phase, day) {
+  if (phase == null && day == null) return '—'
   if (phase != null && day != null) return `${phase} · D${day}`
   if (phase != null) return String(phase)
-  return `D${day}`
-})
+  return day != null ? `D${day}` : '—'
+}
 
-/** Direct uit store: athlete.metrics.acwr. */
-const acwrValue = computed(() => {
-  const v = squadronStore.selectedPilot?.metrics?.acwr
-  return v != null && Number.isFinite(Number(v)) ? Number(v) : null
-})
+function rhrDisplay(val) {
+  const s = formatMetric(val, 0)
+  return s === '—' ? s : `${s} bpm`
+}
 
-const acwrDisplay = computed(() => {
-  if (acwrValue.value == null) return 'NO DATA'
-  return Number(acwrValue.value).toFixed(2)
-})
-
-const ctlDisplay = computed(() => {
-  const p = squadronStore.selectedPilot
-  const v = p?.metrics?.ctl ?? p?.stats?.chronicLoad
-  if (v == null || !Number.isFinite(Number(v))) return 'NO DATA'
-  return Number(v).toFixed(0)
-})
-
-const rhrDisplay = computed(() => {
-  const p = squadronStore.selectedPilot
-  const v = p?.metrics?.rhr ?? p?.stats?.currentRHR
-  if (v == null || !Number.isFinite(Number(v))) return 'NO DATA'
-  return `${Number(v).toFixed(0)} bpm`
-})
-
-const readinessDisplay = computed(() => {
-  const p = squadronStore.selectedPilot
-  const v = p?.readiness ?? p?.stats?.currentReadiness
-  if (v == null || !Number.isFinite(Number(v))) return 'NO DATA'
-  return `${Math.round(Number(v))}/10`
-})
+function readinessDisplay(val) {
+  const s = formatMetric(val, 0)
+  return s === '—' ? s : `${s}/10`
+}
 
 function acwrClass(acwr) {
-  if (acwr == null || !Number.isFinite(acwr)) return ''
-  if (acwr > 1.5) return 'acwr-spike'
-  if (acwr >= 0.8 && acwr <= 1.3) return 'acwr-sweet'
+  if (acwr == null || !Number.isFinite(Number(acwr))) return ''
+  const v = Number(acwr)
+  if (v > 1.5) return 'acwr-spike'
+  if (v >= 0.8 && v <= 1.3) return 'acwr-sweet'
   return 'acwr-undertraining'
 }
 
@@ -176,12 +159,6 @@ function formatActivityDate(dateStr) {
   const d = new Date(String(dateStr).replace(/-/g, '/').slice(0, 10))
   if (Number.isNaN(d.getTime())) return dateStr
   return d.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: '2-digit' })
-}
-
-/** Backend-first: alleen act.load | suffer_score | stress_score. Geen duration * 7. */
-function activityLoadDisplay(act) {
-  const load = act.load ?? act.suffer_score ?? act.stress_score ?? null
-  return load != null && Number.isFinite(Number(load)) ? Number(load) : '—'
 }
 
 function onDeepDiveClose() {
