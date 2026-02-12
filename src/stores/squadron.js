@@ -1,54 +1,14 @@
 import { defineStore } from 'pinia'
-import { db } from 'boot/firebase'
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  where,
-  limit,
-} from 'firebase/firestore'
 import { useAuthStore } from './auth'
-import { getCoachSquad } from '../services/coachService'
-
-const USERS_COLLECTION = 'users'
-const ACTIVITIES_COLLECTION = 'activities'
-const ACTIVITIES_LIMIT = 10
-const ACTIVITIES_DAYS_CUTOFF = 14
-
-/** Zelfde bron als weekplan: phase + day uit lastPeriod en cycleLength. */
-function cycleFromLMP(lastPeriodDate, cycleLength = 28) {
-  if (!lastPeriodDate) return { cyclePhase: null, cycleDay: null }
-  let dateStr = lastPeriodDate
-  if (dateStr && typeof dateStr === 'object' && 'seconds' in dateStr) {
-    dateStr = new Date(dateStr.seconds * 1000).toISOString().slice(0, 10)
-  } else {
-    dateStr = String(dateStr || '').replace(/-/g, '/').slice(0, 10)
-  }
-  const last = new Date(dateStr)
-  const today = new Date()
-  last.setHours(0, 0, 0, 0)
-  today.setHours(0, 0, 0, 0)
-  const daysSince = Math.floor((today - last) / (1000 * 60 * 60 * 24))
-  const currentCycleDay = (daysSince % cycleLength) + 1
-  const ov = Math.floor(cycleLength / 2)
-  let phaseName = 'Menstrual'
-  if (currentCycleDay > 5 && currentCycleDay <= ov) phaseName = 'Follicular'
-  else if (currentCycleDay > ov && currentCycleDay <= cycleLength) phaseName = 'Luteal'
-  return { cyclePhase: phaseName, cycleDay: currentCycleDay }
-}
+import { getCoachSquad, getAthleteDetail } from '../services/coachService'
 
 /**
- * Normalized Truth: athletesById + activitiesByAthleteId.
- * Data uit Firestore direct gemapt; metrics zoals in DB; acwr ontbreekt → null (geen herberekening).
+ * Squadron store — Backend-First. Storage only; no metric calculations.
+ * State: athletesById (dict). Data stored exactly as the API sends.
  */
 export const useSquadronStore = defineStore('squadron', {
   state: () => ({
-    /** { [athleteId]: athleteDoc } — Geen dummy data; altijd leeg tot fetch klaar is. */
     athletesById: {},
-    /** { [athleteId]: activity[] } — activiteiten per atleet. */
-    activitiesByAthleteId: {},
     loading: false,
     error: null,
     selectedPilotId: null,
@@ -56,12 +16,12 @@ export const useSquadronStore = defineStore('squadron', {
   }),
 
   getters: {
-    /** Tabelrijen: array uit athletesById (zelfde volgorde als ids). */
-    athletes(state) {
+    /** List of athletes (for table). */
+    squadronList(state) {
       return Object.values(state.athletesById)
     },
 
-    /** Explicit: rijen voor q-table (zelfde als athletes). */
+    /** Alias for table binding. */
     squadRows(state) {
       return Object.values(state.athletesById)
     },
@@ -70,38 +30,40 @@ export const useSquadronStore = defineStore('squadron', {
       return Object.keys(state.athletesById).length
     },
 
+    /** Count of athletes with stored acwr > 1.5 (read-only, no calculation). */
     atRiskCount(state) {
-      return Object.values(state.athletesById).reduce((count, athlete) => {
-        const acwr = athlete?.metrics?.acwr ?? null
-        const value = Number(acwr)
-        if (Number.isFinite(value) && value > 1.5) return count + 1
+      return Object.values(state.athletesById).reduce((count, a) => {
+        const acwr = a?.metrics?.acwr ?? a?.acwr ?? null
+        const v = Number(acwr)
+        if (Number.isFinite(v) && v > 1.5) return count + 1
         return count
       }, 0)
     },
 
-    /** Voor modal: geselecteerde atleet + activiteiten uit genormaliseerde state. */
+    /** Athlete by id. */
+    getAthlete: (state) => (id) => {
+      if (!id) return null
+      return state.athletesById[id] ?? null
+    },
+
+    /** Selected athlete (for modal). */
     selectedPilot(state) {
       if (!state.selectedPilotId) return null
-      const a = state.athletesById[state.selectedPilotId]
-      if (!a) return null
-      return {
-        ...a,
-        activities: state.activitiesByAthleteId[state.selectedPilotId] || [],
-      }
+      return state.athletesById[state.selectedPilotId] ?? null
     },
   },
 
   actions: {
     /**
-     * Load squad: API first, fallback Firestore. Atomic replace (geen merge).
-     * loading = true aan start, loading = false in finally.
+     * Fetch squadron from API. Map array to athletesById (key = athlete.id).
+     * Stores exactly what the API sends; no transformation.
      */
     async fetchSquadron() {
       this.loading = true
       this.error = null
 
       const authStore = useAuthStore()
-      const teamId = authStore.teamId || authStore.user?.teamId
+      const teamId = authStore.teamId ?? authStore.user?.teamId
 
       try {
         if (!teamId) {
@@ -109,99 +71,19 @@ export const useSquadronStore = defineStore('squadron', {
           throw new Error('No Team Assigned')
         }
 
-        console.log('[SquadronStore] calling squadron API, teamId=', teamId)
-
-        try {
-          const data = await getCoachSquad()
-          const uniqueTeamIds = [...new Set((data || []).map((r) => r.teamId))]
-          const filtered = Array.isArray(data) ? data.filter((row) => row.teamId === teamId) : []
-          console.log('[SquadronStore] API success', {
-            dataLength: (data || []).length,
-            uniqueTeamIds,
-            filterTeamId: teamId,
-            filteredLength: filtered.length,
-            usedApi: true,
-          })
-
-          if (filtered.length === 0) {
-            console.warn('[SquadronStore] No athletes for teamId', teamId, '— showing empty table (no Firestore fallback)')
-            this.athletesById = {}
-            this.activitiesByAthleteId = {}
-            return
-          }
-
-          const nextById = {}
-          const nextActivitiesByAthleteId = {}
-          filtered.forEach((row) => {
-            const id = row.id
-            if (!id) return
-            nextById[id] = {
-              id,
-              name: row.name,
-              displayName: row.name,
-              email: row.email ?? null,
-              teamId: row.teamId ?? null,
-              metrics: {
-                acwr: row.acwr ?? null,
-                cyclePhase: row.cyclePhase ?? null,
-                cycleDay: row.cycleDay ?? null,
-              },
-              readiness: row.readiness ?? null,
-              level: row.level ?? 'rookie',
-            }
-            nextActivitiesByAthleteId[id] = Array.isArray(row.activities) ? row.activities : []
-          })
-          this.athletesById = nextById
-          this.activitiesByAthleteId = nextActivitiesByAthleteId
-          return
-        } catch (apiErr) {
-          const status = apiErr?.response?.status
-          const statusText = apiErr?.response?.statusText
-          const message = apiErr?.message
-          console.warn('[SquadronStore] API failed → Firestore fallback', {
-            reason: status != null ? 'non-2xx' : message?.includes('Network') ? 'network/cors' : 'exception',
-            status,
-            statusText,
-            message,
-            usedApi: false,
-          })
-        }
-
-        console.log('[SquadronStore] using Firestore fallback (API failure)')
-        const usersRef = collection(db, USERS_COLLECTION)
-        const q = query(usersRef, where('teamId', '==', teamId))
-        const snapshot = await getDocs(q)
+        const response = await getCoachSquad()
+        const list = Array.isArray(response) ? response : (response?.data ?? [])
+        const filtered = list.filter((row) => row.teamId === teamId)
 
         const nextById = {}
-        snapshot.docs.forEach((docSnap) => {
-          const d = docSnap.data()
-          const metrics = d.metrics || {}
-          const profile = d.profile || {}
-          const lastPeriod =
-            profile.lastPeriodDate ||
-            profile.lastPeriod ||
-            profile.lastMenstruationDate ||
-            profile.cycleData?.lastPeriodDate ||
-            profile.cycleData?.lastPeriod ||
-            null
-          const cycleLength =
-            Number(profile.cycleLength) ||
-            Number(profile.avgDuration) ||
-            Number(profile.cycleData?.avgDuration) ||
-            28
-          const { cyclePhase, cycleDay } = cycleFromLMP(lastPeriod, cycleLength)
-          const acwr = metrics.acwr != null ? Number(metrics.acwr) : null
-          nextById[docSnap.id] = {
-            id: docSnap.id,
-            ...d,
-            metrics: { ...metrics, acwr, cyclePhase, cycleDay },
-          }
-        })
-
+        for (const athlete of filtered) {
+          const id = athlete.id ?? athlete.uid
+          if (id) nextById[id] = { ...athlete }
+        }
         this.athletesById = nextById
       } catch (err) {
-        console.error('SquadronStore: failed to fetch squadron', err)
-        this.error = err?.message || 'Failed to fetch squadron'
+        console.error('SquadronStore: fetchSquadron failed', err)
+        this.error = err?.message ?? 'Failed to fetch squadron'
         throw err
       } finally {
         this.loading = false
@@ -209,142 +91,27 @@ export const useSquadronStore = defineStore('squadron', {
     },
 
     /**
-     * Haal profiel, metrics, readiness en recente activiteiten op voor Deep Dive.
-     * Schrijft in athletesById en activitiesByAthleteId; zet selectedPilotId.
-     * Strava-velden (start_date_local, moving_time, etc.) blijven op activiteiten behouden.
+     * Fetch one athlete detail from API and merge into athletesById.
+     * Does not mutate API response; merges into a new object.
      */
-    async fetchPilotDeepDive(pilotId) {
-      if (!pilotId) {
+    async fetchAthleteDeepDive(id) {
+      if (!id) {
         this.selectedPilotId = null
         return
       }
 
       this.deepDiveLoading = true
-      this.selectedPilotId = pilotId
+      this.selectedPilotId = id
 
       try {
-        const userRef = doc(db, USERS_COLLECTION, pilotId)
-        const userSnap = await getDoc(userRef)
-        const userData = userSnap.exists() ? userSnap.data() : {}
-
-        const profile = userData.profile || {}
-        const lastPeriodDate =
-          profile.lastPeriodDate ||
-          profile.lastPeriod ||
-          profile.lastMenstruationDate ||
-          profile.cycleData?.lastPeriodDate ||
-          profile.cycleData?.lastPeriod ||
-          null
-        const cycleLength =
-          Number(profile.cycleLength) ||
-          Number(profile.avgDuration) ||
-          Number(profile.cycleData?.avgDuration) ||
-          28
-
-        const metrics = userData.metrics || {}
-        const existing = this.athletesById[pilotId]
-        const { cyclePhase: computedPhase, cycleDay: computedDay } = cycleFromLMP(lastPeriodDate, cycleLength)
-        // Behoud API-metrics (zelfde bron als weekrapport) als die al gezet zijn
-        const acwr =
-          existing?.metrics?.acwr != null ? Number(existing.metrics.acwr)
-          : metrics.acwr != null ? Number(metrics.acwr)
-          : null
-        const cyclePhase = existing?.metrics?.cyclePhase ?? computedPhase
-        const cycleDay = existing?.metrics?.cycleDay ?? computedDay
-
-        const displayName =
-          userData.displayName ||
-          userData.name ||
-          profile.fullName ||
-          profile.name ||
-          userData.email ||
-          'Pilot'
-
-        // Update athlete in normalized state; ACWR/phase behouden van API indien aanwezig
+        const data = await getAthleteDetail(id)
+        const existing = this.athletesById[id]
         this.athletesById = {
           ...this.athletesById,
-          [pilotId]: {
-            id: pilotId,
-            ...userData,
-            name: displayName,
-            displayName,
-            email: userData.email || null,
-            profile: {
-              ...profile,
-              lastPeriodDate,
-              cycleLength,
-            },
-            stats: userData.stats || null,
-            metrics: {
-              ...metrics,
-              acwr,
-              cyclePhase,
-              cycleDay,
-              ctl: metrics.ctl != null ? Number(metrics.ctl) : null,
-              atl: metrics.atl != null ? Number(metrics.atl) : null,
-            },
-            readiness: userData.readiness != null ? userData.readiness : null,
-          },
-        }
-
-        // Activities: root + user subcollection; Strava-velden behouden
-        const rootActivitiesRef = collection(db, ACTIVITIES_COLLECTION)
-        const rootActivitiesQuery = query(
-          rootActivitiesRef,
-          where('userId', '==', pilotId),
-          limit(ACTIVITIES_LIMIT * 3)
-        )
-        const userActivitiesRef = collection(
-          doc(db, USERS_COLLECTION, pilotId),
-          ACTIVITIES_COLLECTION
-        )
-        const [rootSnap, subSnap] = await Promise.all([
-          getDocs(rootActivitiesQuery),
-          getDocs(userActivitiesRef),
-        ])
-
-        const cutoff = new Date()
-        cutoff.setDate(cutoff.getDate() - ACTIVITIES_DAYS_CUTOFF)
-        const cutoffIso = cutoff.toISOString().slice(0, 10)
-
-        const list = [...rootSnap.docs, ...subSnap.docs].map((d) => {
-          const a = d.data()
-          const dateVal = a.date ?? a.start_date_local ?? a.start_date
-          const dateStr =
-            typeof dateVal === 'string'
-              ? dateVal.slice(0, 10)
-              : dateVal?.toDate?.()?.toISOString?.()?.slice(0, 10) || ''
-          const loadVal =
-            a.prime_load != null ? a.prime_load
-            : a.primeLoad != null ? a.primeLoad
-            : a.load != null ? a.load
-            : a.trainingLoad != null ? a.trainingLoad
-            : a.suffer_score != null ? a.suffer_score
-            : null
-          return {
-            ...a,
-            id: d.id,
-            date: dateStr,
-            type: a.type || a.sport_type || 'Session',
-            source: a.source || a.activity_source || 'strava',
-            rawLoad: a.suffer_score != null ? a.suffer_score : null,
-            load: loadVal,
-            primeLoad: loadVal,
-            suffer_score: a.suffer_score != null ? a.suffer_score : null,
-            moving_time: a.moving_time != null ? a.moving_time : null,
-          }
-        })
-        list.sort((x, y) => ((x.date || '0000-00-00') > (y.date || '0000-00-00') ? -1 : 1))
-        const activities = list
-          .filter((x) => x.date >= cutoffIso)
-          .slice(0, ACTIVITIES_LIMIT)
-
-        this.activitiesByAthleteId = {
-          ...this.activitiesByAthleteId,
-          [pilotId]: activities,
+          [id]: { ...existing, ...data },
         }
       } catch (err) {
-        console.error('SquadronStore: fetchPilotDeepDive failed', err)
+        console.error('SquadronStore: fetchAthleteDeepDive failed', err)
         this.selectedPilotId = null
         throw err
       } finally {
@@ -352,13 +119,17 @@ export const useSquadronStore = defineStore('squadron', {
       }
     },
 
-    /** Selecteer atleet uit tabelrij; daarna fetchPilotDeepDive(id) aanroepen voor activiteiten. */
+    /** Alias for backward compatibility. */
+    async fetchPilotDeepDive(pilotId) {
+      return this.fetchAthleteDeepDive(pilotId)
+    },
+
     setSelectedPilotFromRow(row) {
       if (!row) {
         this.selectedPilotId = null
         return
       }
-      this.selectedPilotId = row.id || row.uid || null
+      this.selectedPilotId = row.id ?? row.uid ?? null
     },
 
     clearSelectedPilot() {

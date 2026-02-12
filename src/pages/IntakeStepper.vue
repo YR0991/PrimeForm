@@ -250,7 +250,7 @@
                 class="gold-btn"
                 :label="saving ? 'Laden...' : 'Voltooien & Opslaan'"
                 :loading="saving"
-                :disable="!canProceedStep5 || saving"
+                :disable="saving"
                 @click="saveProfile"
                 unelevated
               />
@@ -265,8 +265,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { doc, updateDoc } from 'firebase/firestore'
+import { doc, setDoc } from 'firebase/firestore'
 import { db } from 'boot/firebase'
+import { Notify } from 'quasar'
 import { api } from '../services/httpClient.js'
 import { useAuthStore } from '../stores/auth'
 
@@ -434,67 +435,67 @@ const saveProfile = async () => {
   saving.value = true
   saveError.value = ''
 
-  // Validatie check: print alle velden vlak voor de save
-  console.log('[Intake] Velden voor opslaan:', JSON.stringify(form.value, null, 2))
+  const payload = {
+    fullName: form.value.fullName ?? '',
+    email: form.value.email ?? '',
+    birthDate: form.value.birthDate ?? null,
+    disclaimerAccepted: Boolean(form.value.disclaimerAccepted),
+    redFlags: Array.isArray(form.value.redFlags) ? form.value.redFlags : [],
+
+    goals: Array.isArray(form.value.goals) ? form.value.goals : [],
+    painPoint: form.value.painPoint ?? '',
+    successScenario: form.value.successScenario ?? '',
+    injuries: form.value.injuries ?? '',
+
+    trainingFrequency: form.value.trainingFrequency ?? 4,
+    sessionDuration: form.value.sessionDuration ?? '60 min',
+    programmingType: form.value.programmingType ?? 'Box/Gym Programming',
+    stravaLink: form.value.stravaLink ?? '',
+    wearables: Array.isArray(form.value.wearables) ? form.value.wearables : [],
+
+    sleepAvg: form.value.sleepAvg ?? 7,
+    stress: form.value.stress ?? 5,
+    recoveryHabits: Array.isArray(form.value.recoveryHabits) ? form.value.recoveryHabits : [],
+
+    symptoms: Array.isArray(form.value.symptoms) ? form.value.symptoms : [],
+    checkinTime: form.value.checkinTime ?? '08:00',
+
+    hrvBaseline: form.value.hrvBaseline != null && form.value.hrvBaseline !== '' && Number.isFinite(Number(form.value.hrvBaseline)) ? Number(form.value.hrvBaseline) : null,
+    rhrBaseline: form.value.rhrBaseline != null && form.value.rhrBaseline !== '' && Number.isFinite(Number(form.value.rhrBaseline)) ? Number(form.value.rhrBaseline) : null,
+
+    cycleData: {
+      lastPeriod: form.value.lastPeriod ?? null,
+      avgDuration: Number(form.value.cycleAvgDuration) || 28,
+      contraception: form.value.contraception ?? 'Geen',
+    },
+  }
+
+  console.log('Save button clicked! Payload:', payload)
 
   try {
-    const profilePatch = {
-      fullName: form.value.fullName,
-      email: form.value.email,
-      birthDate: form.value.birthDate,
-      disclaimerAccepted: form.value.disclaimerAccepted,
-      redFlags: form.value.redFlags,
-
-      goals: form.value.goals,
-      painPoint: form.value.painPoint,
-      successScenario: form.value.successScenario,
-      injuries: form.value.injuries,
-
-      trainingFrequency: form.value.trainingFrequency,
-      sessionDuration: form.value.sessionDuration,
-      programmingType: form.value.programmingType,
-      stravaLink: form.value.stravaLink,
-      wearables: form.value.wearables,
-
-      sleepAvg: form.value.sleepAvg,
-      stress: form.value.stress,
-      recoveryHabits: form.value.recoveryHabits,
-
-      symptoms: form.value.symptoms,
-      checkinTime: form.value.checkinTime,
-
-      hrvBaseline: form.value.hrvBaseline != null && form.value.hrvBaseline !== '' && Number.isFinite(Number(form.value.hrvBaseline)) ? Number(form.value.hrvBaseline) : null,
-      rhrBaseline: form.value.rhrBaseline != null && form.value.rhrBaseline !== '' && Number.isFinite(Number(form.value.rhrBaseline)) ? Number(form.value.rhrBaseline) : null,
-
-      cycleData: {
-        lastPeriod: form.value.lastPeriod,
-        avgDuration: Number(form.value.cycleAvgDuration),
-        contraception: form.value.contraception
-      },
-
-      onboardingCompleted: true
-    }
+    const profilePatch = { ...payload, onboardingCompleted: true }
 
     await api.put('/api/profile', {
       userId: userId.value,
-      profilePatch
+      profilePatch,
     })
 
     if (authStore.user?.uid) {
       const userRef = doc(db, 'users', authStore.user.uid)
-      await updateDoc(userRef, { onboardingComplete: true })
+      await setDoc(userRef, { onboardingComplete: true }, { merge: true })
     }
     authStore.onboardingComplete = true
 
     router.replace('/dashboard')
   } catch (error) {
-    console.error('Profile save failed:', error)
+    console.error('Intake Error:', error)
     const msg =
       error?.response?.data?.error ||
       error?.response?.data?.message ||
       error?.message ||
       'Opslaan mislukt. Probeer opnieuw.'
     saveError.value = msg
+    Notify.create({ type: 'negative', message: msg })
   } finally {
     saving.value = false
   }
