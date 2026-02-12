@@ -40,7 +40,6 @@
 import { ref, computed, onMounted } from 'vue'
 import VueApexCharts from 'vue3-apexcharts'
 import { api } from '../services/httpClient.js'
-import { API_URL } from '../config/api.js'
 import CycleCalendar from '../components/CycleCalendar.vue'
 
 const getOrCreateUserId = () => {

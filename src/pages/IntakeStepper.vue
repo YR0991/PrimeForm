@@ -266,7 +266,6 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../services/httpClient.js'
-import { API_URL } from '../config/api.js'
 import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
