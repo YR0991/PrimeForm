@@ -137,11 +137,12 @@ const selectedPilotMapped = computed(() => {
   return {
     cyclePhase,
     cycleDay: cycleDay != null ? cycleDay : '—',
+    // Gebruik metrics.acwr als waarheid (zelfde als atleet-dashboard); geen herberekening
     acwr:
-      stats.acwr != null
-        ? Number(stats.acwr)
-        : metrics.acwr != null
-          ? Number(metrics.acwr)
+      metrics.acwr != null
+        ? Number(metrics.acwr)
+        : stats.acwr != null
+          ? Number(stats.acwr)
           : null,
     ctl:
       stats.chronicLoad != null

@@ -433,6 +433,8 @@ const directiveClass = (directive) => {
 const onRowClick = async (_evt, row) => {
   const id = row.id || row.uid
   if (!id) return
+  // Eerst modal vullen met rijdata (juiste metrics.acwr); daarna activiteiten ophalen
+  squadronStore.setSelectedPilotFromRow(row)
   try {
     await squadronStore.fetchPilotDeepDive(id)
   } catch (e) {

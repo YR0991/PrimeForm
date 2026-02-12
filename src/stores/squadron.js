@@ -142,7 +142,8 @@ export const useSquadronStore = defineStore('squadron', {
 
         const list = [...rootSnap.docs, ...subSnap.docs].map((d) => {
           const a = d.data()
-          const dateVal = a.date
+          // Strava gebruikt start_date_local/start_date; manual gebruikt date
+          const dateVal = a.date ?? a.start_date_local ?? a.start_date
           const dateStr =
             typeof dateVal === 'string'
               ? dateVal.slice(0, 10)
@@ -151,7 +152,7 @@ export const useSquadronStore = defineStore('squadron', {
             id: d.id,
             date: dateStr,
             type: a.type || a.sport_type || 'Session',
-            // Manual workouts have source 'manual'; Strava lives in users/{uid}/activities
+            // Geen filter op source: manual en strava tonen we allebei
             source: a.source || a.activity_source || 'strava',
             rawLoad: a.suffer_score != null ? a.suffer_score : null,
             load: a.prime_load != null ? a.prime_load : a.primeLoad ?? null,
@@ -193,6 +194,26 @@ export const useSquadronStore = defineStore('squadron', {
         throw err
       } finally {
         this.deepDiveLoading = false
+      }
+    },
+
+    /**
+     * Zet selectedPilot direct uit tabelrij (correcte metrics.acwr); daarna fetchPilotDeepDive voor activiteiten.
+     */
+    setSelectedPilotFromRow(row) {
+      if (!row) {
+        this.selectedPilot = null
+        return
+      }
+      this.selectedPilot = {
+        id: row.id || row.uid,
+        name: row.displayName || row.name || row.email || '—',
+        email: row.email || null,
+        profile: row.profile || {},
+        stats: row.stats || null,
+        metrics: row.metrics || null,
+        readiness: row.readiness != null ? row.readiness : null,
+        activities: [],
       }
     },
 
