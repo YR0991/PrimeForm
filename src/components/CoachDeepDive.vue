@@ -96,7 +96,6 @@ const squadronStore = useSquadronStore()
 
 const deepDiveOpen = ref(false)
 const reportDialogOpen = ref(false)
-const openingPilotId = ref(null)
 
 const pilotDisplayName = computed(() => {
   const p = squadronStore.selectedPilot
@@ -192,15 +191,6 @@ function formatActivityDate(dateStr) {
   const d = new Date(String(dateStr).replace(/-/g, '/').slice(0, 10))
   if (Number.isNaN(d.getTime())) return dateStr
   return d.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: '2-digit' })
-}
-
-function activityIcon(type) {
-  const t = (type || '').toLowerCase()
-  if (t.includes('run')) return 'directions_run'
-  if (t.includes('ride') || t.includes('bike')) return 'directions_bike'
-  if (t.includes('swim')) return 'pool'
-  if (t.includes('manual')) return 'build'
-  return 'insights'
 }
 
 function onDeepDiveClose() {
