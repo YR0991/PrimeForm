@@ -11,6 +11,8 @@ export const useDashboardStore = defineStore('dashboard', {
     loading: false,
     syncing: false,
     error: null,
+    dailyBrief: null,
+    briefLoading: false,
   }),
 
   getters: {
@@ -79,18 +81,25 @@ export const useDashboardStore = defineStore('dashboard', {
               'X-User-Uid': uid,
             }
 
-        const res = await fetch(`${API_URL}/api/dashboard`, {
-          method: 'GET',
-          headers,
-        })
+        const [dashboardRes, briefRes] = await Promise.all([
+          fetch(`${API_URL}/api/dashboard`, { method: 'GET', headers }),
+          fetch(`${API_URL}/api/daily-brief`, { method: 'GET', headers }).catch(() => null),
+        ])
 
-        if (!res.ok) {
-          const text = await res.text()
+        if (!dashboardRes.ok) {
+          const text = await dashboardRes.text()
           throw new Error(text || 'Dashboard data ophalen mislukt')
         }
 
-        const json = await res.json()
+        const json = await dashboardRes.json()
         const data = json?.data || json
+
+        if (briefRes && briefRes.ok) {
+          const briefJson = await briefRes.json()
+          this.dailyBrief = briefJson?.data || null
+        } else {
+          this.dailyBrief = null
+        }
 
         const raw = { ...data }
         if (data.todayLog) {

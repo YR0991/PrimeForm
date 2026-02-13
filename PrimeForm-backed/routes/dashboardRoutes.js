@@ -7,6 +7,7 @@
 const express = require('express');
 const cycleService = require('../services/cycleService');
 const reportService = require('../services/reportService');
+const dailyBriefService = require('../services/dailyBriefService');
 
 /**
  * @param {object} deps - { db, admin }
@@ -120,6 +121,37 @@ function createDashboardRouter(deps) {
       return res.status(500).json({
         success: false,
         error: 'Failed to load dashboard',
+        message: error.message
+      });
+    }
+  });
+
+  // GET /api/daily-brief — uid from X-User-Uid or query.uid; date from query.date (YYYY-MM-DD) or today Europe/Amsterdam
+  router.get('/daily-brief', async (req, res) => {
+    try {
+      const uid = (req.headers['x-user-uid'] || req.query.uid || '').toString().trim();
+      if (!uid) {
+        return res.status(400).json({ success: false, error: 'Missing user id. Send X-User-Uid header or uid query.' });
+      }
+      if (!db) {
+        return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
+      }
+      const dateISO = (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date).trim()))
+        ? String(req.query.date).trim()
+        : new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Amsterdam' });
+      const brief = await dailyBriefService.getDailyBrief({
+        db,
+        admin,
+        uid,
+        dateISO,
+        timezone: 'Europe/Amsterdam'
+      });
+      return res.json({ success: true, data: brief });
+    } catch (error) {
+      console.error('GET /api/daily-brief error:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to load daily brief',
         message: error.message
       });
     }

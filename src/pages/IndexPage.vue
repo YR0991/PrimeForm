@@ -8,245 +8,176 @@
         <div class="subtitle">Atleet dashboard</div>
       </div>
 
-      <!-- Dagelijkse briefing -->
-      <q-card class="dashboard-card q-mb-md" flat>
-        <q-card-section class="pre-briefing">
-          <div class="pre-brief-header">
-            <div class="widget-title">Dagelijkse briefing</div>
-            <div class="mono pre-brief-summary">
-              <template v-if="hasTodayCheckIn">
-                <template v-if="lastDirective.status">
-                  <span class="directive-label">Directief:</span>
-                  <span :class="['directive-status', 'directive-' + (lastDirective.status || '').toLowerCase()]">
-                    {{ lastDirective.status }}
-                  </span>
-                  — Je readiness-score is <span class="highlight">{{ readinessTodayDisplay }}</span>.
-                  HRV <span class="highlight">{{ hrvStatusLabel }}</span> ten opzichte van 7 dagen.
-                </template>
-                <template v-else>
-                  Dagelijkse briefing voltooid. Je readiness-score is <span class="highlight">{{ readinessTodayDisplay }}</span>.
-                  HRV <span class="highlight">{{ hrvStatusLabel }}</span> ten opzichte van 7 dagen.
-                </template>
-                <div v-if="lastDirective.aiMessage" class="directive-message">
-                  <div v-html="renderedAiMessage" class="markdown-content" />
-                </div>
-              </template>
-              <template v-else>
-                Doe je dagelijkse check-in om je persoonlijke advies te krijgen.
-              </template>
-            </div>
-          </div>
-          <div class="pre-brief-actions">
-            <q-btn
-              v-if="!hasTodayCheckIn"
-              label="Start dagelijkse check-in"
-              no-caps
-              unelevated
-              class="btn-prebrief"
-              @click="checkinDialog = true"
-            />
-            <q-btn
-              v-else
-              label="Bekijk dagelijkse check-in"
-              flat
-              no-caps
-              class="btn-prebrief-secondary"
-              @click="checkinDialog = true"
-            />
-          </div>
-        </q-card-section>
-      </q-card>
-
+      <!-- Today-first dashboard (daily brief) -->
       <q-card class="dashboard-card" flat>
         <q-inner-loading :showing="dashboardStore.loading" color="#fbbf24">
           <q-spinner-gears size="48px" color="#fbbf24" />
         </q-inner-loading>
 
         <q-card-section>
-          <div class="dashboard-grid">
-            <!-- Widget 1: Biologische klok -->
-            <div class="widget bio-clock">
-              <div class="widget-title">De biologische klok</div>
-              <div class="bio-main">
-                <div class="bio-line mono">
-                  {{ phaseSentence }}
-                </div>
-                <div class="bio-line mono">
-                  Dag
-                  <span class="highlight">
-                    {{ phaseDisplay.dayDisplay }}
-                  </span>
-                  van
-                  <span class="highlight">
-                    {{ phaseDisplay.length }}
-                  </span>
-                </div>
+          <div class="dashboard-grid today-first-grid">
+            <!-- Row1: VANDAAG — DIRECTIEF (dominant) + HERSTEL -->
+            <div class="widget directive-widget">
+              <div class="widget-title">VANDAAG — DIRECTIEF</div>
+              <div class="directive-header">
+                <span class="signal-dot" :class="'signal-' + (brief?.status?.signal || 'ORANGE')">{{ signalEmoji(brief?.status?.signal) }}</span>
+                <span class="tag-label mono">{{ brief?.status?.tag ?? 'MAINTAIN' }}</span>
+                <span v-if="brief?.status?.hasBlindSpot" class="blind-badge mono">Blind spot</span>
               </div>
+              <div class="directive-one-liner mono">{{ brief?.status?.oneLiner ?? 'Stabiel; train met mate.' }}</div>
+              <ul class="directive-list">
+                <li v-for="(item, i) in (brief?.todayDirective?.doToday ?? ['Train volgens hoe je je voelt.']).slice(0, 3)" :key="'do-' + i" class="mono">{{ item }}</li>
+              </ul>
+              <div class="directive-why-label mono">Waarom</div>
+              <ul class="directive-list">
+                <li v-for="(item, i) in (brief?.todayDirective?.why ?? ['Data ontbreekt.']).slice(0, 3)" :key="'why-' + i" class="mono">{{ item }}</li>
+              </ul>
+              <div class="directive-stop mono">Stopregel: {{ brief?.todayDirective?.stopRule ?? 'Bij twijfel: intensiteit omlaag.' }}</div>
+              <q-btn
+                v-if="brief?.todayDirective?.detailsMarkdown"
+                flat
+                no-caps
+                class="btn-dagrapport mono"
+                label="Open dagrapport"
+                @click="dagrapportModal = true"
+              />
+              <q-btn
+                v-if="!hasTodayCheckIn"
+                unelevated
+                no-caps
+                class="btn-prebrief q-mt-sm"
+                label="Start dagelijkse check-in"
+                @click="checkinDialog = true"
+              />
+              <q-btn
+                v-else
+                flat
+                no-caps
+                class="btn-prebrief-secondary q-mt-sm"
+                label="Bekijk dagelijkse check-in"
+                @click="checkinDialog = true"
+              />
+            </div>
 
-              <div class="cycle-bar">
-                <div class="cycle-rail">
-                  <div
-                    class="cycle-marker"
-                    :style="{ left: phaseDisplay.progress + '%' }"
-                  />
-                </div>
-                <div class="cycle-scale mono">
-                  <span>1</span>
-                  <span>{{ Math.round(phaseDisplay.length / 2) }}</span>
-                  <span>{{ phaseDisplay.length }}</span>
-                </div>
-              </div>
-
-              <div class="prime-tip mono">
-                Advies:
-                <span class="prime-tip-text">{{ primeTip }}</span>
+            <div class="widget recovery-widget">
+              <div class="widget-title">HERSTEL</div>
+              <div class="recovery-body mono">
+                <template v-if="brief?.inputs?.recovery">
+                  <div class="recovery-row">
+                    <span class="recovery-label">HRV vs 28d</span>
+                    <span class="highlight">{{ brief.inputs.recovery.hrvVs28dPct != null ? brief.inputs.recovery.hrvVs28dPct + '%' : 'Blind spot' }}</span>
+                  </div>
+                  <div class="recovery-row">
+                    <span class="recovery-label">RHR delta</span>
+                    <span class="highlight">{{ brief.inputs.recovery.rhrDelta != null ? (brief.inputs.recovery.rhrDelta >= 0 ? '+' : '') + brief.inputs.recovery.rhrDelta : 'Blind spot' }}</span>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="recovery-row"><span class="recovery-label">HRV vs 28d</span><span>Blind spot</span></div>
+                  <div class="recovery-row"><span class="recovery-label">RHR delta</span><span>Blind spot</span></div>
+                </template>
               </div>
             </div>
 
-            <!-- Widget 2: Load meter -->
-            <div class="widget load-meter">
-              <div class="widget-title">
-                De load meter
-                <q-icon
-                  name="help_outline"
-                  size="16px"
-                  class="q-ml-xs"
-                >
-                  <q-tooltip anchor="top middle" self="bottom middle" class="mono">
-                    De verhouding tussen je belasting van de afgelopen 7 dagen versus 28 dagen.
-                  </q-tooltip>
-                </q-icon>
-              </div>
-              <div class="load-content">
-                <div class="acwr-label mono">ACWR</div>
-                <div class="acwr-value mono">
-                  {{ acwrDisplay }}
-                </div>
-                <div class="gauge">
-                  <div class="gauge-ring">
-                    <div
-                      class="gauge-fill"
-                      :class="['zone-' + (loadZone || 'neutral')]"
-                    />
-                  </div>
-                  <div class="gauge-zones mono">
-                    <span class="zone-tag zone-optimal">0.8–1.3 optimaal</span>
-                    <span class="zone-tag zone-over">1.3–1.5 overreaching</span>
-                    <span class="zone-tag zone-danger">1.5+ risico</span>
-                  </div>
-                </div>
-                <div class="acwr-status mono">
-                  Status:
-                  <span :class="['status-pill', 'zone-' + (loadZone || 'neutral')]">
-                    {{ loadStatusDisplay }}
-                  </span>
-                </div>
+            <!-- Row2: LOAD RISK / CYCLE CONTEXT / DATA QUALITY / INTERNAL COST -->
+            <div class="widget load-risk-widget">
+              <div class="widget-title">LOAD RISK</div>
+              <div class="load-risk-body mono">
+                <template v-if="brief?.inputs?.acwr != null">
+                  <div class="acwr-brief-value">{{ brief.inputs.acwr.value != null ? Number(brief.inputs.acwr.value).toFixed(2) : '—' }}</div>
+                  <div class="acwr-band">{{ brief.inputs.acwr.band ?? '—' }}</div>
+                </template>
+                <template v-else>
+                  <div class="acwr-brief-value">—</div>
+                  <div class="acwr-band">Blind spot</div>
+                </template>
               </div>
             </div>
 
-            <!-- Widget 2c: Readiness-meter -->
-            <div class="widget readiness-meter">
-              <div class="widget-title">Readiness-meter</div>
-              <div class="readiness-content mono">
-                <div class="readiness-label-row">
-                  <span class="readiness-label">Vandaag</span>
-                  <span class="readiness-value">
-                    {{ hasTodayCheckIn ? readinessTodayDisplay : 'Nog niet ingevuld' }}
-                  </span>
-                </div>
-                <div class="readiness-gauge">
-                  <div class="readiness-rail">
-                    <div
-                      class="readiness-fill"
-                      :style="{ width: readinessFillWidth }"
-                      :class="readinessZoneClass"
-                    />
-                  </div>
-                  <div class="readiness-scale">
-                    <span>1</span>
-                    <span>5</span>
-                    <span>10</span>
-                  </div>
-                </div>
-                <div class="readiness-status-row">
-                  <span class="readiness-label">Status</span>
-                  <span class="readiness-status" :class="readinessZoneClass">
-                    {{ hasTodayCheckIn ? readinessZoneLabel : 'Nog niet ingevuld' }}
-                  </span>
-                </div>
+            <div class="widget cycle-context-widget">
+              <div class="widget-title">CYCLE CONTEXT</div>
+              <div class="cycle-context-body mono">
+                <template v-if="brief?.inputs?.cycle">
+                  <div>{{ brief.inputs.cycle.mode ?? 'UNKNOWN' }}</div>
+                  <div>Vertrouwen: {{ brief.inputs.cycle.confidence ?? '—' }}</div>
+                  <div v-if="brief.inputs.cycle.phase">{{ brief.inputs.cycle.phase }} · dag {{ brief.inputs.cycle.phaseDay ?? '?' }}</div>
+                  <div v-else>—</div>
+                </template>
+                <template v-else>
+                  <div>Blind spot</div>
+                </template>
               </div>
             </div>
 
-            <!-- RHR TILE (next to Readiness) -->
-            <RHRTile
-              :rhr-current="rhrCurrent"
-              :rhr-baseline28d="telemetry.raw?.rhr_baseline_28d ?? null"
-            />
-
-            <!-- Widget 2b: Handmatige workout toevoegen (primary when no Strava) -->
-            <div
-              v-if="showManualInjectionPrimary"
-              class="widget manual-injection"
-            >
-              <div class="widget-title">Handmatig workout toevoegen</div>
-              <div class="manual-body mono">
-                <div class="manual-row">
-                  <span class="manual-label">Duur (min)</span>
-                  <q-input
-                    v-model.number="manualDuration"
-                    type="number"
-                    dense
-                    borderless
-                    class="manual-input"
-                    input-class="manual-input-field"
-                    :min="0"
-                    :step="5"
-                  />
-                </div>
-                <div class="manual-row manual-rpe-row">
-                  <span class="manual-label">RPE</span>
-                  <q-slider
-                    v-model.number="manualRpe"
-                    :min="1"
-                    :max="10"
-                    :step="1"
-                    color="#fbbf24"
-                    track-color="grey-8"
-                    thumb-color="amber-5"
-                  />
-                  <span class="manual-rpe-value">
-                    {{ manualRpe }}
-                  </span>
-                </div>
-                <div class="manual-row manual-actions">
-                  <div class="manual-load-preview">
-                    PRIME LOAD:
-                    <span class="highlight">
-                      {{ manualPrimeLoadPreview }}
-                    </span>
-                  </div>
-                  <q-btn
-                    dense
-                    unelevated
-                    class="manual-submit-btn"
-                    :disable="!canSubmitManual || manualSubmitting"
-                    :loading="manualSubmitting"
-                    label="Toevoegen"
-                    @click="handleManualInject"
-                  />
-                </div>
+            <div class="widget data-quality-widget">
+              <div class="widget-title">DATA QUALITY</div>
+              <div class="data-quality-body mono">
+                <div>Check-ins 7d: {{ brief?.compliance?.checkins7dPct != null ? brief.compliance.checkins7dPct + '%' : 'Blind spot' }}</div>
+                <div>Check-ins 28d: {{ brief?.compliance?.checkins28dPct != null ? brief.compliance.checkins28dPct + '%' : 'Blind spot' }}</div>
+                <div>Ontbrekend HRV (28d): {{ brief?.compliance?.missingHrvDays != null ? brief.compliance.missingHrvDays : '—' }}</div>
+                <div>Ontbrekend RHR (28d): {{ brief?.compliance?.missingRhrDays != null ? brief.compliance.missingRhrDays : '—' }}</div>
+                <div class="data-quality-microcopy">Hoe hoger compliance, hoe strakker het advies.</div>
               </div>
             </div>
 
-            <!-- HRV TREND (full-width below Load Meter row) -->
+            <div class="widget internal-cost-widget">
+              <div class="widget-title">INTERNAL COST</div>
+              <div class="internal-cost-body mono">
+                <template v-if="brief?.internalCost">
+                  <div :class="'cost-state cost-' + (brief.internalCost.state || 'NORMAL')">{{ brief.internalCost.state }}</div>
+                  <div class="cost-explanation">{{ brief.internalCost.explanation ?? '' }}</div>
+                </template>
+                <template v-else>
+                  <div class="cost-state">—</div>
+                  <div class="cost-explanation">Blind spot</div>
+                </template>
+              </div>
+            </div>
+
+            <!-- Row3: NEXT 48H + WEEK-STATUS -->
+            <div class="widget next48-widget">
+              <div class="widget-title">NEXT 48H</div>
+              <div class="next48-body mono">
+                <div><strong>Vandaag:</strong> {{ brief?.next48h?.today ?? '—' }}</div>
+                <div><strong>Morgen:</strong> {{ brief?.next48h?.tomorrow ?? '—' }}</div>
+                <div class="next48-trigger">{{ brief?.next48h?.trigger ?? '—' }}</div>
+              </div>
+            </div>
+
+            <div class="widget week-status-widget">
+              <div class="widget-title">WEEK-STATUS</div>
+              <div class="week-status-body mono">
+                <div>Laatste 7 dagen — load totaal: {{ brief?.inputs?.activity?.last7dLoadTotal != null ? brief.inputs.activity.last7dLoadTotal : 'Blind spot' }}</div>
+                <div>Laatste 7 dagen — zware sessies: {{ brief?.inputs?.activity?.hardExposures7d != null ? brief.inputs.activity.hardExposures7d : 'Blind spot' }}</div>
+                <div>Laatste 7 dagen — grootste load: {{ formatLargestLoad7d(brief?.inputs?.activity?.largestLoad7d) }}</div>
+              </div>
+            </div>
+
+            <!-- HRV TREND (full-width) -->
             <div class="hrv-chart-full">
               <HRVHistoryChart :history-logs="historyLogs" />
             </div>
 
-            <!-- Widget 3: Recente telemetrie -->
-              <div class="widget telemetry-feed">
+            <!-- Row4: INTAKE + LOG -->
+            <div class="widget intake-widget">
+              <div class="widget-title">INTAKE</div>
+              <div class="intake-body mono">
+                <template v-if="brief?.intake && (brief.intake.goal || brief.intake.eventDate || brief.intake.sportFocus)">
+                  <div v-if="brief.intake.goal"><strong>Doel:</strong> {{ brief.intake.goal }}</div>
+                  <div v-if="brief.intake.eventDate"><strong>Event:</strong> {{ brief.intake.eventDate }}</div>
+                  <div v-if="brief.intake.sportFocus"><strong>Sport:</strong> {{ brief.intake.sportFocus }}</div>
+                  <div v-if="brief.intake.availabilityDaysPerWeek != null">Dagen/week: {{ brief.intake.availabilityDaysPerWeek }}</div>
+                  <div v-if="brief.intake.oneLineNotes">{{ brief.intake.oneLineNotes }}</div>
+                </template>
+                <template v-else>
+                  <div>Geen intake of blind spot</div>
+                </template>
+              </div>
+            </div>
+
+            <div class="widget telemetry-feed">
               <div class="telemetry-header">
-                <div class="widget-title">Recente telemetrie</div>
+                <div class="widget-title">LOG</div>
                 <q-btn
                   v-if="hasStravaConnection"
                   dense
@@ -309,6 +240,11 @@
                 </div>
               </div>
 
+              <div v-if="brief?.inputs?.activity" class="log-highlights mono">
+                Laatste 7d load: <span class="highlight">{{ brief.inputs.activity.last7dLoadTotal != null ? brief.inputs.activity.last7dLoadTotal : '—' }}</span>
+                · Zware sessies: {{ brief.inputs.activity.hardExposures7d != null ? brief.inputs.activity.hardExposures7d : '—' }}
+                · Max load: {{ brief.inputs.activity.largestLoad7d != null ? brief.inputs.activity.largestLoad7d : '—' }}
+              </div>
               <div
                 v-if="hasStravaConnection && recentActivities.length === 0"
                 class="telemetry-sync-state"
@@ -374,6 +310,20 @@
           </div>
         </q-card-section>
       </q-card>
+
+      <!-- Dagrapport modal (detailsMarkdown) -->
+      <q-dialog v-model="dagrapportModal" persistent class="dagrapport-dialog">
+        <q-card class="dashboard-card dagrapport-card" dark flat>
+          <q-card-section class="dagrapport-header">
+            <span class="widget-title">Dagrapport</span>
+            <q-btn flat round dense icon="close" @click="dagrapportModal = false" />
+          </q-card-section>
+          <q-card-section class="dagrapport-body">
+            <div v-if="brief?.todayDirective?.detailsMarkdown && renderedDagrapport" v-html="renderedDagrapport" class="markdown-content" />
+            <div v-else class="mono">Geen dagrapport beschikbaar.</div>
+          </q-card-section>
+        </q-card>
+      </q-dialog>
 
       <!-- Daily Check-in Dialog -->
       <q-dialog v-model="checkinDialog" persistent class="checkin-dialog-dark">
@@ -509,11 +459,11 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
-import { marked } from 'marked'
+import MarkdownIt from 'markdown-it'
+import DOMPurify from 'dompurify'
 import { useAuthStore } from '../stores/auth'
 import { useDashboardStore } from '../stores/dashboard'
 import CoachDashboard from './coach/CoachDashboard.vue'
-import RHRTile from '../components/RHRTile.vue'
 import HRVHistoryChart from '../components/HRVHistoryChart.vue'
 
 const $q = useQuasar()
@@ -553,91 +503,57 @@ function triggerStravaSync() {
 }
 
 const telemetry = computed(() => dashboardStore.telemetry || {})
+const brief = computed(() => dashboardStore.dailyBrief || null)
+const dagrapportModal = ref(false)
 
-const rhrCurrent = computed(() => {
-  const raw = telemetry.value.raw || {}
-  const rhr = raw.last_checkin?.rhr ?? raw.rhr_today
-  return rhr != null && Number.isFinite(Number(rhr)) ? Number(rhr) : null
+function signalEmoji(signal) {
+  if (signal === 'GREEN') return '🟢'
+  if (signal === 'RED') return '🔴'
+  return '🟠'
+}
+
+/** Format largestLoad7d for WEEK-STATUS: null → "—"; object → "YYYY-MM-DD · TYPE · LOAD" (omit missing parts); number → as-is */
+function formatLargestLoad7d(val) {
+  if (val == null) return '—'
+  if (typeof val === 'number' && Number.isFinite(val)) return String(val)
+  if (typeof val !== 'object') return '—'
+  const date = val.date ?? val.start_date ?? val.dateStr ?? null
+  const dateStr = date != null ? String(date).slice(0, 10) : null
+  const type = val.type ?? val.activity_type ?? null
+  const typeStr = type != null && type !== '' ? String(type) : null
+  const load = val.load ?? val.prime_load ?? null
+  const loadStr = load != null && Number.isFinite(Number(load)) ? String(Number(load)) : null
+  const parts = [dateStr, typeStr, loadStr].filter(Boolean)
+  return parts.length ? parts.join(' · ') : '—'
+}
+
+const ALLOWED_TAGS = ['p', 'ul', 'ol', 'li', 'strong', 'em', 'b', 'i', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'blockquote', 'a', 'br']
+const mdIt = new MarkdownIt({ html: false })
+
+/** Render markdown to safe HTML: markdown-it (no raw HTML) + DOMPurify allowlist; links get target="_blank" and rel="noopener noreferrer". */
+function renderSafeMarkdown(md) {
+  if (md == null || typeof md !== 'string' || md.trim() === '') return ''
+  const rawHtml = mdIt.render(md.trim())
+  const hook = (node) => {
+    if (node.tagName === 'A') {
+      node.setAttribute('target', '_blank')
+      node.setAttribute('rel', 'noopener noreferrer')
+    }
+  }
+  DOMPurify.addHook('afterSanitizeAttributes', hook)
+  const out = DOMPurify.sanitize(rawHtml, { ALLOWED_TAGS, ALLOWED_ATTR: ['href', 'target', 'rel'] })
+  DOMPurify.removeHook('afterSanitizeAttributes')
+  return out
+}
+
+const renderedDagrapport = computed(() => {
+  const md = brief.value?.todayDirective?.detailsMarkdown
+  if (!md || typeof md !== 'string') return ''
+  return renderSafeMarkdown(md)
 })
 
 const historyLogs = computed(() => telemetry.value.raw?.history_logs || [])
 
-// Phase display
-const phaseDisplay = computed(() => {
-  const cp = dashboardStore.currentPhase
-  const day = cp.day && cp.day > 0 ? cp.day : null
-  const len = cp.length || 28
-  const progress = day ? Math.min(Math.max((day / len) * 100, 0), 100) : 0
-
-  return {
-    name: cp.name || 'Unknown',
-    dayDisplay: day ?? '?',
-    day,
-    length: len,
-    progress,
-  }
-})
-
-// Sentence-case phase for Dutch: "Je bent in de menstruele fase"
-const phaseSentence = computed(() => {
-  const name = (phaseDisplay.value.name || '').toLowerCase()
-  if (name.includes('menstrual')) return 'Je bent in de menstruele fase.'
-  if (name.includes('follicular')) return 'Je bent in de folliculaire fase.'
-  if (name.includes('luteal')) return 'Je bent in de luteale fase.'
-  if (name.includes('ovulation')) return 'Je bent in de ovulatie.'
-  return 'Je bent in de ' + (phaseDisplay.value.name || 'onbekende') + ' fase.'
-})
-
-// Prime Tip based on phase (Dutch, sentence case)
-const primeTip = computed(() => {
-  const name = (phaseDisplay.value.name || '').toLowerCase()
-  if (name.includes('follicular')) {
-    return 'Oestrogeen stijgt — hoge intensiteit wordt goed verdragen.'
-  }
-  if (name.includes('ovulation')) {
-    return 'Venster voor piekvermogen — korte, explosieve training is ideaal.'
-  }
-  if (name.includes('luteal')) {
-    return 'Luteale fase — respecteer herstel en beperk pieken.'
-  }
-  if (name.includes('menstrual')) {
-    return 'Focus op comfort — lage intensiteit en techniek.'
-  }
-  return 'Sluit je belasting aan op hoe je je vandaag voelt.'
-})
-
-// ACWR + load status
-const acwr = computed(() => {
-  const val = Number(telemetry.value.acwr)
-  return Number.isFinite(val) ? val : null
-})
-
-const acwrDisplay = computed(() => {
-  if (acwr.value == null) return '--'
-  const v = Number(acwr.value)
-  if (!Number.isFinite(v) || v === 0) return '--'
-  return v.toFixed(2)
-})
-
-const loadZone = computed(() => {
-  const status = dashboardStore.loadStatus
-  if (!status) return null
-  return status.toLowerCase()
-})
-
-const loadStatusDisplay = computed(() => {
-  const v = acwr.value
-  if (v == null || !Number.isFinite(Number(v)) || Number(v) === 0) {
-    return 'Geen data'
-  }
-  const status = dashboardStore.loadStatus || ''
-  if (status === 'OPTIMAL') return 'optimaal'
-  if (status === 'OVERREACHING') return 'overreaching'
-  if (status === 'DANGER') return 'risico'
-  return status ? status.toLowerCase() : 'Geen data'
-})
-
-// --- Dagelijkse briefing / Readiness-meter ---
 const readinessToday = computed(() => {
   const t = telemetry.value
   if (t.readinessToday != null) return t.readinessToday
@@ -648,76 +564,6 @@ const readinessToday = computed(() => {
 })
 
 const hasTodayCheckIn = computed(() => readinessToday.value != null)
-
-const lastDirective = computed(() => {
-  const raw = telemetry.value.raw || {}
-  const d = raw.last_directive || {}
-  return {
-    status: d.status || null,
-    aiMessage: d.aiMessage || null,
-    cycleInfo: d.cycleInfo || null,
-  }
-})
-
-// Safely render AI markdown advice
-marked.setOptions({
-  mangle: false,
-  headerIds: false,
-})
-
-const renderedAiMessage = computed(() => {
-  const msg = lastDirective.value.aiMessage
-  if (!msg || typeof msg !== 'string') return ''
-  return marked.parse(msg)
-})
-
-const readinessTodayDisplay = computed(() => {
-  if (readinessToday.value == null) return '—'
-  const v = Number(readinessToday.value)
-  if (!Number.isFinite(v)) return '—'
-  return `${Math.round(v)}/10`
-})
-
-const hrvStatusLabel = computed(() => {
-  const raw = telemetry.value.raw || {}
-  const today = Number(raw.hrv_today ?? raw.last_checkin?.hrv)
-  const avg7 = Number(
-    raw.hrv_avg_7d ??
-      raw.metrics?.hrv7d ??
-      raw.metrics?.hrv_7d ??
-      raw.metrics?.hrv_avg_7d
-  )
-  if (!Number.isFinite(today) || !Number.isFinite(avg7) || avg7 <= 0) {
-    return '—'
-  }
-  const deltaPct = ((today - avg7) / avg7) * 100
-  if (deltaPct > 5) return 'hoog'
-  if (deltaPct < -5) return 'laag'
-  return 'stabiel'
-})
-
-const readinessZoneClass = computed(() => {
-  const v = Number(readinessToday.value)
-  if (!Number.isFinite(v)) return 'zone-neutral'
-  if (v >= 7) return 'zone-high'
-  if (v <= 4) return 'zone-low'
-  return 'zone-mid'
-})
-
-const readinessZoneLabel = computed(() => {
-  const v = Number(readinessToday.value)
-  if (!Number.isFinite(v)) return 'Nog niet ingevuld'
-  if (v >= 7) return 'Topvorm'
-  if (v <= 4) return 'Lage energie'
-  return 'In balans'
-})
-
-const readinessFillWidth = computed(() => {
-  const v = Number(readinessToday.value)
-  if (!Number.isFinite(v) || v <= 0) return '0%'
-  const pct = Math.min(Math.max((v / 10) * 100, 0), 100)
-  return `${pct}%`
-})
 
 // Daily Check-in dialog state
 const checkinDialog = ref(false)
@@ -795,8 +641,6 @@ const manualDuration = ref(null)
 const manualRpe = ref(5)
 const manualSubmitting = ref(false)
 const manualPanelOpen = ref(false)
-
-const showManualInjectionPrimary = computed(() => !hasStravaConnection.value)
 
 const manualPrimeLoadPreview = computed(() => {
   const d = Number(manualDuration.value)
@@ -1171,6 +1015,66 @@ const formatActivityDate = (raw) => {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 16px;
 }
+
+.today-first-grid .directive-widget {
+  grid-column: 1 / -1;
+}
+@media (min-width: 900px) {
+  .today-first-grid .directive-widget { grid-column: span 2; }
+  .today-first-grid .recovery-widget { grid-column: span 1; }
+}
+
+.directive-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.signal-dot { font-size: 1rem; }
+.signal-dot.signal-GREEN { color: #22c55e; }
+.signal-dot.signal-ORANGE { color: #fbbf24; }
+.signal-dot.signal-RED { color: #ef4444; }
+.tag-label { font-weight: 700; letter-spacing: 0.08em; color: #f9fafb; }
+.blind-badge { font-size: 0.7rem; color: #9ca3af; }
+.directive-one-liner { font-size: 0.85rem; color: #9ca3af; margin-bottom: 10px; }
+.directive-list { list-style: none; padding-left: 0; margin: 4px 0 8px; }
+.directive-list li { position: relative; padding-left: 14px; margin: 4px 0; }
+.directive-list li::before {
+  content: ''; position: absolute; left: 0; top: 0.5em; width: 4px; height: 4px;
+  border-radius: 999px; background: #fbbf24;
+}
+.directive-why-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; color: #9ca3af; margin-top: 8px; margin-bottom: 4px; }
+.directive-stop { font-size: 0.78rem; color: #9ca3af; margin-top: 8px; }
+.btn-dagrapport { color: #fbbf24 !important; font-size: 0.75rem; letter-spacing: 0.08em; }
+
+.recovery-body { font-size: 0.85rem; }
+.recovery-row { display: flex; justify-content: space-between; margin: 4px 0; }
+.recovery-label { color: #9ca3af; text-transform: uppercase; letter-spacing: 0.08em; }
+
+.load-risk-body { font-size: 0.85rem; }
+.acwr-brief-value { font-size: 1.2rem; font-weight: 600; color: #fbbf24; }
+.acwr-band { font-size: 0.75rem; color: #9ca3af; margin-top: 4px; }
+
+.cycle-context-body, .data-quality-body, .internal-cost-body { font-size: 0.85rem; }
+.data-quality-microcopy { font-size: 0.78rem; color: #9ca3af; margin-top: 8px; font-style: italic; }
+.cost-state { font-weight: 700; }
+.cost-state.cost-LOW { color: #22c55e; }
+.cost-state.cost-ELEVATED { color: #ef4444; }
+.cost-state.cost-NORMAL { color: #fbbf24; }
+.cost-explanation { font-size: 0.78rem; color: #9ca3af; margin-top: 4px; }
+
+.next48-body, .week-status-body { font-size: 0.85rem; }
+.next48-trigger { font-size: 0.78rem; color: #9ca3af; margin-top: 6px; }
+
+.intake-body { font-size: 0.85rem; }
+.intake-body div { margin: 4px 0; }
+
+.log-highlights { font-size: 0.78rem; color: #9ca3af; margin-bottom: 10px; }
+
+.dagrapport-dialog .q-dialog__backdrop { background: rgba(0, 0, 0, 0.75); }
+.dagrapport-card { max-width: 560px; max-height: 85vh; overflow: hidden; display: flex; flex-direction: column; }
+.dagrapport-header { display: flex; justify-content: space-between; align-items: center; }
+.dagrapport-body { overflow-y: auto; font-size: 0.9rem; }
 
 .hrv-chart-full {
   grid-column: 1 / -1;
