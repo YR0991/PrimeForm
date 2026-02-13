@@ -292,7 +292,21 @@ function createAdminRouter(deps) {
     }
   });
 
-  // DELETE /api/admin/users/:uid
+  // DELETE /api/admin/users/:uid — Auth record + Firestore (user doc, dailyLogs, activities)
+  async function deleteSubcollection(userRef, subcollectionName, batchSize = 500) {
+    const colRef = userRef.collection(subcollectionName);
+    let deleted = 0;
+    let snapshot = await colRef.limit(batchSize).get();
+    while (!snapshot.empty) {
+      const batch = db.batch();
+      snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+      await batch.commit();
+      deleted += snapshot.size;
+      snapshot = await colRef.limit(batchSize).get();
+    }
+    return deleted;
+  }
+
   router.delete('/users/:uid', async (req, res) => {
     try {
       const uid = req.params.uid;
@@ -319,13 +333,8 @@ function createAdminRouter(deps) {
       }
 
       const userRef = db.collection('users').doc(String(uid));
-      const dailyLogsRef = userRef.collection('dailyLogs');
-      const snap = await dailyLogsRef.limit(500).get();
-
-      const batch = db.batch();
-      snap.docs.forEach((doc) => batch.delete(doc.ref));
-      await batch.commit();
-
+      await deleteSubcollection(userRef, 'dailyLogs');
+      await deleteSubcollection(userRef, 'activities');
       await userRef.delete();
       console.log('✅ Firestore user deleted:', uid);
 

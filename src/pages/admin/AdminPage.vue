@@ -105,6 +105,21 @@
             :rows-per-page-options="[10, 25, 50]"
             @row-click="(evt, row) => { if (!evt.target.closest('.q-btn, .q-select')) openAthleteDeepDive(row) }"
           >
+            <template #body-cell-actions="props">
+              <q-td :props="props" @click.stop>
+                <q-btn
+                  dense
+                  flat
+                  size="sm"
+                  icon="delete"
+                  color="negative"
+                  :loading="deletingUserId === (props.row.id ?? props.row.userId)"
+                  @click="handleDeleteUser(props.row)"
+                >
+                  <q-tooltip>Gebruiker verwijderen (Auth + Firestore)</q-tooltip>
+                </q-btn>
+              </q-td>
+            </template>
             <template #body-cell-directive="props">
               <q-td :props="props">
                 <q-tooltip>
@@ -560,6 +575,14 @@ const masterColumns = [
     align: 'left',
     sortable: true,
   },
+  {
+    name: 'actions',
+    label: '',
+    field: () => '',
+    align: 'right',
+    sortable: false,
+    style: 'width: 52px',
+  },
 ]
 
 function directiveFromAcwr(acwr) {
@@ -845,6 +868,41 @@ const handleDeleteTeam = (team) => {
         type: 'negative',
         message: err?.message || 'Team verwijderen mislukt.',
       })
+    }
+  })
+}
+
+const deletingUserId = vueRef(null)
+const handleDeleteUser = (user) => {
+  const uid = user?.id ?? user?.userId
+  if (!uid) return
+  const name = user?.displayName || user?.profile?.fullName || user?.email || uid
+  $q.dialog({
+    title: 'Gebruiker verwijderen',
+    message: `Weet je het zeker? Alle Firestore-data (profiel, dailyLogs, activiteiten) en het Auth-account van "${String(name).slice(0, 50)}${String(name).length > 50 ? '…' : ''}" worden permanent verwijderd.`,
+    ok: {
+      label: 'Verwijderen',
+      color: 'negative',
+    },
+    cancel: true,
+    persistent: true,
+  }).onOk(async () => {
+    deletingUserId.value = uid
+    try {
+      await adminStore.deleteUser(uid)
+      Notify.create({
+        type: 'positive',
+        message: 'Gebruiker verwijderd (Auth + Firestore).',
+      })
+      await adminStore.fetchAllData()
+    } catch (err) {
+      console.error('Failed to delete user', err)
+      Notify.create({
+        type: 'negative',
+        message: err?.message || 'Gebruiker verwijderen mislukt.',
+      })
+    } finally {
+      deletingUserId.value = null
     }
   })
 }

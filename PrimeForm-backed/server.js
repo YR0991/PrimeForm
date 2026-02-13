@@ -18,7 +18,8 @@ const { createDailyRouter } = require('./routes/dailyRoutes');
 const { createDashboardRouter } = require('./routes/dashboardRoutes');
 const { createActivityRouter } = require('./routes/activityRoutes');
 
-// SMTP transporter (placeholders – set SMTP_HOST, SMTP_USER, SMTP_PASS in env)
+// SMTP transporter — Nodemailer. Required env: SMTP_HOST, SMTP_PORT (optional, default 587),
+// SMTP_USER, SMTP_PASS. Optional: SMTP_SECURE ('true' for TLS), SMTP_FROM (defaults to SMTP_USER).
 const mailTransporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.example.com',
   port: parseInt(process.env.SMTP_PORT || '587', 10),
@@ -31,7 +32,21 @@ const mailTransporter = nodemailer.createTransport({
 
 const ADMIN_EMAIL = 'yoramroemersma50@gmail.com';
 
+// Log SMTP config status at startup (no secrets). Use for debugging missing env on Render.
+if (process.env.NODE_ENV !== 'test') {
+  const smtpStatus = {
+    SMTP_HOST: process.env.SMTP_HOST ? 'set' : 'missing',
+    SMTP_USER: process.env.SMTP_USER ? 'set' : 'missing',
+    SMTP_PASS: process.env.SMTP_PASS ? 'set' : 'missing',
+    SMTP_FROM: process.env.SMTP_FROM ? 'set' : 'missing (optional)'
+  };
+  console.log('SMTP env check:', smtpStatus);
+}
+
 function sendNewIntakeEmail(profile) {
+  const toAddress = ADMIN_EMAIL;
+  console.log('Attempting to send email to:', toAddress);
+
   const name = profile.fullName || 'Onbekend';
   const email = profile.email || 'Onbekend';
   const goal = Array.isArray(profile.goals) && profile.goals.length > 0
@@ -42,13 +57,15 @@ function sendNewIntakeEmail(profile) {
 
   mailTransporter.sendMail({
     from: process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@primeform.nl',
-    to: ADMIN_EMAIL,
+    to: toAddress,
     subject,
     text
-  }).then(() => {
-    console.log('✅ Admin intake email sent to', ADMIN_EMAIL);
+  }).then((response) => {
+    console.log('Email response:', { messageId: response?.messageId, accepted: response?.accepted });
+    console.log('✅ Admin intake email sent to', toAddress);
   }).catch((err) => {
     console.error('❌ Failed to send intake email:', err.message);
+    console.error('❌ Intake email error stack:', err.stack);
   });
 }
 
