@@ -196,9 +196,6 @@ You are the **PrimeForm Performance Engineer**. You analyze CrossFit and Hybrid 
 - 4-6 concrete bullets (Belasting, Intensiteit, Voeding, Herstel).
 - Gebruik termen uit \`lingo.md\` (bv. "Zone 1 Aerobic Flow").
 
-**4. 📻 RACE ENGINEER QUOTE**
-- Eén scherpe, technische uitsmijter (max 15 woorden).
-
 ---
 
 KNOWLEDGE BASE CONTENT (actual content of the files — follow strictly):
@@ -216,7 +213,7 @@ DATA AUTHORITY: The [STATS] block is the single source of truth. It already incl
 
 OUTPUT FORMAT: You MUST respond with valid JSON only. Two fields:
 - "stats": a brief summary string using the EXACT numbers from [STATS] (e.g. "Belastingsbalans 1.65, Acute Load 627, ATL X, CTL Y").
-- "message": the full report in Markdown, using the 4 sections above (DE STATUS-CHECK, DATA DEEP-DIVE, HET DIRECTIEF, RACE ENGINEER QUOTE). No "ACWR" or "Ratio" in the message. Use the Belastingsbalans and Acute Load values from [STATS] verbatim; if Belastingsbalans exceeds 1.5, recommend [REST] or equivalent.`;
+- "message": the full report in Markdown, using the 3 sections above (DE STATUS-CHECK, DATA DEEP-DIVE, HET DIRECTIEF). No "ACWR" or "Ratio" in the message. Use the Belastingsbalans and Acute Load values from [STATS] verbatim; if Belastingsbalans exceeds 1.5, recommend [REST] or equivalent.`;
 
   const userPrompt = `[CHECK-INS — LAST 7 DAYS]\n${logsSummary}\n\n[ACTIVITIES — LAST 7 DAYS (Strava + manual; do not sum — use STATS below)]\n${activitiesSummary}\n\n[STATS — SINGLE SOURCE OF TRUTH; same as dashboard; includes all sessions]\nBelastingsbalans: ${load_ratio != null ? Number(load_ratio).toFixed(2) : 'N/A'}\nAcute Load (7d totaal, Strava + manual): ${acute_load != null ? Number(acute_load).toFixed(1) : 'N/A'}\nATL (dagelijks): ${atl_daily != null ? Number(atl_daily).toFixed(1) : 'N/A'}\nCTL (dagelijks): ${ctl_daily != null ? Number(ctl_daily).toFixed(1) : 'N/A'}\nChronic Load (28d wekelijks gem.): ${chronic_load != null ? Number(chronic_load).toFixed(1) : 'N/A'}\nDirectief: ${directiveLabel}, Phase: ${phaseInfo.phaseName}\n\nGenerate the JSON object with "stats" and "message". Use the STATS numbers exactly in your output.`;
 

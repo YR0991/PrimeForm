@@ -122,19 +122,6 @@
               class="q-mt-md"
             />
 
-            <q-input v-model="form.stravaLink" outlined dark label="Strava-link (optioneel)" class="q-mt-md" />
-
-            <q-select
-              v-model="form.wearables"
-              outlined
-              dark
-              label="Wearables"
-              :options="wearableOptions"
-              multiple
-              use-chips
-              class="q-mt-md"
-            />
-
             <div class="row q-mt-md justify-between">
               <q-btn flat color="white" label="Terug" @click="prevStep" />
               <q-btn color="primary" class="gold-btn" label="Volgende" :disable="!canProceedStep3" @click="nextStep" unelevated />
@@ -305,8 +292,6 @@ const form = ref({
   trainingFrequency: 4,
   sessionDuration: '60 min',
   programmingType: 'Box/Gym Programming',
-  stravaLink: '',
-  wearables: [],
 
   // Step 4
   sleepAvg: 7,
@@ -370,7 +355,6 @@ const redFlagOptions = [
 const goalOptions = ['Kracht', 'Conditie', 'Afvallen', 'Skills', 'Gezondheid']
 const durationOptions = ['30 min', '60 min', '90+ min']
 const programmingOptions = ['Box/Gym Programming', 'Eigen schema', 'PrimeForm Only']
-const wearableOptions = ['Oura', 'Whoop', 'Garmin', 'Apple Watch', 'Polar', 'Fitbit', 'Geen']
 const recoveryHabitOptions = ['Koud douchen', 'Wandelen', 'Meditatie', 'Sauna', 'Mobiliteit', 'Ademwerk']
 const contraceptionOptions = ['Hormonaal', 'Spiraal', 'Geen', 'Anders']
 const symptomOptions = ['Krampen', 'Vermoeidheid', 'Brain fog', 'Hoofdpijn', 'Opgeblazen gevoel', 'Prikkelbaarheid']
@@ -442,8 +426,6 @@ const saveProfile = async () => {
     trainingFrequency: form.value.trainingFrequency ?? 4,
     sessionDuration: form.value.sessionDuration ?? '60 min',
     programmingType: form.value.programmingType ?? 'Box/Gym Programming',
-    stravaLink: form.value.stravaLink ?? '',
-    wearables: Array.isArray(form.value.wearables) ? form.value.wearables : [],
 
     sleepAvg: form.value.sleepAvg ?? 7,
     stress: form.value.stress ?? 5,
