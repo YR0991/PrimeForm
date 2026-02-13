@@ -166,6 +166,147 @@ async function getActivitiesInRange(db, uid, startDate, endDate, profile, admin)
 }
 
 /**
+ * Build comparisons: HRV and RHR current 7d vs previous 7d from dailyLogs.
+ * current window = [dateISO-6, dateISO], previous = [dateISO-13, dateISO-7].
+ * @param {Array} logs28 - logs in [dateISO-27, dateISO]
+ * @param {string} dateISO
+ * @param {string[]} blindSpots - mutable array to push if insufficient data
+ */
+function buildComparisons(logs28, dateISO, blindSpots) {
+  const WINDOW_DAYS = 7;
+  const startCurrent = addDays(dateISO, -6);
+  const startPrev = addDays(dateISO, -13);
+  const endPrev = addDays(dateISO, -7);
+
+  const currentLogs = (logs28 || []).filter((l) => l.date >= startCurrent && l.date <= dateISO);
+  const prevLogs = (logs28 || []).filter((l) => l.date >= startPrev && l.date <= endPrev);
+
+  const hrvCurrent = currentLogs.map((l) => l.hrv).filter((v) => v != null && Number.isFinite(Number(v)));
+  const hrvPrev = prevLogs.map((l) => l.hrv).filter((v) => v != null && Number.isFinite(Number(v)));
+  const rhrCurrent = currentLogs.map((l) => l.rhr).filter((v) => v != null && Number.isFinite(Number(v)));
+  const rhrPrev = prevLogs.map((l) => l.rhr).filter((v) => v != null && Number.isFinite(Number(v)));
+
+  let hrv = { windowDays: WINDOW_DAYS, currentAvg: null, prevAvg: null, delta: null, deltaPct: null };
+  let rhr = { windowDays: WINDOW_DAYS, currentAvg: null, prevAvg: null, delta: null };
+
+  if (hrvCurrent.length > 0) {
+    const curAvg = hrvCurrent.reduce((s, v) => s + Number(v), 0) / hrvCurrent.length;
+    hrv.currentAvg = Math.round(curAvg * 10) / 10;
+  }
+  if (hrvPrev.length > 0) {
+    const prevAvg = hrvPrev.reduce((s, v) => s + Number(v), 0) / hrvPrev.length;
+    hrv.prevAvg = Math.round(prevAvg * 10) / 10;
+  }
+  if (hrv.currentAvg != null && hrv.prevAvg != null && hrv.prevAvg > 0) {
+    const delta = Math.round((hrv.currentAvg - hrv.prevAvg) * 10) / 10;
+    hrv.delta = delta;
+    hrv.deltaPct = Math.round((delta / hrv.prevAvg) * 1000) / 10;
+  } else if (hrv.currentAvg != null || hrv.prevAvg != null) {
+    if (hrv.currentAvg != null && hrv.prevAvg != null) hrv.delta = Math.round((hrv.currentAvg - hrv.prevAvg) * 10) / 10;
+  }
+  if (hrvCurrent.length === 0 && hrvPrev.length === 0) {
+    blindSpots.push('Vergelijking HRV: geen data in huidige of vorige 7d.');
+  }
+
+  if (rhrCurrent.length > 0) {
+    const curAvg = rhrCurrent.reduce((s, v) => s + Number(v), 0) / rhrCurrent.length;
+    rhr.currentAvg = Math.round(curAvg * 10) / 10;
+  }
+  if (rhrPrev.length > 0) {
+    const prevAvg = rhrPrev.reduce((s, v) => s + Number(v), 0) / rhrPrev.length;
+    rhr.prevAvg = Math.round(prevAvg * 10) / 10;
+  }
+  if (rhr.currentAvg != null && rhr.prevAvg != null) {
+    rhr.delta = Math.round((rhr.currentAvg - rhr.prevAvg) * 10) / 10;
+  }
+  if (rhrCurrent.length === 0 && rhrPrev.length === 0) {
+    blindSpots.push('Vergelijking RHR: geen data in huidige of vorige 7d.');
+  }
+
+  return { hrv, rhr };
+}
+
+/** Default cycleMatch shape when disabled or no data */
+function defaultCycleMatch(enabled = false, cycleDayIndex = null) {
+  return {
+    enabled: !!enabled,
+    cycleDayIndex: cycleDayIndex != null && Number.isFinite(Number(cycleDayIndex)) ? Number(cycleDayIndex) : null,
+    matchedDateISO: null,
+    hrv: { current: null, matched: null, delta: null, deltaPct: null },
+    rhr: { current: null, matched: null, delta: null }
+  };
+}
+
+/**
+ * Cycle-to-cycle comparison: same cycle day in a prior cycle (only when cycle confidence HIGH and cycleDayIndex available).
+ * cycleDayIndex is the brief's phaseDay (from stats.phaseDay via reportService, same as inputs.cycle.phaseDay).
+ * Searches last 120 days for a day with same cycleDayIndex (±1), uses day values from dailyLogs (hrv/rhr).
+ * @param {{ db, uid, dateISO, phaseDay, cycleConf, profile, hrvToday, rhrToday, blindSpots }} opts
+ */
+async function buildCycleMatch(opts) {
+  const { db, uid, dateISO, phaseDay, cycleConf, profile, hrvToday, rhrToday, blindSpots } = opts;
+  const cycleDayIndex = phaseDay != null && Number.isFinite(Number(phaseDay)) ? Number(phaseDay) : null;
+  const enabled = cycleConf === 'HIGH' && cycleDayIndex != null;
+  if (!enabled) {
+    return defaultCycleMatch(false, null);
+  }
+
+  const cycleData = profile && profile.cycleData && typeof profile.cycleData === 'object' ? profile.cycleData : {};
+  const lastPeriodDate = cycleData.lastPeriodDate || cycleData.lastPeriod || null;
+  const cycleLength = Number(cycleData.avgDuration) || 28;
+  if (!lastPeriodDate) {
+    blindSpots.push('CycleMatch niet beschikbaar (onvoldoende cyclusdag-match data).');
+    return { ...defaultCycleMatch(true, cycleDayIndex) };
+  }
+
+  const start120 = addDays(dateISO, -120);
+  const endBefore = addDays(dateISO, -1);
+  const logs120 = await getDailyLogsInRange(db, uid, start120, endBefore);
+  const withCycleDay = logs120.map((log) => {
+    const info = cycleService.getPhaseForDate(lastPeriodDate, cycleLength, log.date);
+    return { ...log, _cycleDay: info.currentCycleDay };
+  }).filter((r) => r._cycleDay != null);
+
+  const exact = withCycleDay.filter((r) => r._cycleDay === cycleDayIndex);
+  const minus1 = withCycleDay.filter((r) => r._cycleDay === cycleDayIndex - 1);
+  const plus1 = withCycleDay.filter((r) => r._cycleDay === cycleDayIndex + 1);
+  const byRecency = (a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0);
+  const pick = (arr) => (arr.length ? [...arr].sort(byRecency)[0] : null);
+  const matchedLog = pick(exact) || pick(minus1) || pick(plus1);
+
+  if (!matchedLog) {
+    blindSpots.push('CycleMatch niet beschikbaar (onvoldoende cyclusdag-match data).');
+    return { ...defaultCycleMatch(true, cycleDayIndex) };
+  }
+
+  const hrvCurrent = hrvToday != null && Number.isFinite(Number(hrvToday)) ? Math.round(Number(hrvToday) * 10) / 10 : null;
+  const rhrCurrent = rhrToday != null && Number.isFinite(Number(rhrToday)) ? Math.round(Number(rhrToday) * 10) / 10 : null;
+  const hrvMatched = matchedLog.hrv != null && Number.isFinite(Number(matchedLog.hrv)) ? Math.round(Number(matchedLog.hrv) * 10) / 10 : null;
+  const rhrMatched = matchedLog.rhr != null && Number.isFinite(Number(matchedLog.rhr)) ? Math.round(Number(matchedLog.rhr) * 10) / 10 : null;
+
+  let hrvDelta = null;
+  let hrvDeltaPct = null;
+  if (hrvCurrent != null && hrvMatched != null) {
+    hrvDelta = Math.round((hrvCurrent - hrvMatched) * 10) / 10;
+    if (hrvMatched > 0) hrvDeltaPct = Math.round((hrvDelta / hrvMatched) * 1000) / 10;
+  }
+  const rhrDelta = (rhrCurrent != null && rhrMatched != null) ? Math.round((rhrCurrent - rhrMatched) * 10) / 10 : null;
+
+  const hasValues = (hrvCurrent != null || hrvMatched != null) || (rhrCurrent != null || rhrMatched != null);
+  if (!hasValues) {
+    blindSpots.push('CycleMatch niet beschikbaar (onvoldoende cyclusdag-match data).');
+  }
+
+  return {
+    enabled: true,
+    cycleDayIndex,
+    matchedDateISO: matchedLog.date,
+    hrv: { current: hrvCurrent, matched: hrvMatched, delta: hrvDelta, deltaPct: hrvDeltaPct },
+    rhr: { current: rhrCurrent, matched: rhrMatched, delta: rhrDelta }
+  };
+}
+
+/**
  * Build compliance: checkins7dPct, checkins28dPct, missingHrvDays, missingRhrDays (last 28 ending dateISO).
  * @param {Array} logs28 - logs in [dateISO-27, dateISO]
  * @param {string} start7 - first day of last 7 (dateISO-6)
@@ -237,30 +378,65 @@ function buildInternalCost(recoveryPct, rhrDelta, acwrBandVal, hardExposures7d, 
   return { state: 'NORMAL', explanation: 'Geen verhoogde interne belasting' };
 }
 
+const MAX_WHY_LEN = 120;
+
 /**
- * TodayDirective: doToday, why, stopRule, detailsMarkdown (from aiMessage or template).
+ * Build max 2 data-based "why" bullets (<= MAX_WHY_LEN each). No motivational language.
+ * @param {{ recoveryPct?: number|null, rhrDelta?: number|null, last7dLoadTotal?: number|null, hardExposures7d?: number }} ctx
  */
-function buildTodayDirective(statusTagVal, todayLog, blindSpots) {
+function buildWhyBullets(ctx) {
+  const why = [];
+  const { recoveryPct, rhrDelta, last7dLoadTotal, hardExposures7d } = ctx;
+  const hasRecovery = recoveryPct != null && Number.isFinite(recoveryPct) || rhrDelta != null && Number.isFinite(rhrDelta);
+  if (hasRecovery) {
+    const pctStr = recoveryPct != null && Number.isFinite(recoveryPct) ? `${recoveryPct}%` : '—';
+    const rhrStr = rhrDelta != null && Number.isFinite(rhrDelta) ? (rhrDelta >= 0 ? '+' : '') + rhrDelta + ' bpm' : '—';
+    let conclusion = 'herstelcapaciteit matig.';
+    if (recoveryPct != null && recoveryPct < 92) conclusion = 'herstelcapaciteit lager.';
+    else if (rhrDelta != null && rhrDelta > 3) conclusion = 'herstelcapaciteit lager.';
+    else if (recoveryPct != null && recoveryPct >= 98 && (rhrDelta == null || rhrDelta <= 2)) conclusion = 'herstelcapaciteit goed.';
+    const bullet = `HRV: ${pctStr} van 28d baseline + RHR: ${rhrStr} → ${conclusion}`;
+    why.push(bullet.length > MAX_WHY_LEN ? bullet.slice(0, MAX_WHY_LEN - 3) + '...' : bullet);
+  }
+  if (last7dLoadTotal != null && Number.isFinite(last7dLoadTotal)) {
+    const loadRounded = Math.round(last7dLoadTotal);
+    const hard = (hardExposures7d != null && Number.isFinite(hardExposures7d)) ? hardExposures7d : 0;
+    let conclusion = 'belasting in lijn.';
+    if (last7dLoadTotal > 400 || hard >= 2) conclusion = 'niet stapelen.';
+    else if (last7dLoadTotal < 200 && hard === 0) conclusion = 'ruimte om te laden.';
+    const bullet = `Laatste 7 dagen: load ${loadRounded} + ${hard} hard exposures → ${conclusion}`;
+    why.push(bullet.length > MAX_WHY_LEN ? bullet.slice(0, MAX_WHY_LEN - 3) + '...' : bullet);
+  }
+  return why.slice(0, 2);
+}
+
+/**
+ * TodayDirective: doToday, why (data-based, max 2), stopRule, detailsMarkdown (from aiMessage or template).
+ */
+function buildTodayDirective(opts) {
+  const { statusTagVal, todayLog, blindSpots, recoveryPct, rhrDelta, last7dLoadTotal, hardExposures7d } = opts;
   const detailsMarkdown = todayLog && todayLog.aiMessage ? todayLog.aiMessage : null;
   const doToday = [];
-  const why = [];
   const stopRule = 'Bij twijfel: intensiteit omlaag. Bij pijn of ziekte: stoppen.';
   if (statusTagVal === 'PUSH') {
     doToday.push('Train volgens plan; kwaliteit voor kwantiteit.');
-    why.push('Belastingsbalans in sweet spot.');
   } else if (statusTagVal === 'MAINTAIN') {
     doToday.push('Lichte tot gematigde training; focus op techniek of duur.');
-    why.push('Belasting onder sweet spot of cyclus vraagt om voorzichtigheid.');
   } else {
     doToday.push('Rust of actief herstel (Zone 1). Geen zware of lange sessies.');
-    why.push('Herstel prioriteit; voorkom overreaching.');
   }
   if (blindSpots.length > 0) {
     doToday.push('Check dagrapport voor ontbrekende data.');
   }
+  const why = buildWhyBullets({
+    recoveryPct: recoveryPct ?? null,
+    rhrDelta: rhrDelta ?? null,
+    last7dLoadTotal: last7dLoadTotal ?? null,
+    hardExposures7d: hardExposures7d ?? 0
+  });
   return {
-    doToday: doToday.slice(0, 5).map((s) => s.length > 120 ? s.slice(0, 117) + '...' : s),
-    why: why.slice(0, 3).map((s) => s.length > 120 ? s.slice(0, 117) + '...' : s),
+    doToday: doToday.slice(0, 5).map((s) => s.length > MAX_WHY_LEN ? s.slice(0, MAX_WHY_LEN - 3) + '...' : s),
+    why,
     stopRule,
     detailsMarkdown: detailsMarkdown || (detailsMarkdown === null && todayLog ? 'Open dagrapport voor volledig advies.' : undefined)
   };
@@ -317,7 +493,12 @@ async function getDailyBrief(opts) {
       compliance: { checkins7dPct: null, checkins28dPct: null, missingHrvDays: null, missingRhrDays: null },
       next48h: buildNext48h(fallbackTag),
       intake: null,
-      internalCost: null
+      internalCost: null,
+      comparisons: {
+        hrv: { windowDays: 7, currentAvg: null, prevAvg: null, delta: null, deltaPct: null },
+        rhr: { windowDays: 7, currentAvg: null, prevAvg: null, delta: null },
+        cycleMatch: defaultCycleMatch(false, null)
+      }
     };
   }
 
@@ -369,12 +550,32 @@ async function getDailyBrief(opts) {
     confidence.blindSpots.push('InternalCost niet berekend (ontbrekende data).');
   }
 
-  const todayDirective = buildTodayDirective(tag, todayLog, confidence.blindSpots);
+  const todayDirective = buildTodayDirective({
+    statusTagVal: tag,
+    todayLog,
+    blindSpots: confidence.blindSpots,
+    recoveryPct,
+    rhrDelta,
+    last7dLoadTotal,
+    hardExposures7d
+  });
   if (!todayDirective.detailsMarkdown && todayLog) {
     todayDirective.detailsMarkdown = 'Open dagrapport voor volledig advies.';
   }
   const next48h = buildNext48h(tag);
   const intake = buildIntake(profile);
+  const comparisons = buildComparisons(logs28, dateISO, confidence.blindSpots);
+  comparisons.cycleMatch = await buildCycleMatch({
+    db,
+    uid,
+    dateISO,
+    phaseDay,
+    cycleConf,
+    profile,
+    hrvToday,
+    rhrToday,
+    blindSpots: confidence.blindSpots
+  });
 
   // next48h is always present (required); deterministic from status.tag
   const brief = {
@@ -414,7 +615,8 @@ async function getDailyBrief(opts) {
     compliance,
     next48h,
     intake,
-    internalCost
+    internalCost,
+    comparisons
   };
 
   return brief;

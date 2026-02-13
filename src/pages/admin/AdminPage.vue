@@ -412,12 +412,14 @@ import { Notify, copyToClipboard, useQuasar } from 'quasar'
 import { useAuthStore } from '../../stores/auth'
 import { useTeamsStore } from '../../stores/teams'
 import { useAdminStore } from '../../stores/admin'
+import { useDashboardStore } from '../../stores/dashboard'
 import { useSquadronStore } from '../../stores/squadron'
 import AtleetDetailDialog from '../../components/AtleetDetailDialog.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const adminStore = useAdminStore()
+const dashboardStore = useDashboardStore()
 const $q = useQuasar()
 
 // Team creation (reuse existing logic)
@@ -885,10 +887,11 @@ const handleDeleteTeam = (team) => {
 }
 
 const deletingUserId = vueRef(null)
-const handleBekijkAlsAtleet = (user) => {
+const handleBekijkAlsAtleet = async (user) => {
   if (!user?.id && !user?.userId) return
   authStore.startImpersonation(user)
-  router.push('/dashboard')
+  await router.push('/dashboard')
+  dashboardStore.fetchUserDashboard().catch(() => {})
 }
 
 const handleDeleteUser = (user) => {

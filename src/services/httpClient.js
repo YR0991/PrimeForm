@@ -29,7 +29,7 @@ api.interceptors.request.use(
       const adminEmailLS = (localStorage.getItem('admin_email') || '').trim()
       const coachEmailLS = (localStorage.getItem('coach_email') || '').trim()
 
-      // Admin-header
+      // Admin-header (leave intact if already set)
       if (!headers['x-admin-email']) {
         if (adminEmailLS) {
           headers['x-admin-email'] = adminEmailLS
@@ -38,7 +38,7 @@ api.interceptors.request.use(
         }
       }
 
-      // Coach-header
+      // Coach-header (leave intact if already set)
       if (!headers['x-coach-email']) {
         if (coachEmailLS) {
           headers['x-coach-email'] = coachEmailLS
@@ -46,6 +46,16 @@ api.interceptors.request.use(
           headers['x-coach-email'] = emailFromStore
         }
       }
+
+      // User UID: impersonation (shadow) overrides current user when present
+      const shadowUid = (localStorage.getItem('pf_shadow_uid') || '').trim()
+      if (shadowUid) {
+        headers['x-user-uid'] = shadowUid
+      } else {
+        const uid = authStore.activeUid || authStore.user?.uid || ''
+        if (uid) headers['x-user-uid'] = uid
+      }
+      headers['x-shadow-mode'] = shadowUid ? '1' : '0'
 
       // Hier zou eventueel later een Authorization Bearer <idToken> header kunnen komen
       // als we Firebase ID tokens willen meesturen naar de backend.

@@ -65,6 +65,8 @@ export const useAuthStore = defineStore('auth', {
     stravaConnected: false,
     // Shadow Mode: admin impersonation of an athlete
     impersonatingUser: null, // { id, name } | null
+    shadowUid: null, // persisted target uid
+    isShadow: false,
   }),
 
   getters: {
@@ -233,8 +235,12 @@ export const useAuthStore = defineStore('auth', {
         this.role = null
         this.teamId = null
         this.impersonatingUser = null
+        this.shadowUid = null
+        this.isShadow = false
         localStorage.removeItem('user_email')
         localStorage.removeItem('coach_email')
+        localStorage.removeItem('pf_shadow_uid')
+        localStorage.removeItem('pf_shadow_enabled')
       } finally {
         this.loading = false
       }
@@ -295,7 +301,11 @@ export const useAuthStore = defineStore('auth', {
               this.profile = { lastPeriodDate: null, cycleLength: null }
               this.stravaConnected = false
               this.impersonatingUser = null
+              this.shadowUid = null
+              this.isShadow = false
               this.profileLoadedForUid = null
+              localStorage.removeItem('pf_shadow_uid')
+              localStorage.removeItem('pf_shadow_enabled')
               this.isAuthReady = true
               this.isInitialized = true
               if (!resolved) {
@@ -332,6 +342,7 @@ export const useAuthStore = defineStore('auth', {
                 })
               }
               this.profileLoadedForUid = firebaseUser.uid
+              this._restoreShadowFromStorage()
               this.isAuthReady = true
               this.isInitialized = true
               if (!resolved) {
@@ -342,6 +353,7 @@ export const useAuthStore = defineStore('auth', {
             }
 
             this._setUserFromProfile(firebaseUser, profile)
+            this._restoreShadowFromStorage()
             this.isAuthReady = true
             this.isInitialized = true
             if (!resolved) {
@@ -589,6 +601,25 @@ export const useAuthStore = defineStore('auth', {
     },
 
     /**
+     * Restore shadow state from localStorage (admin only, after auth ready).
+     */
+    _restoreShadowFromStorage() {
+      if (this.role !== 'admin') return
+      const enabled = localStorage.getItem('pf_shadow_enabled')
+      const uid = localStorage.getItem('pf_shadow_uid')
+      if (enabled !== '1' || !uid || !uid.trim()) return
+      const targetUid = uid.trim()
+      this.shadowUid = targetUid
+      this.isShadow = true
+      this.impersonatingUser = {
+        id: targetUid,
+        name: targetUid,
+        role: 'user',
+        teamId: null,
+      }
+    },
+
+    /**
      * Shadow Mode: start impersonating a specific athlete (admin only).
      * Expects a user-like object with an id field.
      */
@@ -608,10 +639,15 @@ export const useAuthStore = defineStore('auth', {
         })
         return
       }
+      const targetUid = String(user.id)
       const role = user.profile?.role || user.role || 'user'
       const teamId = user.teamId ?? null
+      localStorage.setItem('pf_shadow_uid', targetUid)
+      localStorage.setItem('pf_shadow_enabled', '1')
+      this.shadowUid = targetUid
+      this.isShadow = true
       this.impersonatingUser = {
-        id: user.id,
+        id: targetUid,
         name:
           user.displayName ||
           user.profile?.fullName ||
@@ -624,6 +660,7 @@ export const useAuthStore = defineStore('auth', {
       if (teamId) {
         this.teamId = teamId
       }
+      Notify.create({ type: 'warning', message: `Shadow ON: ${targetUid}` })
     },
 
     /**
@@ -631,6 +668,10 @@ export const useAuthStore = defineStore('auth', {
      */
     stopImpersonation() {
       this.impersonatingUser = null
+      this.shadowUid = null
+      this.isShadow = false
+      localStorage.removeItem('pf_shadow_uid')
+      localStorage.removeItem('pf_shadow_enabled')
     },
   },
 })

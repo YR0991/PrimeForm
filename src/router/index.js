@@ -81,8 +81,8 @@ export default defineRouter(function (/* { store, ssrContext } */) {
       return { path: '/dashboard' }
     }
 
-    // Admin: keep in Command Center — no athlete dashboard/profile
-    if (authStore.isAdmin && (to.path === '/dashboard' || to.path === '/profile')) {
+    // Admin: keep in Command Center — no athlete dashboard/profile (unless impersonating)
+    if (authStore.isAdmin && !authStore.isImpersonating && (to.path === '/dashboard' || to.path === '/profile')) {
       return { path: '/admin' }
     }
 

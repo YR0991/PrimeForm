@@ -16,7 +16,7 @@
 
         <q-card-section>
           <div class="dashboard-grid today-first-grid">
-            <!-- Row1: VANDAAG — DIRECTIEF (dominant) + HERSTEL -->
+            <!-- VANDAAG — DIRECTIEF (dominant) + VERGELIJKING -->
             <div class="widget directive-widget">
               <div class="widget-title">VANDAAG — DIRECTIEF</div>
               <div class="directive-header">
@@ -59,91 +59,24 @@
               />
             </div>
 
-            <div class="widget recovery-widget">
-              <div class="widget-title">HERSTEL</div>
-              <div class="recovery-body mono">
-                <template v-if="brief?.inputs?.recovery">
-                  <div class="recovery-row">
-                    <span class="recovery-label">HRV vs 28d</span>
-                    <span class="highlight">{{ brief.inputs.recovery.hrvVs28dPct != null ? brief.inputs.recovery.hrvVs28dPct + '%' : 'Blind spot' }}</span>
-                  </div>
-                  <div class="recovery-row">
-                    <span class="recovery-label">RHR delta</span>
-                    <span class="highlight">{{ brief.inputs.recovery.rhrDelta != null ? (brief.inputs.recovery.rhrDelta >= 0 ? '+' : '') + brief.inputs.recovery.rhrDelta : 'Blind spot' }}</span>
-                  </div>
-                </template>
-                <template v-else>
-                  <div class="recovery-row"><span class="recovery-label">HRV vs 28d</span><span>Blind spot</span></div>
-                  <div class="recovery-row"><span class="recovery-label">RHR delta</span><span>Blind spot</span></div>
-                </template>
-              </div>
-            </div>
-
-            <!-- Row2: LOAD RISK / CYCLE CONTEXT / DATA QUALITY / INTERNAL COST -->
-            <div class="widget load-risk-widget">
-              <div class="widget-title">LOAD RISK</div>
-              <div class="load-risk-body mono">
-                <template v-if="brief?.inputs?.acwr != null">
-                  <div class="acwr-brief-value">{{ brief.inputs.acwr.value != null ? Number(brief.inputs.acwr.value).toFixed(2) : '—' }}</div>
-                  <div class="acwr-band">{{ brief.inputs.acwr.band ?? '—' }}</div>
-                </template>
-                <template v-else>
-                  <div class="acwr-brief-value">—</div>
-                  <div class="acwr-band">Blind spot</div>
-                </template>
-              </div>
-            </div>
-
-            <div class="widget cycle-context-widget">
-              <div class="widget-title">CYCLE CONTEXT</div>
-              <div class="cycle-context-body mono">
-                <template v-if="brief?.inputs?.cycle">
-                  <div>{{ brief.inputs.cycle.mode ?? 'UNKNOWN' }}</div>
-                  <div>Vertrouwen: {{ brief.inputs.cycle.confidence ?? '—' }}</div>
-                  <div v-if="brief.inputs.cycle.phase">{{ brief.inputs.cycle.phase }} · dag {{ brief.inputs.cycle.phaseDay ?? '?' }}</div>
-                  <div v-else>—</div>
-                  <div v-if="cycleContextOff" class="cycle-context-off mono">Cycluscontext staat uit → advies draait op load + HRV/RHR.</div>
-                  <router-link v-if="cycleContextOff" to="/profile" class="cycle-cta-link">Stel cyclusmodus in</router-link>
-                </template>
-                <template v-else>
-                  <div>Blind spot</div>
-                  <router-link to="/profile" class="cycle-cta-link">Stel cyclusmodus in</router-link>
-                </template>
-              </div>
-            </div>
-
-            <div class="widget data-quality-widget">
-              <div class="widget-title">DATA QUALITY</div>
-              <div class="data-quality-body mono">
-                <div>Check-ins 7d <span class="target-label">(streef ≥70%)</span>: <span :class="compliance7dClass">{{ brief?.compliance?.checkins7dPct != null ? brief.compliance.checkins7dPct + '%' : 'Blind spot' }}</span></div>
-                <div>Check-ins 28d <span class="target-label">(streef ≥60%)</span>: <span :class="compliance28dClass">{{ brief?.compliance?.checkins28dPct != null ? brief.compliance.checkins28dPct + '%' : 'Blind spot' }}</span></div>
-                <div>Ontbrekend HRV (28d): {{ brief?.compliance?.missingHrvDays != null ? brief.compliance.missingHrvDays : '—' }}</div>
-                <div>Ontbrekend RHR (28d): {{ brief?.compliance?.missingRhrDays != null ? brief.compliance.missingRhrDays : '—' }}</div>
-                <div class="data-quality-microcopy">Hoe hoger compliance, hoe strakker het advies.</div>
-              </div>
-            </div>
-
-            <div class="widget internal-cost-widget">
-              <div class="widget-title">INTERNAL COST</div>
-              <div class="internal-cost-body mono">
-                <template v-if="brief?.internalCost">
-                  <div :class="'cost-state cost-' + (brief.internalCost.state || 'NORMAL')">{{ brief.internalCost.state }}</div>
-                  <div class="cost-explanation">{{ internalCostExplanation }}</div>
-                </template>
-                <template v-else>
-                  <div class="cost-state">—</div>
-                  <div class="cost-explanation">Blind spot: internal cost niet berekend.</div>
-                </template>
-              </div>
-            </div>
-
-            <!-- Row3: NEXT 48H + WEEK-STATUS -->
-            <div class="widget next48-widget">
-              <div class="widget-title">NEXT 48H</div>
-              <div class="next48-body mono">
-                <div><strong>Vandaag:</strong> {{ brief?.next48h?.today ?? '—' }}</div>
-                <div><strong>Morgen:</strong> {{ brief?.next48h?.tomorrow ?? '—' }}</div>
-                <div class="next48-trigger next48-trigger-mono">{{ formattedNext48Trigger }}</div>
+            <div class="widget vergelijking-widget">
+              <div class="widget-title">VERGELIJKING</div>
+              <div class="vergelijking-body mono">
+                <div class="vergelijking-row">
+                  <span class="vergelijking-label">HRV</span>
+                  <span class="vergelijking-value-wrap">
+                    <span class="vergelijking-value">{{ vergelijkingHrvText }}</span>
+                    <span v-if="vergelijkingHrvBlind" class="vergelijking-blind">Blind spot</span>
+                  </span>
+                </div>
+                <div class="vergelijking-row">
+                  <span class="vergelijking-label">RHR</span>
+                  <span class="vergelijking-value-wrap">
+                    <span class="vergelijking-value">{{ vergelijkingRhrText }}</span>
+                    <span v-if="vergelijkingRhrBlind" class="vergelijking-blind">Blind spot</span>
+                  </span>
+                </div>
+                <div v-if="!hasVergelijkingData" class="vergelijking-fallback">Check-in consistentie bepaalt hoe scherp dit wordt.</div>
               </div>
             </div>
 
@@ -159,33 +92,6 @@
                   {{ brief?.inputs?.activity?.hardExposures7d != null ? brief.inputs.activity.hardExposures7d : 'Blind spot' }}
                 </div>
                 <div>Laatste 7 dagen — grootste load: {{ formatLargestLoad7d(brief?.inputs?.activity?.largestLoad7d) }}</div>
-              </div>
-            </div>
-
-            <!-- HRV TREND (full-width) -->
-            <div class="hrv-chart-full">
-              <HRVHistoryChart :history-logs="historyLogs" />
-            </div>
-
-            <!-- Row4: INTAKE + LOG -->
-            <div class="widget intake-widget">
-              <div class="widget-title">INTAKE</div>
-              <div class="intake-body mono">
-                <template v-if="brief?.intake && (brief.intake.goal || brief.intake.eventDate || brief.intake.sportFocus)">
-                  <div v-if="brief.intake.goal"><strong>Doel:</strong> {{ brief.intake.goal }}</div>
-                  <div v-if="brief.intake.eventDate"><strong>Event:</strong> {{ brief.intake.eventDate }}</div>
-                  <div v-if="brief.intake.sportFocus"><strong>Sport:</strong> {{ brief.intake.sportFocus }}</div>
-                  <div v-if="brief.intake.availabilityDaysPerWeek != null">Dagen/week: {{ brief.intake.availabilityDaysPerWeek }}</div>
-                  <div v-if="brief.intake.oneLineNotes">{{ brief.intake.oneLineNotes }}</div>
-                </template>
-                <template v-else>
-                  <div class="intake-prompts">
-                    <div>Doel?</div>
-                    <div>Eventdatum?</div>
-                    <div>Sport / focus?</div>
-                  </div>
-                  <router-link to="/profile" class="intake-cta-btn">Vul intake aan</router-link>
-                </template>
               </div>
             </div>
 
@@ -473,7 +379,6 @@ import DOMPurify from 'dompurify'
 import { useAuthStore } from '../stores/auth'
 import { useDashboardStore } from '../stores/dashboard'
 import CoachDashboard from './coach/CoachDashboard.vue'
-import HRVHistoryChart from '../components/HRVHistoryChart.vue'
 
 const $q = useQuasar()
 const authStore = useAuthStore()
@@ -572,52 +477,57 @@ const showBlindSpotBadge = computed(() => {
   return false
 })
 
-const cycleContextOff = computed(() => {
-  const c = brief.value?.inputs?.cycle
-  if (!c) return true
-  return c.mode === 'UNKNOWN' || c.confidence === 'LOW'
-})
+// VERGELIJKING: prefer brief.comparisons (7d vs prev 7d); fallback to inputs.recovery when no comparisons
+const comp = computed(() => brief.value?.comparisons || null)
 
-const compliance7dClass = computed(() => {
-  const pct = brief.value?.compliance?.checkins7dPct
-  if (pct == null || !Number.isFinite(Number(pct))) return ''
-  const v = Number(pct)
-  if (v >= 70) return 'compliance-ok'
-  if (v >= 40) return 'compliance-warn'
-  return 'compliance-low'
-})
-
-const compliance28dClass = computed(() => {
-  const pct = brief.value?.compliance?.checkins28dPct
-  if (pct == null || !Number.isFinite(Number(pct))) return ''
-  const v = Number(pct)
-  if (v >= 60) return 'compliance-ok'
-  if (v >= 40) return 'compliance-warn'
-  return 'compliance-low'
-})
-
-const internalCostExplanation = computed(() => {
-  const cost = brief.value?.internalCost
-  const rec = brief.value?.inputs?.recovery
-  if (!cost) return ''
-  const parts = []
-  if (rec?.hrvVs28dPct != null && Number.isFinite(rec.hrvVs28dPct)) {
-    const delta = rec.rhrDelta != null && Number.isFinite(rec.rhrDelta) ? (rec.rhrDelta >= 0 ? '+' : '') + rec.rhrDelta : '?'
-    parts.push(`HRV ~${rec.hrvVs28dPct}% baseline, RHR delta ${delta}`)
+const vergelijkingHrvText = computed(() => {
+  const h = comp.value?.hrv
+  if (h && h.currentAvg != null && h.prevAvg != null) {
+    const cur = Number(h.currentAvg).toFixed(1)
+    const prev = Number(h.prevAvg).toFixed(1)
+    const pct = h.deltaPct != null && Number.isFinite(Number(h.deltaPct))
+      ? (Number(h.deltaPct) >= 0 ? '+' : '') + Number(h.deltaPct).toFixed(1) + '%'
+      : '—'
+    return `7d avg: ${cur} vs ${prev} (${pct})`
   }
-  const expl = cost.explanation ?? ''
-  if (expl) parts.push(expl)
-  if (parts.length === 0) return 'Geen verhoogde interne belasting.'
-  return parts.join(' → ')
+  const pct = brief.value?.inputs?.recovery?.hrvVs28dPct
+  if (pct != null && Number.isFinite(Number(pct))) return Number(pct) + '%'
+  return '—'
 })
 
-const formattedNext48Trigger = computed(() => {
-  const t = brief.value?.next48h?.trigger
-  if (!t || typeof t !== 'string') return '—'
-  return 'IF HRV↓ en RHR↑ morgen → THEN intensiteit laag houden.'
+const vergelijkingRhrText = computed(() => {
+  const r = comp.value?.rhr
+  if (r && r.currentAvg != null && r.prevAvg != null) {
+    const cur = Math.round(Number(r.currentAvg))
+    const prev = Math.round(Number(r.prevAvg))
+    const delta = r.delta != null && Number.isFinite(Number(r.delta))
+      ? (Number(r.delta) >= 0 ? '+' : '') + Math.round(Number(r.delta)) + ' bpm'
+      : '—'
+    return `7d avg: ${cur} vs ${prev} (${delta})`
+  }
+  const d = brief.value?.inputs?.recovery?.rhrDelta
+  if (d != null && Number.isFinite(Number(d))) {
+    const v = Number(d)
+    return (v >= 0 ? '+' : '') + v + ' bpm'
+  }
+  return '—'
 })
 
-const historyLogs = computed(() => telemetry.value.raw?.history_logs || [])
+const vergelijkingHrvBlind = computed(() => {
+  const h = comp.value?.hrv
+  if (h && h.currentAvg != null && h.prevAvg != null) return false
+  const pct = brief.value?.inputs?.recovery?.hrvVs28dPct
+  return pct == null || !Number.isFinite(Number(pct))
+})
+
+const vergelijkingRhrBlind = computed(() => {
+  const r = comp.value?.rhr
+  if (r && r.currentAvg != null && r.prevAvg != null) return false
+  const d = brief.value?.inputs?.recovery?.rhrDelta
+  return d == null || !Number.isFinite(Number(d))
+})
+
+const hasVergelijkingData = computed(() => !vergelijkingHrvBlind.value || !vergelijkingRhrBlind.value)
 
 const readinessToday = computed(() => {
   const t = telemetry.value
@@ -910,24 +820,24 @@ const formatActivityDate = (raw) => {
 }
 
 .dagrapport-prose h1 {
-  font-size: 1.05rem;
+  font-size: 0.95rem;
   font-weight: 800;
   letter-spacing: 0.02em;
-  margin: 0 0 10px;
+  margin: 0 0 8px;
   color: #f9fafb;
 }
 
 .dagrapport-prose h2 {
-  font-size: 0.95rem;
+  font-size: 0.88rem;
   font-weight: 800;
-  margin: 16px 0 8px;
+  margin: 12px 0 6px;
   color: #f9fafb;
 }
 
 .dagrapport-prose h3 {
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-weight: 700;
-  margin: 14px 0 6px;
+  margin: 10px 0 4px;
   color: #fbbf24;
 }
 
@@ -1137,7 +1047,7 @@ const formatActivityDate = (raw) => {
 }
 @media (min-width: 900px) {
   .today-first-grid .directive-widget { grid-column: span 2; }
-  .today-first-grid .recovery-widget { grid-column: span 1; }
+  .today-first-grid .vergelijking-widget { grid-column: span 1; }
 }
 
 .directive-header {
@@ -1168,62 +1078,28 @@ const formatActivityDate = (raw) => {
 .directive-stop { font-size: 0.78rem; color: #9ca3af; margin-top: 8px; }
 .btn-dagrapport { color: #fbbf24 !important; font-size: 0.75rem; letter-spacing: 0.08em; }
 
-.recovery-body { font-size: 0.85rem; }
-.recovery-row { display: flex; justify-content: space-between; margin: 4px 0; }
-.recovery-label { color: #9ca3af; text-transform: uppercase; letter-spacing: 0.08em; }
+.vergelijking-body { font-size: 0.85rem; }
+.vergelijking-row { display: flex; justify-content: space-between; align-items: center; margin: 6px 0; gap: 8px; }
+.vergelijking-label { color: #9ca3af; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.75rem; flex-shrink: 0; }
+.vergelijking-value-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; min-width: 0; }
+.vergelijking-value { font-family: 'JetBrains Mono', monospace; color: #fbbf24; font-size: 0.8rem; }
+.vergelijking-blind { font-size: 0.65rem; letter-spacing: 0.06em; color: #6b7280; }
+.vergelijking-fallback { font-size: 0.78rem; color: #6b7280; margin-top: 10px; font-style: italic; }
 
-.load-risk-body { font-size: 0.85rem; }
-.acwr-brief-value { font-size: 1.2rem; font-weight: 600; color: #fbbf24; }
-.acwr-band { font-size: 0.75rem; color: #9ca3af; margin-top: 4px; }
-
-.cycle-context-body, .data-quality-body, .internal-cost-body { font-size: 0.85rem; }
-.cycle-context-off { font-size: 0.78rem; color: #9ca3af; margin-top: 6px; }
-.cycle-cta-link {
-  display: inline-block;
-  margin-top: 8px;
-  font-size: 0.75rem;
-  color: #fbbf24;
-  text-decoration: none;
-  letter-spacing: 0.06em;
-}
-.cycle-cta-link:hover { text-decoration: underline; }
-.target-label { font-size: 0.7rem; color: #6b7280; font-weight: normal; }
-.compliance-ok { color: #22c55e; }
-.compliance-warn { color: #fbbf24; }
-.compliance-low { color: #ef4444; }
-.data-quality-microcopy { font-size: 0.78rem; color: #9ca3af; margin-top: 8px; font-style: italic; }
-.cost-state { font-weight: 700; }
-.cost-state.cost-LOW { color: #22c55e; }
-.cost-state.cost-ELEVATED { color: #ef4444; }
-.cost-state.cost-NORMAL { color: #fbbf24; }
-.cost-explanation { font-size: 0.78rem; color: #9ca3af; margin-top: 4px; }
-
-.next48-body, .week-status-body { font-size: 0.85rem; }
-.next48-trigger { font-size: 0.78rem; color: #9ca3af; margin-top: 6px; }
-.next48-trigger-mono { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; }
-
-.intake-body { font-size: 0.85rem; }
-.intake-body div { margin: 4px 0; }
-.intake-prompts { font-size: 0.8rem; color: #9ca3af; margin-bottom: 8px; }
-.intake-prompts div { margin: 2px 0; }
-.intake-cta-btn {
-  display: inline-block;
-  margin-top: 6px;
-  font-size: 0.75rem;
-  color: #fbbf24;
-  text-decoration: none;
-  letter-spacing: 0.06em;
-}
-.intake-cta-btn:hover { text-decoration: underline; }
+.week-status-body { font-size: 0.85rem; }
 
 .dagrapport-dialog .q-dialog__backdrop { background: rgba(0, 0, 0, 0.75); }
-.dagrapport-card { max-width: 560px; max-height: 85vh; overflow: hidden; display: flex; flex-direction: column; }
-.dagrapport-header { display: flex; justify-content: space-between; align-items: center; }
-.dagrapport-body { overflow-y: auto; font-size: 0.9rem; }
-
-.hrv-chart-full {
-  grid-column: 1 / -1;
+.dagrapport-card {
+  max-width: 560px;
+  max-height: 85vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #050505 !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
+.dagrapport-header { display: flex; justify-content: space-between; align-items: center; }
+.dagrapport-body { overflow-y: auto; font-size: 0.9rem; background: #050505; }
 
 .widget {
   border: 1px solid rgba(255, 255, 255, 0.08);

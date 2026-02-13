@@ -2,9 +2,9 @@
   <q-layout view="hHh lpR fFf">
     <div v-if="isImpersonating" class="shadow-banner">
       <div class="shadow-text">
-        JE BEKIJKT NU HET PROFIEL VAN
-        <span class="shadow-name">{{ impersonatedName }}</span>
-        .
+        <span class="shadow-badge">SHADOW</span>
+        <span class="shadow-sep">·</span>
+        <span class="shadow-name">{{ shadowUidDisplay }}</span>
       </div>
       <q-btn
         dense
@@ -12,7 +12,7 @@
         no-caps
         color="black"
         class="shadow-stop-btn"
-        label="STOPPEN"
+        label="Exit"
         @click="handleStopImpersonation"
       />
     </div>
@@ -25,6 +25,16 @@
           </q-toolbar-title>
         </router-link>
         <q-space />
+
+        <q-btn
+          v-if="isImpersonating"
+          dense
+          flat
+          no-caps
+          class="header-stop-shadow-btn"
+          label="Exit"
+          @click="handleStopImpersonation"
+        />
 
         <q-btn
           v-if="isAuthenticated"
@@ -128,17 +138,19 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useAdminStore } from '../stores/admin'
 import CoachDeepDive from '../components/CoachDeepDive.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const adminStore = useAdminStore()
 
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isAdmin = computed(() => authStore.isAdmin)
 const isCoach = computed(() => authStore.isCoach)
 const isImpersonating = computed(() => authStore.isImpersonating)
-const impersonatedName = computed(
-  () => authStore.impersonatingUser?.name || 'Onbekende atleet'
+const shadowUidDisplay = computed(
+  () => authStore.shadowUid || authStore.impersonatingUser?.id || '—'
 )
 const userEmail = computed(() => {
   const email = authStore.user?.email || ''
@@ -162,9 +174,10 @@ const handleLogout = async () => {
   router.push('/login')
 }
 
-const handleStopImpersonation = () => {
+const handleStopImpersonation = async () => {
   authStore.stopImpersonation?.()
-  router.push('/admin')
+  await router.push('/admin')
+  adminStore.fetchAllData?.()
 }
 </script>
 
@@ -199,6 +212,16 @@ const handleStopImpersonation = () => {
   align-items: baseline;
 }
 
+.shadow-badge {
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.shadow-sep {
+  opacity: 0.8;
+  margin: 0 2px;
+}
+
 .shadow-name {
   font-weight: 700;
 }
@@ -207,6 +230,14 @@ const handleStopImpersonation = () => {
   font-family: q.$mono-font;
   font-size: 0.72rem;
   letter-spacing: 0.12em;
+}
+
+.header-stop-shadow-btn {
+  font-family: q.$mono-font;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  color: #fbbf24;
+  margin-right: 4px;
 }
 
 .premium-title-link {
