@@ -53,13 +53,13 @@
             <template #body-cell-name="props">
               <q-td :props="props">
                 <div class="athlete-name">
-                  {{ pilotName(props.row) }}
+                  {{ atleetName(props.row) }}
                 </div>
                 <div v-if="athleteLevelLabel(props.row)" class="level-badge" :class="athleteLevelClass(props.row)">
                   {{ athleteLevelLabel(props.row) }}
                 </div>
                 <div class="athlete-email mono-text">
-                  {{ pilotEmail(props.row) }}
+                  {{ atleetEmail(props.row) }}
                 </div>
               </q-td>
             </template>
@@ -127,13 +127,13 @@
                 <div class="athlete-card-header row items-center justify-between">
                   <div>
                     <div class="athlete-name">
-                      {{ pilotName(props.row) }}
+                      {{ atleetName(props.row) }}
                     </div>
                     <div v-if="athleteLevelLabel(props.row)" class="level-badge" :class="athleteLevelClass(props.row)">
                       {{ athleteLevelLabel(props.row) }}
                     </div>
                     <div class="athlete-email mono-text">
-                      {{ pilotEmail(props.row) }}
+                      {{ atleetEmail(props.row) }}
                     </div>
                   </div>
                   <div
@@ -177,7 +177,7 @@
         </q-card-section>
       </q-card>
 
-      <!-- Detail modal: opent bij klik op rij via onRowClick -> fetchPilotDeepDive -->
+      <!-- Detail modal: opent bij klik op rij via onRowClick -> fetchAtleetDeepDive -->
       <CoachDeepDive />
     </div>
   </q-page>
@@ -296,9 +296,9 @@ const getName = (row) => {
   return '—'
 }
 
-const pilotName = (row) => getName(row)
+const atleetName = (row) => getName(row)
 
-const pilotEmail = (row) => row.email || row.profile?.email || '—'
+const atleetEmail = (row) => row.email || row.profile?.email || '—'
 
 /** Directive from backend (PUSH, MAINTAIN, RECOVER, REST) or "Niet genoeg data" when no load data. */
 const athleteLevelLabel = (row) => {
@@ -366,11 +366,11 @@ const onRowClick = async (_evt, row) => {
   const id = row.id || row.uid
   if (!id) return
   // Eerst modal vullen met rijdata (juiste metrics.acwr); daarna activiteiten ophalen
-  squadronStore.setSelectedPilotFromRow(row)
+  squadronStore.setSelectedAtleetFromRow(row)
   try {
-    await squadronStore.fetchPilotDeepDive(id)
+    await squadronStore.fetchAtleetDeepDive(id)
   } catch (e) {
-    console.error('Failed to load pilot deep dive', e)
+    console.error('Failed to load atleet deep dive', e)
     Notify.create({
       type: 'negative',
       message: e?.message || 'Kon atleetdetails niet laden.',

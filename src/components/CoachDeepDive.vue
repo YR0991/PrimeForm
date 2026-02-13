@@ -1,11 +1,11 @@
 <template>
   <div class="coach-deep-dive">
     <q-dialog v-model="deepDiveOpen" position="right" full-height @hide="onDeepDiveClose">
-      <q-card class="cockpit-card" flat>
-        <!-- TOP: Pilot name + Directive badge + Data Integrity (7-day compliance) -->
-        <q-card-section class="cockpit-header">
+      <q-card class="dashboard-card" flat>
+        <!-- TOP: Atleet name + Directive badge + Data Integrity (7-day compliance) -->
+        <q-card-section class="dashboard-header">
           <div class="header-top row items-center justify-between">
-            <span class="pilot-name">{{ pilotDisplayName }}</span>
+            <span class="atleet-name">{{ atleetDisplayName }}</span>
             <q-btn flat round icon="close" dense @click="deepDiveOpen = false" />
           </div>
           <div class="header-badges row items-center q-gutter-sm q-mt-sm">
@@ -16,7 +16,7 @@
               <span class="compliance-label">Consistentie:</span>
               <div class="compliance-bars row no-wrap q-gutter-x-xs">
                 <div
-                  v-for="(filled, idx) in (pilot?.complianceDays ?? Array(7).fill(false))"
+                  v-for="(filled, idx) in (atleet?.complianceDays ?? Array(7).fill(false))"
                   :key="idx"
                   class="compliance-bar"
                   :class="{ filled }"
@@ -24,13 +24,13 @@
               </div>
               <span
                 class="compliance-value mono-text"
-                :class="{ 'compliance-full': (pilot?.complianceLast7 ?? 0) === 7 }"
+                :class="{ 'compliance-full': (atleet?.complianceLast7 ?? 0) === 7 }"
               >
-                {{ pilot?.complianceLast7 ?? 0 }}/7
-                <template v-if="(pilot?.complianceLast7 ?? 0) === 7"> CONSISTENTIE</template>
+                {{ atleet?.complianceLast7 ?? 0 }}/7
+                <template v-if="(atleet?.complianceLast7 ?? 0) === 7"> CONSISTENTIE</template>
               </span>
-              <span v-if="(pilot?.currentStreak ?? 0) > 7" class="streak-badge mono-text">
-                🔥 {{ pilot.currentStreak }} DAGEN STREAK
+              <span v-if="(atleet?.currentStreak ?? 0) > 7" class="streak-badge mono-text">
+                🔥 {{ atleet.currentStreak }} DAGEN STREAK
               </span>
             </div>
           </div>
@@ -40,7 +40,7 @@
           <q-spinner-grid size="48px" color="#fbbf24" />
         </q-inner-loading>
 
-        <q-card-section v-if="squadronStore.selectedPilot" class="cockpit-body">
+        <q-card-section v-if="squadronStore.selectedAtleet" class="dashboard-body">
           <div class="split-layout row">
             <!-- LEFT: Fysiologische Data (charts) -->
             <div class="left-panel">
@@ -60,7 +60,7 @@
               <div class="chart-tile">
                 <div class="chart-title">Belastingsbalans</div>
                 <div class="balance-value mono-text" :class="acwrColorClass">
-                  {{ formatMetric(pilot?.metrics?.acwr, 2) }}
+                  {{ formatMetric(atleet?.metrics?.acwr, 2) }}
                 </div>
                 <div class="chart-sub">Opbouw t.o.v. chronische load</div>
               </div>
@@ -119,7 +119,7 @@
           <!-- Activiteiten Historie (last 10; manual sessions can be removed by coach) -->
           <div class="activities-section">
             <div class="panel-label">ACTIVITEITEN HISTORIE</div>
-            <div v-if="squadronStore.deepDiveLoading && !(pilot?.activities?.length)" class="no-data mono-text">Laden…</div>
+            <div v-if="squadronStore.deepDiveLoading && !(atleet?.activities?.length)" class="no-data mono-text">Laden…</div>
             <template v-else>
               <div
                 v-for="(act, i) in activitiesList"
@@ -170,7 +170,7 @@
 
     <WeekReportDialog
       v-model="reportDialogOpen"
-      :athlete-id="pilot?.id || ''"
+      :athlete-id="atleet?.id || ''"
       :coach-notes="localNotes"
       :directive="directiveLabel"
       :injuries="injuryText"
@@ -200,12 +200,12 @@ const deletingActivityId = ref(null)
 let notesDebounceTimer = null
 const NOTES_DEBOUNCE_MS = 600
 
-const activitiesList = computed(() => (pilot.value?.activities || []).slice(0, 10))
+const activitiesList = computed(() => (atleet.value?.activities || []).slice(0, 10))
 
-const pilot = computed(() => squadronStore.selectedPilot)
+const atleet = computed(() => squadronStore.selectedAtleet)
 
-const pilotDisplayName = computed(() => {
-  const p = pilot.value
+const atleetDisplayName = computed(() => {
+  const p = atleet.value
   if (!p) return 'Atleet'
   const profile = p.profile || {}
   if (profile.firstName) {
@@ -219,7 +219,7 @@ const pilotDisplayName = computed(() => {
 })
 
 const directiveLabel = computed(() => {
-  const p = pilot.value
+  const p = atleet.value
   const d = p?.directive
   if (d && String(d).trim()) return String(d).trim()
   const acwr = p?.metrics?.acwr
@@ -242,18 +242,18 @@ const directiveBadgeClass = computed(() => {
 })
 
 const goalsText = computed(() => {
-  const g = pilot.value?.profile?.goals
+  const g = atleet.value?.profile?.goals
   if (Array.isArray(g) && g.length) return g.join(', ')
   if (g && typeof g === 'string') return g
   return ''
 })
 
 const successScenarioText = computed(() => {
-  return pilot.value?.profile?.successScenario || ''
+  return atleet.value?.profile?.successScenario || ''
 })
 
 const injuryText = computed(() => {
-  const inj = pilot.value?.profile?.injuryHistory ?? pilot.value?.profile?.injuries
+  const inj = atleet.value?.profile?.injuryHistory ?? atleet.value?.profile?.injuries
   if (Array.isArray(inj) && inj.length) return inj.join(', ')
   if (inj && typeof inj === 'string') return inj
   return ''
@@ -261,7 +261,7 @@ const injuryText = computed(() => {
 
 const hasInjury = computed(() => !!injuryText.value?.trim())
 
-const loadHistory = computed(() => pilot.value?.load_history || [])
+const loadHistory = computed(() => atleet.value?.load_history || [])
 const loadHistorySeries = computed(() => loadHistory.value.map((h) => h.dailyLoad ?? 0))
 
 const atlChartOptions = computed(() => ({
@@ -279,14 +279,14 @@ const atlChartOptions = computed(() => ({
 }))
 
 const acwrColorClass = computed(() => {
-  const v = Number(pilot.value?.metrics?.acwr)
+  const v = Number(atleet.value?.metrics?.acwr)
   if (!Number.isFinite(v)) return ''
   if (v > 1.5) return 'text-negative'
   if (v >= 0.8 && v <= 1.3) return 'text-positive'
   return 'text-warning'
 })
 
-const ghostComparison = computed(() => pilot.value?.ghost_comparison || [])
+const ghostComparison = computed(() => atleet.value?.ghost_comparison || [])
 const cxcSeries = computed(() => {
   const rows = ghostComparison.value.filter((r) => r.hrv != null || r.ghostHrv != null)
   if (!rows.length) return []
@@ -416,10 +416,10 @@ const cxcChartOptions = computed(() => {
 function onNotesInput() {
   if (notesDebounceTimer) clearTimeout(notesDebounceTimer)
   notesDebounceTimer = setTimeout(() => {
-    if (!pilot.value?.id) return
+    if (!atleet.value?.id) return
     notesSaving.value = true
     notesSavedAt.value = null
-    saveAthleteNotes(pilot.value.id, localNotes.value)
+    saveAthleteNotes(atleet.value.id, localNotes.value)
       .then(() => {
         notesSavedAt.value = Date.now()
       })
@@ -435,7 +435,7 @@ function openReportDialog() {
 }
 
 function confirmDeleteActivity(act) {
-  if (!act?.id || act.source !== 'manual' || !pilot.value?.id) return
+  if (!act?.id || act.source !== 'manual' || !atleet.value?.id) return
   $q.dialog({
     title: 'Sessie verwijderen',
     message: 'Weet je zeker dat je deze sessie wilt verwijderen? Dit beïnvloedt de Belastingsbalans.',
@@ -445,9 +445,9 @@ function confirmDeleteActivity(act) {
   }).onOk(async () => {
     deletingActivityId.value = act.id
     try {
-      await deleteManualActivity(act.id, pilot.value.id)
+      await deleteManualActivity(act.id, atleet.value.id)
       $q.notify({ type: 'positive', message: 'Sessie verwijderd. Data wordt ververst.' })
-      await squadronStore.fetchPilotDeepDive(pilot.value.id)
+      await squadronStore.fetchAtleetDeepDive(atleet.value.id)
     } catch (err) {
       $q.notify({ type: 'negative', message: err?.message || 'Verwijderen mislukt' })
     } finally {
@@ -464,19 +464,19 @@ function formatActivityDate(dateStr) {
 }
 
 function onDeepDiveClose() {
-  squadronStore.clearSelectedPilot()
+  squadronStore.clearSelectedAtleet()
   reportDialogOpen.value = false
   localNotes.value = ''
   notesSavedAt.value = null
   if (notesDebounceTimer) clearTimeout(notesDebounceTimer)
 }
 
-watch(pilot, (p) => {
+watch(atleet, (p) => {
   localNotes.value = (p?.adminNotes != null ? String(p.adminNotes) : '') || ''
 }, { immediate: true })
 
 watch(
-  () => squadronStore.selectedPilot,
+  () => squadronStore.selectedAtleet,
   (val) => {
     if (val && !deepDiveOpen.value) deepDiveOpen.value = true
     if (!val && deepDiveOpen.value) deepDiveOpen.value = false
@@ -489,7 +489,7 @@ watch(
 
 .coach-deep-dive { margin-top: 0; }
 
-.cockpit-card {
+.dashboard-card {
   background: q.$prime-black !important;
   border-left: 1px solid rgba(255, 255, 255, 0.08);
   min-width: 480px;
@@ -498,13 +498,13 @@ watch(
   flex-direction: column;
 }
 
-.cockpit-header {
+.dashboard-header {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   padding: 16px 20px;
 }
 
 .header-top { align-items: center; }
-.pilot-name {
+.atleet-name {
   font-family: q.$typography-font-family;
   font-weight: 700;
   font-size: 1.1rem;
@@ -580,7 +580,7 @@ watch(
   letter-spacing: 0.05em;
 }
 
-.cockpit-body {
+.dashboard-body {
   padding: 16px 20px;
   flex: 1;
   overflow-y: auto;

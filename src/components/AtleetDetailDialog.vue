@@ -3,15 +3,15 @@
     :model-value="modelValue"
     persistent
     maximized
-    class="pilot-detail-dialog"
+    class="atleet-detail-dialog"
     @update:model-value="(v) => $emit('update:modelValue', v)"
   >
-    <q-card class="pilot-detail-card" dark flat>
+    <q-card class="atleet-detail-card" dark flat>
       <q-card-section class="dialog-header row items-center justify-between">
         <div>
           <div class="dialog-title">ATLEET DOSSIER</div>
           <div class="dialog-subtitle">
-            {{ pilotName }} • {{ pilotEmail }}
+            {{ atleetName }} • {{ atleetEmail }}
           </div>
         </div>
         <q-btn
@@ -28,7 +28,7 @@
         v-model="activeTab"
         dense
         align="left"
-        class="pilot-tabs"
+        class="atleet-tabs"
         active-color="primary"
         indicator-color="primary"
       >
@@ -46,7 +46,7 @@
             <!-- Account -->
             <div class="section-header">ACCOUNT</div>
             <q-input
-              :model-value="pilotName"
+              :model-value="atleetName"
               label="Naam"
               outlined
               dark
@@ -55,7 +55,7 @@
               class="profile-input"
             />
             <q-input
-              :model-value="pilotEmail"
+              :model-value="atleetEmail"
               label="Email"
               outlined
               dark
@@ -201,7 +201,7 @@
                   color="negative"
                   label="Verwijderen"
                   :loading="deleting"
-                  @click="handleDeletePilot"
+                  @click="handleDeleteAtleet"
                 />
               </q-card-actions>
             </q-card>
@@ -216,9 +216,9 @@
               <q-card-section class="q-pt-none">
                 <div class="text-body2 q-mb-md">
                   Dit verplaatst alle logs en activiteiten van
-                  <strong>{{ pilotName }}</strong>
+                  <strong>{{ atleetName }}</strong>
                   naar
-                  <strong>{{ targetPilotName || '—' }}</strong>.
+                  <strong>{{ targetAtleetName || '—' }}</strong>.
                   Dit kan niet ongedaan worden gemaakt.
                 </div>
                 <q-select
@@ -400,13 +400,13 @@ const historyLoading = ref(false)
 
 const LINE_REGEX = /(\d{4}-\d{2}-\d{2})\s+(\d+)\s+(\d+)/
 
-const pilotName = computed(() => {
+const atleetName = computed(() => {
   const u = props.user
   if (!u) return '—'
   return u.displayName || u.profile?.fullName || u.email || u.profile?.email || '—'
 })
 
-const pilotEmail = computed(() => {
+const atleetEmail = computed(() => {
   const u = props.user
   if (!u) return '—'
   return u.email || u.profile?.email || '—'
@@ -423,7 +423,7 @@ const otherAthleteOptions = computed(() => {
     }))
 })
 
-const targetPilotName = computed(() => {
+const targetAtleetName = computed(() => {
   if (!migrateTargetUid.value) return ''
   const users = adminStore.users || []
   const u = users.find((user) => user.id === migrateTargetUid.value)
@@ -672,7 +672,7 @@ async function injectData() {
   }
 }
 
-async function handleDeletePilot() {
+async function handleDeleteAtleet() {
   const uid = props.user?.id
   if (!uid) return
   deleting.value = true
@@ -686,7 +686,7 @@ async function handleDeletePilot() {
     emit('updated')
     emit('update:modelValue', false)
   } catch (e) {
-    console.error('Failed to delete pilot', e)
+    console.error('Failed to delete atleet', e)
     Notify.create({
       type: 'negative',
       message: e?.message || 'Verwijderen mislukt.',
@@ -772,11 +772,11 @@ function directiveClass(log) {
 </script>
 
 <style scoped lang="scss">
-.pilot-detail-dialog :deep(.q-dialog__backdrop) {
+.atleet-detail-dialog :deep(.q-dialog__backdrop) {
   background: rgba(0, 0, 0, 0.85);
 }
 
-.pilot-detail-card {
+.atleet-detail-card {
   background: #050505 !important;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 2px;
@@ -808,14 +808,14 @@ function directiveClass(log) {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
 
-.pilot-tabs {
+.atleet-tabs {
   padding: 0 20px;
   min-height: 40px;
   background: rgba(255, 255, 255, 0.02);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.pilot-tabs :deep(.q-tab) {
+.atleet-tabs :deep(.q-tab) {
   text-transform: uppercase;
   letter-spacing: 0.12em;
   font-size: 0.75rem;

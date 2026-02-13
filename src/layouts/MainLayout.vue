@@ -2,9 +2,9 @@
   <q-layout view="hHh lpR fFf">
     <div v-if="isImpersonating" class="shadow-banner">
       <div class="shadow-text">
-        SHADOW MODE:
-        Je bekijkt momenteel het dashboard van
+        JE BEKIJKT NU HET PROFIEL VAN
         <span class="shadow-name">{{ impersonatedName }}</span>
+        .
       </div>
       <q-btn
         dense
@@ -81,7 +81,7 @@
               </q-item>
               <q-item clickable v-close-popup to="/profile">
                 <q-item-section>
-                  <q-item-label class="identity-item-label">PILOT PROFILE</q-item-label>
+                  <q-item-label class="identity-item-label">ATLEET PROFIEL</q-item-label>
                 </q-item-section>
               </q-item>
             </template>
@@ -93,7 +93,7 @@
               </q-item>
               <q-item clickable v-close-popup to="/profile">
                 <q-item-section>
-                  <q-item-label class="identity-item-label">PILOT PROFILE</q-item-label>
+                  <q-item-label class="identity-item-label">ATLEET PROFIEL</q-item-label>
                 </q-item-section>
               </q-item>
             </template>

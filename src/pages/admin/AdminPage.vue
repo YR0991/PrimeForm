@@ -107,17 +107,29 @@
           >
             <template #body-cell-actions="props">
               <q-td :props="props" @click.stop>
-                <q-btn
-                  dense
-                  flat
-                  size="sm"
-                  icon="delete"
-                  color="negative"
-                  :loading="deletingUserId === (props.row.id ?? props.row.userId)"
-                  @click="handleDeleteUser(props.row)"
-                >
-                  <q-tooltip>Gebruiker verwijderen (Auth + Firestore)</q-tooltip>
-                </q-btn>
+                <div class="row no-wrap q-gutter-xs justify-end">
+                  <q-btn
+                    dense
+                    flat
+                    size="sm"
+                    icon="visibility"
+                    color="amber-4"
+                    @click="handleBekijkAlsAtleet(props.row)"
+                  >
+                    <q-tooltip>Bekijk als atleet (Shadow Mode)</q-tooltip>
+                  </q-btn>
+                  <q-btn
+                    dense
+                    flat
+                    size="sm"
+                    icon="delete"
+                    color="negative"
+                    :loading="deletingUserId === (props.row.id ?? props.row.userId)"
+                    @click="handleDeleteUser(props.row)"
+                  >
+                    <q-tooltip>Gebruiker verwijderen (Auth + Firestore)</q-tooltip>
+                  </q-btn>
+                </div>
               </q-td>
             </template>
             <template #body-cell-directive="props">
@@ -172,7 +184,7 @@
             class="ghost-table ghost-table-clickable"
             :loading="adminStore.loading"
             :rows-per-page-options="[5, 10, 25]"
-            @row-click="(evt, row) => { if (!evt.target.closest('.q-select, .q-btn')) openPilotDetail(row) }"
+            @row-click="(evt, row) => { if (!evt.target.closest('.q-select, .q-btn')) openAtleetDetail(row) }"
           >
             <template #body-cell-joinedAt="props">
               <q-td :props="props">
@@ -254,7 +266,7 @@
                   dense
                   hide-pagination
                   class="members-table members-table-clickable"
-                  @row-click="(evt, row) => { if (!evt.target.closest('.q-btn')) openPilotDetail(row) }"
+                  @row-click="(evt, row) => { if (!evt.target.closest('.q-btn')) openAtleetDetail(row) }"
                 >
                   <template #no-data>
                     <div class="text-caption text-grey q-pa-sm">
@@ -382,12 +394,12 @@
         </q-card>
       </q-dialog>
 
-      <!-- Pilot detail (Profile + Telemetry Injector) -->
-      <PilotDetailDialog
-        v-model="pilotDetailOpen"
-        :user="selectedPilot"
+      <!-- Atleet detail (Profile + Telemetry Injector) -->
+      <AtleetDetailDialog
+        v-model="atleetDetailOpen"
+        :user="selectedAtleet"
         :team-options="teamOptions"
-        @updated="onPilotDetailUpdated"
+        @updated="onAtleetDetailUpdated"
       />
     </div>
   </q-page>
@@ -401,7 +413,7 @@ import { useAuthStore } from '../../stores/auth'
 import { useTeamsStore } from '../../stores/teams'
 import { useAdminStore } from '../../stores/admin'
 import { useSquadronStore } from '../../stores/squadron'
-import PilotDetailDialog from '../../components/PilotDetailDialog.vue'
+import AtleetDetailDialog from '../../components/AtleetDetailDialog.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -581,7 +593,7 @@ const masterColumns = [
     field: () => '',
     align: 'right',
     sortable: false,
-    style: 'width: 52px',
+    style: 'width: 88px',
   },
 ]
 
@@ -613,7 +625,7 @@ async function openAthleteDeepDive(user) {
   const id = user?.id ?? user?.userId
   if (!id) return
   try {
-    await squadronStore.fetchPilotDeepDive(id)
+    await squadronStore.fetchAtleetDeepDive(id)
   } catch (err) {
     console.error('Failed to load athlete deep dive', err)
     Notify.create({
@@ -664,14 +676,14 @@ const ghostColumns = [
   },
 ]
 
-// Pilot detail dialog (Telemetry Injector + Profile)
-const pilotDetailOpen = vueRef(false)
-const selectedPilot = vueRef(null)
-const openPilotDetail = (user) => {
-  selectedPilot.value = user
-  pilotDetailOpen.value = true
+// Atleet detail dialog (Telemetry Injector + Profile)
+const atleetDetailOpen = vueRef(false)
+const selectedAtleet = vueRef(null)
+const openAtleetDetail = (user) => {
+  selectedAtleet.value = user
+  atleetDetailOpen.value = true
 }
-const onPilotDetailUpdated = () => {
+const onAtleetDetailUpdated = () => {
   adminStore.fetchAllData()
 }
 
@@ -692,7 +704,7 @@ const onAssignTeam = async (userId, teamId) => {
     await adminStore.assignUserToTeam(userId, teamId ?? null)
     Notify.create({
       type: 'positive',
-      message: teamId ? 'Pilot gekoppeld aan team.' : 'Atleet losgekoppeld van team.',
+      message: teamId ? 'Atleet gekoppeld aan team.' : 'Atleet losgekoppeld van team.',
     })
   } catch (err) {
     console.error('Failed to assign user to team', err)
@@ -873,6 +885,12 @@ const handleDeleteTeam = (team) => {
 }
 
 const deletingUserId = vueRef(null)
+const handleBekijkAlsAtleet = (user) => {
+  if (!user?.id && !user?.userId) return
+  authStore.startImpersonation(user)
+  router.push('/dashboard')
+}
+
 const handleDeleteUser = (user) => {
   const uid = user?.id ?? user?.userId
   if (!uid) return

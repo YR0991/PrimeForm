@@ -12,7 +12,7 @@
           :cycle-length="cycleLength"
         />
         <div v-else class="empty-state">
-          Vul je cyclusgegevens in op de Profiel-pagina of bij de Cyclus Tracker op Vandaag.
+          Vul je cyclusgegevens in op de profielpagina of bij de cyclus-tracker op vandaag.
         </div>
       </section>
 
@@ -21,7 +21,7 @@
         <div class="card-label q-mb-sm">Trends • HRV (laatste 28 metingen)</div>
         <div v-if="historyLoading" class="trend-loading">Data laden...</div>
         <div v-else-if="trendsSeries[0].data.length === 0" class="empty-state">
-          Nog geen trenddata. Doe dagelijkse check-ins op Vandaag.
+          Nog geen trenddata. Doe dagelijkse check-ins op vandaag.
         </div>
         <div v-else class="apex-wrap">
           <VueApexCharts

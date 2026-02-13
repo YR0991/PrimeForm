@@ -1,45 +1,45 @@
 <template>
   <CoachDashboard v-if="authStore.isCoach" />
-  <q-page v-else class="cockpit-page">
-    <div class="cockpit-container">
+  <q-page v-else class="dashboard-page">
+    <div class="dashboard-container">
       <!-- Header -->
-      <div class="cockpit-header">
+      <div class="dashboard-header">
         <div class="brand">PRIMEFORM</div>
-        <div class="subtitle">Pilot Cockpit</div>
+        <div class="subtitle">Atleet dashboard</div>
       </div>
 
-      <!-- Pre-Race Briefing -->
-      <q-card class="cockpit-card q-mb-md" flat>
+      <!-- Dagelijkse briefing -->
+      <q-card class="dashboard-card q-mb-md" flat>
         <q-card-section class="pre-briefing">
           <div class="pre-brief-header">
-            <div class="widget-title">PRE-RACE BRIEFING</div>
+            <div class="widget-title">Dagelijkse briefing</div>
             <div class="mono pre-brief-summary">
               <template v-if="hasTodayCheckIn">
                 <template v-if="lastDirective.status">
-                  <span class="directive-label">DIRECTIVE:</span>
+                  <span class="directive-label">Directief:</span>
                   <span :class="['directive-status', 'directive-' + (lastDirective.status || '').toLowerCase()]">
                     {{ lastDirective.status }}
                   </span>
-                  — Readiness <span class="highlight">{{ readinessTodayDisplay }}</span>.
-                  HRV <span class="highlight">{{ hrvStatusLabel }}</span> vs 7d.
+                  — Je readiness-score is <span class="highlight">{{ readinessTodayDisplay }}</span>.
+                  HRV <span class="highlight">{{ hrvStatusLabel }}</span> ten opzichte van 7 dagen.
                 </template>
                 <template v-else>
-                  Pre-Race Briefing Complete. Readiness <span class="highlight">{{ readinessTodayDisplay }}</span>.
-                  HRV <span class="highlight">{{ hrvStatusLabel }}</span> vs 7d.
+                  Dagelijkse briefing voltooid. Je readiness-score is <span class="highlight">{{ readinessTodayDisplay }}</span>.
+                  HRV <span class="highlight">{{ hrvStatusLabel }}</span> ten opzichte van 7 dagen.
                 </template>
                 <div v-if="lastDirective.aiMessage" class="directive-message">
                   <div v-html="renderedAiMessage" class="markdown-content" />
                 </div>
               </template>
               <template v-else>
-                Daily check-in pending. Sync how you feel before you push the engine.
+                Doe je dagelijkse check-in om je persoonlijke advies te krijgen.
               </template>
             </div>
           </div>
           <div class="pre-brief-actions">
             <q-btn
               v-if="!hasTodayCheckIn"
-              label="START DAILY CHECK-IN"
+              label="Start dagelijkse check-in"
               no-caps
               unelevated
               class="btn-prebrief"
@@ -47,7 +47,7 @@
             />
             <q-btn
               v-else
-              label="VIEW DAILY CHECK-IN"
+              label="Bekijk dagelijkse check-in"
               flat
               no-caps
               class="btn-prebrief-secondary"
@@ -57,29 +57,26 @@
         </q-card-section>
       </q-card>
 
-      <q-card class="cockpit-card" flat>
+      <q-card class="dashboard-card" flat>
         <q-inner-loading :showing="dashboardStore.loading" color="#fbbf24">
           <q-spinner-gears size="48px" color="#fbbf24" />
         </q-inner-loading>
 
         <q-card-section>
-          <div class="cockpit-grid">
-            <!-- Widget 1: BIO-CLOCK -->
+          <div class="dashboard-grid">
+            <!-- Widget 1: Biologische klok -->
             <div class="widget bio-clock">
-              <div class="widget-title">THE BIO-CLOCK</div>
+              <div class="widget-title">De biologische klok</div>
               <div class="bio-main">
                 <div class="bio-line mono">
-                  PHASE:
-                  <span class="highlight">
-                    {{ phaseDisplay.name.toUpperCase() }}
-                  </span>
+                  {{ phaseSentence }}
                 </div>
                 <div class="bio-line mono">
-                  DAY
+                  Dag
                   <span class="highlight">
                     {{ phaseDisplay.dayDisplay }}
                   </span>
-                  of
+                  van
                   <span class="highlight">
                     {{ phaseDisplay.length }}
                   </span>
@@ -101,15 +98,15 @@
               </div>
 
               <div class="prime-tip mono">
-                PRIME TIP:
+                Advies:
                 <span class="prime-tip-text">{{ primeTip }}</span>
               </div>
             </div>
 
-            <!-- Widget 2: LOAD METER -->
+            <!-- Widget 2: Load meter -->
             <div class="widget load-meter">
               <div class="widget-title">
-                THE LOAD METER
+                De load meter
                 <q-icon
                   name="help_outline"
                   size="16px"
@@ -133,13 +130,13 @@
                     />
                   </div>
                   <div class="gauge-zones mono">
-                    <span class="zone-tag zone-optimal">0.8–1.3 OPTIMAL</span>
-                    <span class="zone-tag zone-over">1.3–1.5 OVERREACHING</span>
-                    <span class="zone-tag zone-danger">1.5+ DANGER</span>
+                    <span class="zone-tag zone-optimal">0.8–1.3 optimaal</span>
+                    <span class="zone-tag zone-over">1.3–1.5 overreaching</span>
+                    <span class="zone-tag zone-danger">1.5+ risico</span>
                   </div>
                 </div>
                 <div class="acwr-status mono">
-                  ACWR STATUS:
+                  Status:
                   <span :class="['status-pill', 'zone-' + (loadZone || 'neutral')]">
                     {{ loadStatusDisplay }}
                   </span>
@@ -147,14 +144,14 @@
               </div>
             </div>
 
-            <!-- Widget 2c: READINESS GAUGE -->
+            <!-- Widget 2c: Readiness-meter -->
             <div class="widget readiness-meter">
-              <div class="widget-title">READINESS GAUGE</div>
+              <div class="widget-title">Readiness-meter</div>
               <div class="readiness-content mono">
                 <div class="readiness-label-row">
-                  <span class="readiness-label">TODAY</span>
+                  <span class="readiness-label">Vandaag</span>
                   <span class="readiness-value">
-                    {{ hasTodayCheckIn ? readinessTodayDisplay : 'PENDING' }}
+                    {{ hasTodayCheckIn ? readinessTodayDisplay : 'Nog niet ingevuld' }}
                   </span>
                 </div>
                 <div class="readiness-gauge">
@@ -172,9 +169,9 @@
                   </div>
                 </div>
                 <div class="readiness-status-row">
-                  <span class="readiness-label">STATUS</span>
+                  <span class="readiness-label">Status</span>
                   <span class="readiness-status" :class="readinessZoneClass">
-                    {{ hasTodayCheckIn ? readinessZoneLabel : 'PENDING' }}
+                    {{ hasTodayCheckIn ? readinessZoneLabel : 'Nog niet ingevuld' }}
                   </span>
                 </div>
               </div>
@@ -191,10 +188,10 @@
               v-if="showManualInjectionPrimary"
               class="widget manual-injection"
             >
-              <div class="widget-title">HANDMATIG WORKOUT TOEVOEGEN</div>
+              <div class="widget-title">Handmatig workout toevoegen</div>
               <div class="manual-body mono">
                 <div class="manual-row">
-                  <span class="manual-label">DURATION (MIN)</span>
+                  <span class="manual-label">Duur (min)</span>
                   <q-input
                     v-model.number="manualDuration"
                     type="number"
@@ -234,7 +231,7 @@
                     class="manual-submit-btn"
                     :disable="!canSubmitManual || manualSubmitting"
                     :loading="manualSubmitting"
-                    label="Inject"
+                    label="Toevoegen"
                     @click="handleManualInject"
                   />
                 </div>
@@ -246,10 +243,10 @@
               <HRVHistoryChart :history-logs="historyLogs" />
             </div>
 
-            <!-- Widget 3: RECENT TELEMETRY -->
+            <!-- Widget 3: Recente telemetrie -->
               <div class="widget telemetry-feed">
               <div class="telemetry-header">
-                <div class="widget-title">RECENT TELEMETRY</div>
+                <div class="widget-title">Recente telemetrie</div>
                 <q-btn
                   v-if="hasStravaConnection"
                   dense
@@ -266,7 +263,7 @@
                 class="manual-inline mono"
               >
                 <div class="manual-row">
-                  <span class="manual-label">DURATION (MIN)</span>
+                  <span class="manual-label">Duur (min)</span>
                   <q-input
                     v-model.number="manualDuration"
                     type="number"
@@ -295,7 +292,7 @@
                 </div>
                 <div class="manual-row manual-actions">
                   <div class="manual-load-preview">
-                    PRIME LOAD:
+                    Prime load:
                     <span class="highlight">
                       {{ manualPrimeLoadPreview }}
                     </span>
@@ -306,7 +303,7 @@
                     class="manual-submit-btn"
                     :disable="!canSubmitManual || manualSubmitting"
                     :loading="manualSubmitting"
-                    label="Inject"
+                    label="Toevoegen"
                     @click="handleManualInject"
                   />
                 </div>
@@ -317,22 +314,22 @@
                 class="telemetry-sync-state"
               >
                 <q-spinner v-if="dashboardStore.syncing" size="24" color="amber-5" class="q-mr-sm" />
-                <span v-if="dashboardStore.syncing" class="mono">Syncing history…</span>
+                <span v-if="dashboardStore.syncing" class="mono">Historie synchroniseren…</span>
                 <template v-else>
-                  <span class="mono telemetry-empty">No activities yet.</span>
+                  <span class="mono telemetry-empty">Nog geen activiteiten.</span>
                   <q-btn
                     dense
                     flat
                     no-caps
                     class="manual-toggle-btn q-mt-sm"
-                    label="Import data"
+                    label="Data importeren"
                     :loading="dashboardStore.syncing"
                     @click="triggerStravaSync"
                   />
                 </template>
               </div>
               <div v-else-if="!hasStravaConnection && recentActivities.length === 0" class="telemetry-empty mono">
-                No recent activities. Engine idling.
+                Geen recente activiteiten.
               </div>
               <q-list v-else dense class="telemetry-list">
                 <q-item
@@ -365,7 +362,7 @@
                       </span>
                     </div>
                     <div class="mono telemetry-load">
-                      PRIME LOAD:
+                      Prime load:
                       <span class="highlight">
                         {{ act.primeLoad ?? '—' }}
                       </span>
@@ -382,14 +379,14 @@
       <q-dialog v-model="checkinDialog" persistent class="checkin-dialog-dark">
         <q-card class="checkin-dialog-card" dark>
           <q-card-section class="checkin-dialog-section text-white">
-            <div class="checkin-dialog-title">DAILY CHECK-IN</div>
+            <div class="checkin-dialog-title">Dagelijkse check-in</div>
             <div class="mono checkin-subtitle text-white">
-              Sync je readiness en bio-signalen voor vandaag.
+              Vul je readiness en bio-signalen in voor vandaag.
             </div>
           </q-card-section>
           <q-card-section class="q-pt-none checkin-dialog-section text-white">
             <div class="checkin-field">
-              <div class="field-label mono">TRAININGSBEREIDHEID (1–10)</div>
+              <div class="field-label mono">Trainingsbereidheid (1–10)</div>
               <div class="row items-center q-gutter-sm">
                 <q-slider
                   v-model.number="checkinReadiness"
@@ -477,7 +474,7 @@
                 no-caps
                 class="checkin-toggle-btn"
                 :class="{ 'toggle-active': checkinMenstruationStarted }"
-                label="MENSTRUATIE GESTART"
+                label="Menstruatie gestart"
                 @click="checkinMenstruationStarted = !checkinMenstruationStarted"
               />
               <q-btn
@@ -486,18 +483,18 @@
                 no-caps
                 class="checkin-toggle-btn checkin-toggle-sick"
                 :class="{ 'toggle-active': checkinIsSick }"
-                label="ZIEK / HANDREM"
+                label="Ziek / handrem"
                 @click="checkinIsSick = !checkinIsSick"
               />
             </div>
           </q-card-section>
           <q-card-actions align="right" class="checkin-dialog-actions">
-            <q-btn flat no-caps label="Cancel" class="text-white" @click="checkinDialog = false" />
+            <q-btn flat no-caps label="Annuleren" class="text-white" @click="checkinDialog = false" />
             <q-btn
               unelevated
               no-caps
               class="btn-prebrief"
-              label="Save Check-in"
+              label="Check-in opslaan"
               :disable="!canSubmitCheckin"
               :loading="checkinSubmitting"
               @click="handleSubmitCheckin"
@@ -581,22 +578,32 @@ const phaseDisplay = computed(() => {
   }
 })
 
-// Prime Tip based on phase
+// Sentence-case phase for Dutch: "Je bent in de menstruele fase"
+const phaseSentence = computed(() => {
+  const name = (phaseDisplay.value.name || '').toLowerCase()
+  if (name.includes('menstrual')) return 'Je bent in de menstruele fase.'
+  if (name.includes('follicular')) return 'Je bent in de folliculaire fase.'
+  if (name.includes('luteal')) return 'Je bent in de luteale fase.'
+  if (name.includes('ovulation')) return 'Je bent in de ovulatie.'
+  return 'Je bent in de ' + (phaseDisplay.value.name || 'onbekende') + ' fase.'
+})
+
+// Prime Tip based on phase (Dutch, sentence case)
 const primeTip = computed(() => {
   const name = (phaseDisplay.value.name || '').toLowerCase()
   if (name.includes('follicular')) {
-    return 'Estrogen rising — High intensity intervals are well tolerated.'
+    return 'Oestrogeen stijgt — hoge intensiteit wordt goed verdragen.'
   }
   if (name.includes('ovulation')) {
-    return 'Peak power window — Short, explosive work is ideal.'
+    return 'Venster voor piekvermogen — korte, explosieve training is ideaal.'
   }
   if (name.includes('luteal')) {
-    return 'Luteal Tax active — Respect recovery and reduce spikes.'
+    return 'Luteale fase — respecteer herstel en beperk pieken.'
   }
   if (name.includes('menstrual')) {
-    return 'Focus on comfort — Low intensity and technique work.'
+    return 'Focus op comfort — lage intensiteit en techniek.'
   }
-  return 'Match your load to how you actually feel today.'
+  return 'Sluit je belasting aan op hoe je je vandaag voelt.'
 })
 
 // ACWR + load status
@@ -621,12 +628,16 @@ const loadZone = computed(() => {
 const loadStatusDisplay = computed(() => {
   const v = acwr.value
   if (v == null || !Number.isFinite(Number(v)) || Number(v) === 0) {
-    return 'GEEN DATA'
+    return 'Geen data'
   }
-  return dashboardStore.loadStatus || 'GEEN DATA'
+  const status = dashboardStore.loadStatus || ''
+  if (status === 'OPTIMAL') return 'optimaal'
+  if (status === 'OVERREACHING') return 'overreaching'
+  if (status === 'DANGER') return 'risico'
+  return status ? status.toLowerCase() : 'Geen data'
 })
 
-// --- Pre-Race Briefing / Readiness Gauge ---
+// --- Dagelijkse briefing / Readiness-meter ---
 const readinessToday = computed(() => {
   const t = telemetry.value
   if (t.readinessToday != null) return t.readinessToday
@@ -661,9 +672,9 @@ const renderedAiMessage = computed(() => {
 })
 
 const readinessTodayDisplay = computed(() => {
-  if (readinessToday.value == null) return 'PENDING'
+  if (readinessToday.value == null) return '—'
   const v = Number(readinessToday.value)
-  if (!Number.isFinite(v)) return 'PENDING'
+  if (!Number.isFinite(v)) return '—'
   return `${Math.round(v)}/10`
 })
 
@@ -680,9 +691,9 @@ const hrvStatusLabel = computed(() => {
     return '—'
   }
   const deltaPct = ((today - avg7) / avg7) * 100
-  if (deltaPct > 5) return 'HIGH'
-  if (deltaPct < -5) return 'LOW'
-  return 'STABLE'
+  if (deltaPct > 5) return 'hoog'
+  if (deltaPct < -5) return 'laag'
+  return 'stabiel'
 })
 
 const readinessZoneClass = computed(() => {
@@ -695,10 +706,10 @@ const readinessZoneClass = computed(() => {
 
 const readinessZoneLabel = computed(() => {
   const v = Number(readinessToday.value)
-  if (!Number.isFinite(v)) return 'PENDING'
-  if (v >= 7) return 'PEAK'
-  if (v <= 4) return 'LETHARGIC'
-  return 'BALANCED'
+  if (!Number.isFinite(v)) return 'Nog niet ingevuld'
+  if (v >= 7) return 'Topvorm'
+  if (v <= 4) return 'Lage energie'
+  return 'In balans'
 })
 
 const readinessFillWidth = computed(() => {
@@ -813,7 +824,7 @@ const handleManualInject = async () => {
     // reset duration, keep RPE where it is
     manualDuration.value = null
   } catch (e) {
-    // error already surfaced via store or console; keep cockpit silent
+    // error already surfaced via store or console; keep dashboard silent
     console.error('Manual injection failed', e)
   } finally {
     manualSubmitting.value = false
@@ -855,7 +866,7 @@ const formatActivityDate = (raw) => {
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap');
 
-.cockpit-page {
+.dashboard-page {
   background: #050505;
   min-height: 100vh;
   padding: 24px;
@@ -864,37 +875,37 @@ const formatActivityDate = (raw) => {
   align-items: flex-start;
 }
 
-.cockpit-container {
+.dashboard-container {
   max-width: 1100px;
   width: 100%;
 }
 
-.cockpit-header {
+.dashboard-header {
   margin-bottom: 16px;
 }
 
 .brand {
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     sans-serif;
-  font-weight: 900;
+  font-weight: 700;
   font-style: italic;
-  letter-spacing: 0.24em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  font-size: 1rem;
-  color: #fbbf24;
+  font-size: 0.9rem;
+  color: #D4AF37;
 }
 
 .subtitle {
   margin-top: 4px;
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     sans-serif;
-  font-size: 0.75rem;
-  letter-spacing: 0.16em;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(156, 163, 175, 0.95);
+  color: #F5F5F5;
 }
 
-.cockpit-card {
+.dashboard-card {
   background: rgba(255, 255, 255, 0.03) !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   border-radius: 2px !important;
@@ -1155,7 +1166,7 @@ const formatActivityDate = (raw) => {
   border-color: #ef4444;
 }
 
-.cockpit-grid {
+.dashboard-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 16px;
@@ -1175,10 +1186,10 @@ const formatActivityDate = (raw) => {
 .widget-title {
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     sans-serif;
-  font-size: 0.8rem;
-  letter-spacing: 0.18em;
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: rgba(156, 163, 175, 0.9);
+  color: #D4AF37;
   margin-bottom: 10px;
 }
 

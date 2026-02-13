@@ -197,7 +197,7 @@ export const useDashboardStore = defineStore('dashboard', {
       const json = await res.json()
       const data = json?.data || {}
 
-      // Optimistic local update so the cockpit feed reflects the injection immediately
+      // Optimistic local update so the dashboard feed reflects the injection immediately
       if (this.telemetry) {
         const existing = Array.isArray(this.telemetry.activities)
           ? this.telemetry.activities

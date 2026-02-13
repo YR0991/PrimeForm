@@ -12,7 +12,7 @@
           :to="'/dashboard'"
         />
         <h1 class="profile-title">
-          {{ isAthlete ? 'PILOT PROFILE' : 'ACCOUNT & SETTINGS' }}
+          {{ isAthlete ? 'ATLEET PROFIEL' : 'ACCOUNT & SETTINGS' }}
         </h1>
       </div>
 
@@ -390,7 +390,7 @@ async function completeOnboarding() {
 
 async function updateCalibration() {
   try {
-    await authStore.updatePilotProfile({
+    await authStore.updateAtleetProfile({
       lastPeriodDate: localLastPeriod.value || null,
       cycleLength: localCycleLength.value,
       rhrBaseline: localRhrBaseline.value != null && Number.isFinite(Number(localRhrBaseline.value)) ? Number(localRhrBaseline.value) : null,
@@ -398,7 +398,7 @@ async function updateCalibration() {
     })
   } catch (err) {
     // Fallback logging; primary Notify is in the store
-    console.error('updatePilotProfile failed in ProfilePage', err)
+    console.error('updateAtleetProfile failed in ProfilePage', err)
   }
 }
 

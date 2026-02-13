@@ -482,9 +482,9 @@ export const useAuthStore = defineStore('auth', {
     },
 
     /**
-     * Update pilot profile (last period date, cycle length, baseline RHR/HRV). Persists via PUT /api/profile.
+     * Update atleet profile (last period date, cycle length, baseline RHR/HRV). Persists via PUT /api/profile.
      */
-    async updatePilotProfile({ lastPeriodDate, cycleLength, rhrBaseline, hrvBaseline }) {
+    async updateAtleetProfile({ lastPeriodDate, cycleLength, rhrBaseline, hrvBaseline }) {
       if (!this.user?.uid) throw new Error('No authenticated user')
       this.loading = true
       this.error = null
@@ -499,7 +499,7 @@ export const useAuthStore = defineStore('auth', {
         this.profile = { ...this.profile, ...profile }
         Notify.create({ type: 'positive', message: 'Kalibratie bijgewerkt' })
       } catch (err) {
-        console.error('updatePilotProfile failed', err)
+        console.error('updateAtleetProfile failed', err)
         this.error = err?.message || 'Bijwerken mislukt'
         Notify.create({ type: 'negative', message: this.error })
         throw err

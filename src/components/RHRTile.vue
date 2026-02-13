@@ -1,13 +1,13 @@
 <template>
   <div class="widget rhr-tile">
-    <div class="widget-title">RUSTHARTSLAG</div>
+    <div class="widget-title">Rusthartslag</div>
     <div class="rhr-content mono">
       <div class="rhr-value">{{ rhrDisplay }}</div>
       <div v-if="baselineDelta !== null" class="rhr-badge" :class="badgeClass">
         {{ baselineDelta > 0 ? '+' : '' }}{{ baselineDelta }}
       </div>
     </div>
-    <div class="rhr-label">vs 28d baseline</div>
+    <div class="rhr-label">t.o.v. 28d-baseline</div>
   </div>
 </template>
 
@@ -51,8 +51,7 @@ const badgeClass = computed(() => {
 .widget-title {
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 0.8rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  letter-spacing: 0.12em;
   color: rgba(156, 163, 175, 0.9);
   margin-bottom: 10px;
 }

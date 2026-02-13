@@ -11,7 +11,7 @@ export const useSquadronStore = defineStore('squadron', {
     athletesById: {},
     loading: false,
     error: null,
-    selectedPilotId: null,
+    selectedAtleetId: null,
     deepDiveLoading: false,
   }),
 
@@ -47,9 +47,9 @@ export const useSquadronStore = defineStore('squadron', {
     },
 
     /** Selected athlete (for modal). */
-    selectedPilot(state) {
-      if (!state.selectedPilotId) return null
-      return state.athletesById[state.selectedPilotId] ?? null
+    selectedAtleet(state) {
+      if (!state.selectedAtleetId) return null
+      return state.athletesById[state.selectedAtleetId] ?? null
     },
   },
 
@@ -117,12 +117,12 @@ export const useSquadronStore = defineStore('squadron', {
      */
     async fetchAthleteDeepDive(id) {
       if (!id) {
-        this.selectedPilotId = null
+        this.selectedAtleetId = null
         return
       }
 
       this.deepDiveLoading = true
-      this.selectedPilotId = id
+      this.selectedAtleetId = id
 
       try {
         const data = await getAthleteDetail(id)
@@ -133,28 +133,27 @@ export const useSquadronStore = defineStore('squadron', {
         }
       } catch (err) {
         console.error('SquadronStore: fetchAthleteDeepDive failed', err)
-        this.selectedPilotId = null
+        this.selectedAtleetId = null
         throw err
       } finally {
         this.deepDiveLoading = false
       }
     },
 
-    /** Alias for backward compatibility. */
-    async fetchPilotDeepDive(pilotId) {
-      return this.fetchAthleteDeepDive(pilotId)
+    async fetchAtleetDeepDive(atleetId) {
+      return this.fetchAthleteDeepDive(atleetId)
     },
 
-    setSelectedPilotFromRow(row) {
+    setSelectedAtleetFromRow(row) {
       if (!row) {
-        this.selectedPilotId = null
+        this.selectedAtleetId = null
         return
       }
-      this.selectedPilotId = row.id ?? row.uid ?? null
+      this.selectedAtleetId = row.id ?? row.uid ?? null
     },
 
-    clearSelectedPilot() {
-      this.selectedPilotId = null
+    clearSelectedAtleet() {
+      this.selectedAtleetId = null
     },
   },
 })
