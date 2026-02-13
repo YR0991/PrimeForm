@@ -99,7 +99,7 @@
               <div class="telemetry-header">
                 <div class="widget-title">LOG</div>
                 <q-btn
-                  v-if="hasStravaConnection"
+                  v-if="isStravaConnected"
                   dense
                   flat
                   class="manual-toggle-btn mono"
@@ -108,9 +108,9 @@
                 />
               </div>
 
-              <!-- Inline manual injection panel when Strava is connected -->
+              <!-- Inline manual injection panel (openable from empty state or header) -->
               <div
-                v-if="hasStravaConnection && manualPanelOpen"
+                v-if="manualPanelOpen"
                 class="manual-inline mono"
               >
                 <div class="manual-row">
@@ -160,27 +160,42 @@
                 </div>
               </div>
 
+              <!-- Empty state: no activities and/or Strava not connected -->
               <div
-                v-if="hasStravaConnection && recentActivities.length === 0"
-                class="telemetry-sync-state"
+                v-if="showLogEmptyState"
+                class="log-empty-state"
               >
-                <q-spinner v-if="dashboardStore.syncing" size="24" color="amber-5" class="q-mr-sm" />
-                <span v-if="dashboardStore.syncing" class="mono">Historie synchroniseren…</span>
-                <template v-else>
-                  <span class="mono telemetry-empty">Nog geen activiteiten.</span>
+                <div class="log-empty-msg mono">
+                  {{ isStravaConnected ? 'Nog geen activiteiten gesynchroniseerd. Check Strava of probeer opnieuw.' : 'Geen recente activiteiten.' }}
+                </div>
+                <div class="log-empty-actions">
                   <q-btn
-                    dense
-                    flat
+                    v-if="!isStravaConnected"
+                    unelevated
                     no-caps
-                    class="manual-toggle-btn q-mt-sm"
+                    class="log-empty-btn-primary"
+                    label="Strava koppelen"
+                    :disable="!activeUid"
+                    @click="connectStrava"
+                  />
+                  <q-btn
+                    v-else
+                    unelevated
+                    no-caps
+                    class="log-empty-btn-primary"
                     label="Data importeren"
                     :loading="dashboardStore.syncing"
                     @click="triggerStravaSync"
                   />
-                </template>
-              </div>
-              <div v-else-if="!hasStravaConnection && recentActivities.length === 0" class="telemetry-empty mono">
-                Geen recente activiteiten.
+                  <q-btn
+                    dense
+                    flat
+                    no-caps
+                    class="log-empty-btn-secondary mono"
+                    label="Workout handmatig invoeren"
+                    @click="manualPanelOpen = true"
+                  />
+                </div>
               </div>
               <q-list v-else dense class="telemetry-list">
                 <q-item
@@ -376,6 +391,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
+import { API_URL } from '../config/api.js'
 import { useAuthStore } from '../stores/auth'
 import { useDashboardStore } from '../stores/dashboard'
 import CoachDashboard from './coach/CoachDashboard.vue'
@@ -397,7 +413,7 @@ const stravaSyncTriggered = ref(false)
 watch(
   () => ({
     loading: dashboardStore.loading,
-    connected: authStore.stravaConnected,
+    connected: isStravaConnected.value,
     activities: (dashboardStore.telemetry?.activities || []).length,
   }),
   (curr) => {
@@ -608,8 +624,20 @@ const handleSubmitCheckin = async () => {
   }
 }
 
-// Strava connection: use auth store so connection status is visible even before dashboard payload
-const hasStravaConnection = computed(() => Boolean(authStore.stravaConnected))
+// Strava connection: auth store (from profile fetch — data.strava?.connected)
+const isStravaConnected = computed(() => Boolean(authStore.stravaConnected))
+const activeUid = computed(() => authStore.activeUid || authStore.user?.uid || null)
+
+// LOG empty state: show when no activities or Strava not connected
+const showLogEmptyState = computed(
+  () => recentActivities.value.length === 0 || !isStravaConnected.value
+)
+
+function connectStrava() {
+  const uid = activeUid.value
+  if (!uid) return
+  window.location.href = `${API_URL}/auth/strava/connect?userId=${encodeURIComponent(uid)}`
+}
 
 // Manual injection state
 const manualDuration = ref(null)
@@ -1401,6 +1429,50 @@ const formatActivityDate = (raw) => {
   gap: 4px;
   font-size: 0.75rem;
   color: rgba(148, 163, 184, 0.95);
+}
+
+.log-empty-state {
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.log-empty-msg {
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.log-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.log-empty-btn-primary {
+  background: #fbbf24 !important;
+  color: #050505 !important;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: 2px;
+  padding: 6px 12px;
+}
+
+.log-empty-btn-secondary {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: #9ca3af;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+}
+
+.log-empty-btn-secondary:hover {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.4);
 }
 
 .telemetry-list {
