@@ -1,4 +1,4 @@
-import { API_URL } from '../config/api.js'
+import { api } from './httpClient.js'
 
 /**
  * Recompute and persist aggregated stats (readiness, RHR, acute/chronic load, ACWR) on the user document.
@@ -8,15 +8,6 @@ import { API_URL } from '../config/api.js'
  */
 export async function updateUserStats(userId) {
   if (!userId) return
-  const res = await fetch(`${API_URL}/api/update-user-stats`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId }),
-    credentials: 'include',
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err?.error || err?.message || 'Failed to update user stats')
-  }
-  return res.json()
+  const res = await api.post('/api/update-user-stats', { userId })
+  return res?.data ?? res
 }

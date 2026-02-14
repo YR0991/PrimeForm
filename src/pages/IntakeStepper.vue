@@ -322,9 +322,7 @@ onMounted(async () => {
 
   // Preload full profile from API (overwrites with server state when present)
   try {
-    const resp = await api.get('/api/profile', {
-      params: { userId: userId.value }
-    })
+    const resp = await api.get('/api/profile')
     const profile = resp.data?.data?.profile
     if (profile) {
       form.value = {

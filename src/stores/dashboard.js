@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { auth } from 'boot/firebase'
-import { API_URL } from '../config/api.js'
 import { updateUserStats } from '../services/telemetryService'
+import { api } from '../services/httpClient.js'
 import { useAuthStore } from './auth'
 import { watch } from 'vue'
 
@@ -70,36 +70,14 @@ export const useDashboardStore = defineStore('dashboard', {
 
         const uid = authStore.activeUid || user.uid
         console.log('Dashboard fetch for UID:', uid)
-        const token = await user.getIdToken?.()
-
-        const headers = token
-          ? {
-              Authorization: `Bearer ${token}`,
-              'X-User-Uid': uid,
-            }
-          : {
-              'X-User-Uid': uid,
-            }
 
         const [dashboardRes, briefRes] = await Promise.all([
-          fetch(`${API_URL}/api/dashboard`, { method: 'GET', headers }),
-          fetch(`${API_URL}/api/daily-brief`, { method: 'GET', headers }).catch(() => null),
+          api.get('/api/dashboard'),
+          api.get('/api/daily-brief').catch(() => ({ data: null })),
         ])
 
-        if (!dashboardRes.ok) {
-          const text = await dashboardRes.text()
-          throw new Error(text || 'Dashboard data ophalen mislukt')
-        }
-
-        const json = await dashboardRes.json()
-        const data = json?.data || json
-
-        if (briefRes && briefRes.ok) {
-          const briefJson = await briefRes.json()
-          this.dailyBrief = briefJson?.data || null
-        } else {
-          this.dailyBrief = null
-        }
+        const data = dashboardRes?.data?.data || dashboardRes?.data || {}
+        this.dailyBrief = briefRes?.data?.data ?? briefRes?.data ?? null
 
         const raw = { ...data }
         if (data.todayLog) {
@@ -145,14 +123,8 @@ export const useDashboardStore = defineStore('dashboard', {
       this.syncing = true
       this.error = null
       try {
-        const token = await user.getIdToken?.()
         const uid = authStore.activeUid || user.uid
-        const headers = token ? { Authorization: `Bearer ${token}`, 'X-User-Uid': uid } : { 'X-User-Uid': uid }
-        const res = await fetch(`${API_URL}/api/strava/sync/${uid}`, { method: 'GET', headers })
-        if (!res.ok) {
-          const text = await res.text().catch(() => '')
-          throw new Error(text || 'Strava sync mislukt')
-        }
+        await api.get(`/api/strava/sync/${uid}`)
         await this.fetchUserDashboard()
       } finally {
         this.syncing = false
@@ -167,21 +139,10 @@ export const useDashboardStore = defineStore('dashboard', {
       this.syncing = true
       this.error = null
       try {
-        const token = await user.getIdToken?.()
         const uid = authStore.activeUid || user.uid
-        const headers = { 'Content-Type': 'application/json', 'X-User-Uid': uid }
-        if (token) headers.Authorization = `Bearer ${token}`
-        const res = await fetch(`${API_URL}/api/strava/sync-now`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ userId: uid }),
-        })
-        const json = await res.json().catch(() => ({}))
-        if (!res.ok) {
-          throw new Error(json?.error || res.statusText || 'Sync mislukt')
-        }
+        const res = await api.post('/api/strava/sync-now', { userId: uid })
         await this.fetchUserDashboard()
-        return json?.data
+        return res?.data?.data
       } finally {
         this.syncing = false
       }
@@ -207,26 +168,14 @@ export const useDashboardStore = defineStore('dashboard', {
       const uid = authStore.activeUid || user.uid
       const dateIso = date && typeof date === 'string' ? date : new Date().toISOString()
 
-      const res = await fetch(`${API_URL}/api/activities`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: uid,
-          type: 'Manual Session',
-          duration: durationMinutes,
-          rpe: rpeValue,
-          date: dateIso,
-        }),
+      const res = await api.post('/api/activities', {
+        userId: uid,
+        type: 'Manual Session',
+        duration: durationMinutes,
+        rpe: rpeValue,
+        date: dateIso,
       })
-
-      if (!res.ok) {
-        const text = await res.text().catch(() => '')
-        const err = new Error(text || 'Activiteit opslaan mislukt')
-        throw err
-      }
-
-      const json = await res.json()
-      const data = json?.data || {}
+      const data = res?.data?.data || res?.data || {}
 
       // Optimistic local update so the dashboard feed reflects the injection immediately
       if (this.telemetry) {
@@ -319,21 +268,8 @@ export const useDashboardStore = defineStore('dashboard', {
         isSick: Boolean(isSick),
       }
 
-      const res = await fetch(`${API_URL}/api/save-checkin`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      })
-
-      if (!res.ok) {
-        const text = await res.text().catch(() => '')
-        throw new Error(text || 'Daily check-in opslaan mislukt')
-      }
-
-      const json = await res.json().catch(() => ({}))
-      const data = json?.data || {}
+      const res = await api.post('/api/save-checkin', body)
+      const data = res?.data?.data || res?.data || {}
 
       this.telemetry = {
         ...(this.telemetry || {}),

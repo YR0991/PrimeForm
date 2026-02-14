@@ -5,27 +5,7 @@ import {
   createWebHistory,
 } from 'vue-router'
 import routes from './routes'
-import { API_URL } from '../config/api.js'
 import { useAuthStore } from '../stores/auth'
-
-/**
- * Get user ID for profile checks. Prefer Firebase uid when authenticated.
- */
-const getUserIdForProfileCheck = (authStore) => {
-  if (authStore?.user?.uid) return authStore.user.uid
-  const key = 'primeform_user_id'
-  const existing = localStorage.getItem(key)
-  if (existing) return existing
-  const newId = `pf_${Date.now()}`
-  localStorage.setItem(key, newId)
-  return newId
-}
-
-let profileCache = {
-  userId: null,
-  profileComplete: null,
-  fetchedAt: 0,
-}
 
 /*
  * If not building with SSR mode, you can
@@ -150,28 +130,8 @@ export default defineRouter(function (/* { store, ssrContext } */) {
       if (authStore.isAuthenticated && authStore.hasProfileLoadedForCurrentUser && authStore.isOnboardingComplete) {
         return { path: '/dashboard' }
       }
-      if (authStore.isAuthenticated && authStore.hasProfileLoadedForCurrentUser) {
-        return true
-      }
-      try {
-        const userId = getUserIdForProfileCheck(authStore)
-        const now = Date.now()
-        const shouldRefetch =
-          profileCache.userId !== userId || now - profileCache.fetchedAt > 30_000
-        if (shouldRefetch) {
-          const resp = await fetch(
-            `${API_URL}/api/profile?userId=${encodeURIComponent(userId)}`
-          )
-          const json = await resp.json()
-          profileCache = {
-            userId,
-            profileComplete: json?.data?.profileComplete === true,
-            fetchedAt: now,
-          }
-        }
-        if (profileCache.profileComplete === true) return { path: '/' }
-      } catch {
-        return true
+      if (authStore.isAuthenticated && authStore.hasProfileLoadedForCurrentUser && authStore.isOnboardingComplete) {
+        return { path: '/dashboard' }
       }
       return true
     }

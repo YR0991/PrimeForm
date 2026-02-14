@@ -1,14 +1,15 @@
 import axios from 'axios'
+import { signOut } from 'firebase/auth'
 import { Notify } from 'quasar'
 import { API_URL } from '../config/api.js'
+import { auth } from '../boot/firebase.js'
 import { useAuthStore } from '../stores/auth.js'
 
 /**
- * Centrale Axios instance voor alle API-calls.
- * - Base URL: API_URL
- * - withCredentials: true (voor cookies waar nodig)
- * - Request interceptor: voegt auth/role headers toe op basis van Auth Store
- * - Response interceptor: toont globale foutmelding bij 4xx/5xx / netwerkfouten
+ * Single HTTP client for all /api/* calls.
+ * - Injects Authorization: Bearer <idToken> from Firebase currentUser.
+ * - On 401: retry once with getIdToken(true); if still 401, sign out and redirect to /login.
+ * - Keeps optional x-admin-email / x-coach-email / x-user-uid for legacy or admin/coach flows.
  */
 export const api = axios.create({
   baseURL: API_URL,
@@ -16,38 +17,42 @@ export const api = axios.create({
 })
 
 api.interceptors.request.use(
-  (config) => {
+  async (config) => {
+    const headers = config.headers || {}
+
+    const user = auth.currentUser
+    if (!user) {
+      if (import.meta.env.DEV) {
+        console.warn('[httpClient] No Firebase user; request may 401:', config.url || config.method)
+      }
+    } else {
+      try {
+        const token = await user.getIdToken(false)
+        if (token) {
+          headers.Authorization = `Bearer ${token}`
+        } else if (import.meta.env.DEV) {
+          console.warn('[httpClient] getIdToken returned empty; request may 401:', config.url || config.method)
+        }
+      } catch (e) {
+        if (import.meta.env.DEV) {
+          console.warn('[httpClient] getIdToken failed:', e?.message, config.url || config.method)
+        }
+      }
+    }
+
     try {
       const authStore = useAuthStore()
-
-      const headers = config.headers || {}
-
-      // Primaire bron: ingelogde user uit Auth Store
       const emailFromStore = authStore.user?.email || ''
-
-      // Legacy fallback: localStorage (wordt later uitgefaseerd)
       const adminEmailLS = (localStorage.getItem('admin_email') || '').trim()
       const coachEmailLS = (localStorage.getItem('coach_email') || '').trim()
-
-      // Admin-header (leave intact if already set)
       if (!headers['x-admin-email']) {
-        if (adminEmailLS) {
-          headers['x-admin-email'] = adminEmailLS
-        } else if (authStore.isAdmin && emailFromStore) {
-          headers['x-admin-email'] = emailFromStore
-        }
+        if (adminEmailLS) headers['x-admin-email'] = adminEmailLS
+        else if (authStore.isAdmin && emailFromStore) headers['x-admin-email'] = emailFromStore
       }
-
-      // Coach-header (leave intact if already set)
       if (!headers['x-coach-email']) {
-        if (coachEmailLS) {
-          headers['x-coach-email'] = coachEmailLS
-        } else if (authStore.isCoach && emailFromStore) {
-          headers['x-coach-email'] = emailFromStore
-        }
+        if (coachEmailLS) headers['x-coach-email'] = coachEmailLS
+        else if (authStore.isCoach && emailFromStore) headers['x-coach-email'] = emailFromStore
       }
-
-      // User UID: impersonation (shadow) overrides current user when present
       const shadowUid = (localStorage.getItem('pf_shadow_uid') || '').trim()
       if (shadowUid) {
         headers['x-user-uid'] = shadowUid
@@ -56,52 +61,57 @@ api.interceptors.request.use(
         if (uid) headers['x-user-uid'] = uid
       }
       headers['x-shadow-mode'] = shadowUid ? '1' : '0'
-
-      // Hier zou eventueel later een Authorization Bearer <idToken> header kunnen komen
-      // als we Firebase ID tokens willen meesturen naar de backend.
-
-      config.headers = headers
-      return config
     } catch (err) {
-      // Als de store om wat voor reden dan ook niet bereikbaar is, laat de request doorgaan
-      // zonder extra headers, zodat de call niet hard faalt.
-      console.error('[api] request interceptor error', err)
-      return config
+      console.error('[httpClient] request interceptor error', err)
     }
+
+    config.headers = headers
+    return config
   },
   (error) => Promise.reject(error),
 )
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    try {
-      const status = error?.response?.status
-      const data = error?.response?.data
+  async (error) => {
+    const originalRequest = error?.config
+    const status = error?.response?.status
 
-      // Bepaal een zo informatief mogelijke foutmelding
+    if (status === 401 && originalRequest && !originalRequest._retried) {
+      originalRequest._retried = true
+      const user = auth.currentUser
+      if (user) {
+        try {
+          const token = await user.getIdToken(true)
+          if (token) {
+            originalRequest.headers = originalRequest.headers || {}
+            originalRequest.headers.Authorization = `Bearer ${token}`
+            return api.request(originalRequest)
+          }
+        } catch (refreshErr) {
+          if (import.meta.env.DEV) console.warn('[httpClient] 401 retry getIdToken(true) failed', refreshErr?.message)
+        }
+      }
+      await signOut(auth)
+      if (typeof window !== 'undefined' && window.location) {
+        window.location.href = '/login'
+      }
+      return Promise.reject(error)
+    }
+
+    try {
+      const data = error?.response?.data
       const msgFromServer = data?.error || data?.message
       const fallbackMsg =
         status >= 500
           ? 'Er ging iets mis aan de serverkant. Probeer het later opnieuw.'
           : 'De actie is mislukt. Controleer je invoer of probeer het opnieuw.'
-
-      const message =
-        msgFromServer ||
-        (error.message && !error.message.includes('Network Error')
-          ? error.message
-          : fallbackMsg)
-
-      // Toon globale toast (geen stille fails meer)
-      Notify.create({
-        type: 'negative',
-        message,
-      })
+      const message = msgFromServer || (error.message && !error.message.includes('Network Error') ? error.message : fallbackMsg)
+      Notify.create({ type: 'negative', message })
     } catch (notifyErr) {
-      console.error('[api] response interceptor notify error', notifyErr)
+      console.error('[httpClient] response interceptor notify error', notifyErr)
     }
 
     return Promise.reject(error)
   },
 )
-

@@ -113,7 +113,7 @@ const trendsChartOptions = computed(() => ({
 
 async function loadProfile() {
   try {
-    const resp = await api.get('/api/profile', { params: { userId: userId.value } })
+    const resp = await api.get('/api/profile')
     profile.value = resp.data?.data?.profile || null
   } catch (e) {
     console.error('Profile load failed:', e)
@@ -123,7 +123,7 @@ async function loadProfile() {
 async function loadHistory() {
   historyLoading.value = true
   try {
-    const resp = await api.get('/api/history', { params: { userId: userId.value } })
+    const resp = await api.get('/api/history')
     historyLogs.value = resp.data?.data || []
   } catch (e) {
     console.error('History load failed:', e)

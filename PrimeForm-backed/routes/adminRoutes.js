@@ -112,6 +112,48 @@ function createAdminRouter(deps) {
     }
   });
 
+  // GET /api/admin/users/:uid/history — fetch daily logs for a user (admin only)
+  router.get('/users/:uid/history', async (req, res) => {
+    try {
+      if (!db) {
+        return res.status(503).json({
+          success: false,
+          error: 'Firestore is not initialized'
+        });
+      }
+      const uid = req.params.uid;
+      if (!uid) {
+        return res.status(400).json({ success: false, error: 'Missing uid' });
+      }
+      const snapshot = await db
+        .collection('users')
+        .doc(String(uid))
+        .collection('dailyLogs')
+        .orderBy('timestamp', 'desc')
+        .limit(28)
+        .get();
+      const docs = snapshot.docs.map((doc) => {
+        const data = doc.data() || {};
+        const ts = data.timestamp;
+        let timestamp = ts;
+        if (ts && typeof ts.toDate === 'function') {
+          timestamp = ts.toDate().toISOString();
+        } else if (ts instanceof Date) {
+          timestamp = ts.toISOString();
+        }
+        return { id: doc.id, ...data, timestamp };
+      });
+      res.json({ success: true, data: docs });
+    } catch (error) {
+      console.error('❌ GET /api/admin/users/:uid/history', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch history',
+        message: error.message
+      });
+    }
+  });
+
   // POST /api/admin/users/:uid/history — inject historical HRV/RHR (Cold Start / Telemetry Injector)
   router.post('/users/:uid/history', async (req, res) => {
     try {

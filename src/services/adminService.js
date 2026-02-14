@@ -16,16 +16,16 @@ export async function fetchAllUsers() {
 }
 
 /**
- * Get user details including intake data
+ * Get user details including intake data (admin viewing another user).
+ * Uses GET /api/admin/users and finds the user by id — do not use GET /api/profile?userId=.
  * @param {string} userId - User ID
- * @returns {Promise<Object>} User profile with intake data
+ * @returns {Promise<Object>} User profile with intake data, or null if not found
  */
 export async function getUserDetails(userId) {
   try {
-    const res = await api.get('/api/profile', {
-      params: { userId: encodeURIComponent(userId) },
-    })
-    return res.data?.data?.profile || null
+    const list = await fetchAllUsers()
+    const user = list.find((u) => u.id === userId || u.userId === userId)
+    return user?.profile ?? null
   } catch (error) {
     console.error('Error fetching user details:', error)
     throw error
@@ -48,15 +48,13 @@ export async function getStravaActivities(userId) {
 }
 
 /**
- * Get user check-in history
+ * Get user check-in history (admin viewing another user). Uses GET /api/admin/users/:uid/history.
  * @param {string} userId - User ID
  * @returns {Promise<Array>} Array of check-in logs
  */
 export async function getUserHistory(userId) {
   try {
-    const res = await api.get('/api/history', {
-      params: { userId: encodeURIComponent(userId) },
-    })
+    const res = await api.get(`/api/admin/users/${encodeURIComponent(userId)}/history`)
     return res.data?.data || []
   } catch (error) {
     console.error('Error fetching user history:', error)

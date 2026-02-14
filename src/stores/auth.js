@@ -11,34 +11,32 @@ import {
   sendPasswordResetEmail,
 } from 'firebase/auth'
 import { Notify } from 'quasar'
-import { API_URL } from '../config/api.js'
+import { api } from '../services/httpClient.js'
 
-async function apiGetProfile(userId) {
-  const res = await fetch(`${API_URL}/api/profile?userId=${encodeURIComponent(userId)}`)
-  const json = await res.json()
-  if (!res.ok) throw new Error(json.error || json.message || 'Failed to load profile')
-  return json.data
+async function apiGetProfile() {
+  const res = await api.get('/api/profile')
+  const data = res.data?.data
+  if (!data && res.status !== 200) throw new Error('Failed to load profile')
+  return data
 }
 
-async function apiPutProfile(userId, body) {
-  const res = await fetch(`${API_URL}/api/profile`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId, ...body }),
-  })
-  const json = await res.json()
-  if (!res.ok) throw new Error(json.error || json.message || 'Failed to save profile')
-  return json.data
+async function apiPutProfile(body) {
+  const res = await api.put('/api/profile', body)
+  const data = res.data?.data
+  if (!data && res.status !== 200) throw new Error('Failed to save profile')
+  return data
 }
 
 async function apiVerifyInviteCode(code) {
-  const res = await fetch(`${API_URL}/api/teams/verify-invite?code=${encodeURIComponent(code)}`)
-  const json = await res.json()
-  if (!res.ok) {
-    if (res.status === 404) throw new Error('Teamcode niet gevonden')
-    throw new Error(json.error || json.message || 'Verify failed')
+  try {
+    const res = await api.get('/api/teams/verify-invite', {
+      params: { code: code },
+    })
+    return res.data?.data ?? res.data
+  } catch (err) {
+    if (err.response?.status === 404) throw new Error('Teamcode niet gevonden')
+    throw new Error(err.response?.data?.error || err.response?.data?.message || err.message || 'Verify failed')
   }
-  return json.data
 }
 
 const googleProvider = new GoogleAuthProvider()
@@ -135,8 +133,9 @@ export const useAuthStore = defineStore('auth', {
         const result = await signInWithPopup(auth, googleProvider)
         const firebaseUser = result.user
         const uid = firebaseUser.uid
+        await firebaseUser.getIdToken()
 
-        let data = await apiGetProfile(uid)
+        let data = await apiGetProfile()
         const hasDoc = data && (data.profile != null || data.role != null || data.onboardingComplete != null)
         if (hasDoc) {
           this._setUserFromProfile(firebaseUser, data)
@@ -144,12 +143,12 @@ export const useAuthStore = defineStore('auth', {
           return
         }
 
-        await apiPutProfile(uid, {
+        await apiPutProfile({
           profilePatch: { email: firebaseUser.email ?? null, displayName: firebaseUser.displayName ?? null },
           role: 'user',
           onboardingComplete: false,
         })
-        data = await apiGetProfile(uid)
+        data = await apiGetProfile()
         this._setUserFromProfile(firebaseUser, data)
         this.profileLoadedForUid = uid
       } catch (err) {
@@ -167,8 +166,9 @@ export const useAuthStore = defineStore('auth', {
         const credential = await signInWithEmailAndPassword(auth, email, password)
         const firebaseUser = credential.user
         const uid = firebaseUser.uid
+        await firebaseUser.getIdToken()
 
-        let data = await apiGetProfile(uid)
+        let data = await apiGetProfile()
         const hasDoc = data && (data.profile != null || data.role != null || data.onboardingComplete != null)
         if (hasDoc) {
           this._setUserFromProfile(firebaseUser, data)
@@ -176,12 +176,12 @@ export const useAuthStore = defineStore('auth', {
           return
         }
 
-        await apiPutProfile(uid, {
+        await apiPutProfile({
           profilePatch: { email: firebaseUser.email ?? email, displayName: firebaseUser.displayName ?? null },
           role: 'user',
           onboardingComplete: false,
         })
-        data = await apiGetProfile(uid)
+        data = await apiGetProfile()
         this._setUserFromProfile(firebaseUser, data)
         this.profileLoadedForUid = uid
       } catch (err) {
@@ -249,7 +249,7 @@ export const useAuthStore = defineStore('auth', {
     async fetchUserProfile(uid) {
       if (!uid) return null
       try {
-        const data = await apiGetProfile(uid)
+        const data = await apiGetProfile()
         const hasDoc = data && (data.profile != null || data.role != null || data.onboardingComplete != null)
         if (!hasDoc) return null
         if (this.user?.uid === uid) {
@@ -320,7 +320,7 @@ export const useAuthStore = defineStore('auth', {
 
             if (!profile) {
               try {
-                await apiPutProfile(firebaseUser.uid, {
+                await apiPutProfile({
                   profilePatch: {
                     email: firebaseUser.email ?? null,
                     displayName: firebaseUser.displayName ?? null,
@@ -328,7 +328,7 @@ export const useAuthStore = defineStore('auth', {
                   role: 'user',
                   onboardingComplete: false,
                 })
-                const data = await apiGetProfile(firebaseUser.uid)
+                const data = await apiGetProfile()
                 this._setUserFromProfile(firebaseUser, data)
               } catch (err) {
                 console.warn('Bootstrap profile failed', err)
@@ -403,7 +403,7 @@ export const useAuthStore = defineStore('auth', {
           onboardingComplete: true,
         }
         if (teamId) body.teamId = teamId
-        const data = await apiPutProfile(this.user.uid, body)
+        const data = await apiPutProfile(body)
         if (data.teamId) this.teamId = data.teamId
         this.onboardingComplete = true
       } catch (err) {
@@ -425,18 +425,8 @@ export const useAuthStore = defineStore('auth', {
       }
 
       try {
-        const resp = await fetch(`${API_URL}/api/strava/exchange`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: raw }),
-        })
-
-        if (!resp.ok) {
-          const text = await resp.text()
-          throw new Error(text || 'Strava exchange failed')
-        }
-
-        return await resp.json()
+        const resp = await api.post('/api/strava/exchange', { code: raw })
+        return resp?.data ?? resp
       } catch (err) {
         console.error('exchangeStravaCode failed', err)
         throw err
@@ -462,7 +452,7 @@ export const useAuthStore = defineStore('auth', {
           onboardingComplete: false,
         }
         if (teamId) body.teamId = teamId
-        const data = await apiPutProfile(this.user.uid, body)
+        const data = await apiPutProfile(body)
         if (data.teamId) this.teamId = data.teamId
         this.onboardingComplete = false
       } catch (err) {
@@ -482,7 +472,7 @@ export const useAuthStore = defineStore('auth', {
       this.loading = true
       this.error = null
       try {
-        await apiPutProfile(this.user.uid, { onboardingComplete: true })
+        await apiPutProfile({ onboardingComplete: true })
         this.onboardingComplete = true
       } catch (err) {
         console.error('completeOnboarding failed', err)
@@ -507,7 +497,7 @@ export const useAuthStore = defineStore('auth', {
           ...(rhrBaseline != null && Number.isFinite(Number(rhrBaseline)) ? { rhrBaseline: Number(rhrBaseline) } : {}),
           ...(hrvBaseline != null && Number.isFinite(Number(hrvBaseline)) ? { hrvBaseline: Number(hrvBaseline) } : {}),
         }
-        await apiPutProfile(this.user.uid, { profilePatch: profile })
+        await apiPutProfile({ profilePatch: profile })
         this.profile = { ...this.profile, ...profile }
         Notify.create({ type: 'positive', message: 'Kalibratie bijgewerkt' })
       } catch (err) {
@@ -528,7 +518,7 @@ export const useAuthStore = defineStore('auth', {
       this.loading = true
       this.error = null
       try {
-        await apiPutProfile(this.user.uid, { strava: { connected: false } })
+        await apiPutProfile({ strava: { connected: false } })
         this.stravaConnected = false
         Notify.create({ type: 'positive', message: 'Strava ontkoppeld' })
       } catch (err) {
@@ -578,7 +568,7 @@ export const useAuthStore = defineStore('auth', {
       try {
         this.loading = true
         this.error = null
-        await apiPutProfile(this.user.uid, { profilePatch })
+        await apiPutProfile({ profilePatch })
 
         this.profile = {
           ...this.profile,
