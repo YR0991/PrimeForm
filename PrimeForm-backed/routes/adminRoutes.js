@@ -1,31 +1,12 @@
 /**
  * Admin API routes — mounted at /api/admin
+ * Protected: verifyIdToken + requireUser + requireRole('admin'). No legacy x-admin-email; break-glass in requireRole.
  * Requires: db, admin, openai, knowledgeBaseContent, reportService, stravaService, FieldValue (injected via factory).
  */
 
 const express = require('express');
-
-const ADMIN_EMAIL = 'yoramroemersma50@gmail.com';
-
-/**
- * Middleware: require admin email (x-admin-email header, query.adminEmail, or body.adminEmail).
- */
-function checkAdminAuth(req, res, next) {
-  const adminEmail = (
-    req.headers['x-admin-email'] ||
-    req.query.adminEmail ||
-    (req.body && req.body.adminEmail) ||
-    ''
-  ).trim();
-  if (adminEmail !== ADMIN_EMAIL) {
-    return res.status(403).json({
-      success: false,
-      error: 'Unauthorized: Admin access required',
-      code: 'ADMIN_EMAIL_MISMATCH'
-    });
-  }
-  next();
-}
+const { verifyIdToken, requireUser, requireRole } = require('../middleware/auth');
+const { normalizeCycleData } = require('../lib/profileValidation');
 
 /**
  * @param {object} deps - { db, admin, openai, knowledgeBaseContent, reportService, stravaService, FieldValue }
@@ -35,7 +16,7 @@ function createAdminRouter(deps) {
   const { db, admin, openai, knowledgeBaseContent, reportService: report, stravaService: strava, FieldValue } = deps;
   const router = express.Router();
 
-  router.use(checkAdminAuth);
+  router.use(verifyIdToken(admin), requireUser(), requireRole('admin'));
 
   // POST /api/admin/strava/sync/:uid — sync last 30 days of Strava activities (admin only)
   router.post('/strava/sync/:uid', async (req, res) => {
@@ -354,8 +335,6 @@ function createAdminRouter(deps) {
 
   // GET /api/admin/stats
   router.get('/stats', async (req, res) => {
-    const adminEmail = (req.headers['x-admin-email'] || req.query.adminEmail || '').trim();
-    console.log('Admin stats request. adminEmail match:', adminEmail === ADMIN_EMAIL);
     try {
       if (!db) {
         return res.status(503).json({
@@ -433,10 +412,10 @@ function createAdminRouter(deps) {
 
       const mergedProfile = { ...existingProfile, ...restProfilePatch };
       if (existingProfile.cycleData || restProfilePatch.cycleData) {
-        mergedProfile.cycleData = {
+        mergedProfile.cycleData = normalizeCycleData({
           ...(existingProfile.cycleData || {}),
           ...(restProfilePatch.cycleData || {})
-        };
+        });
       }
 
       const updatePayload = {

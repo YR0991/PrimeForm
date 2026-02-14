@@ -1,23 +1,30 @@
 /**
  * Activity API routes — mounted at /api/activities
- * - DELETE /api/activities/:id — delete a manual session (safety: only source === 'manual')
+ * - DELETE /api/activities/:id — delete a manual session (safety: only source === 'manual'). Auth: uid from token only.
  */
 
 const express = require('express');
+const { verifyIdToken, requireUser } = require('../middleware/auth');
 
 function createActivityRouter(deps) {
-  const { db } = deps;
+  const { db, admin } = deps;
+  const auth = admin ? [verifyIdToken(admin), requireUser()] : [];
   const router = express.Router();
 
   /**
    * DELETE /api/activities/:id
-   * Query: userId (optional) — if provided, only delete if activity.userId matches (coach scoping).
-   * Response: 200 { success: true } so frontend can refresh stats.
+   * Auth: token required. User may only delete their own manual activities (data.userId === req.user.uid).
+   * query.userId / body ignored; uid from token only.
+   * Response: 200 { success: true } or 404 / 403.
    */
-  router.delete('/:id', async (req, res) => {
+  router.delete('/:id', ...auth, async (req, res) => {
     try {
       if (!db) {
-        return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
+        return res.status(503).json({ success: false, error: 'Firestore not initialized' });
+      }
+      const uid = req.user && req.user.uid ? String(req.user.uid) : null;
+      if (!uid) {
+        return res.status(401).json({ success: false, error: 'Unauthorized', message: 'Authentication required' });
       }
       const id = (req.params.id || '').trim();
       if (!id) {
@@ -38,8 +45,7 @@ function createActivityRouter(deps) {
         });
       }
 
-      const requestedUserId = (req.query.userId || '').trim();
-      if (requestedUserId && data.userId !== requestedUserId) {
+      if (data.userId !== uid) {
         return res.status(403).json({ success: false, error: 'Activity does not belong to this user' });
       }
 

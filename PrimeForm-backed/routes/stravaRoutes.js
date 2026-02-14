@@ -1,10 +1,12 @@
 /**
  * Strava API and OAuth routes.
- * - Mount API router at /api/strava (disconnect, sync, activities).
+ * - Mount API router at /api/strava (disconnect, sync, activities). User-scoped routes require Firebase ID token; uid from req.user.uid.
  * - Mount auth router at /auth/strava (connect, callback).
  */
 
 const express = require('express');
+const { verifyIdToken, requireUser } = require('../middleware/auth');
+const { createState, consumeState } = require('../services/stravaOAuthState');
 
 /**
  * @param {object} deps - { db, admin, stravaService }
@@ -12,19 +14,18 @@ const express = require('express');
  */
 function createStravaRoutes(deps) {
   const { db, admin, stravaService } = deps;
+  const auth = [verifyIdToken(admin), requireUser()];
 
   const apiRouter = express.Router();
   const authRouter = express.Router();
 
   // --- /api/strava (mount in server: app.use('/api/strava', apiRouter)) ---
 
-  // PUT /api/strava/disconnect — user clears connection from Settings
-  apiRouter.put('/disconnect', async (req, res) => {
+  // PUT /api/strava/disconnect — user clears connection from Settings. Protected: uid from token.
+  apiRouter.put('/disconnect', auth, async (req, res) => {
     try {
       if (!db) return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
-      const { userId } = req.body || {};
-      if (!userId) return res.status(400).json({ success: false, error: 'Missing userId' });
-      const userRef = db.collection('users').doc(String(userId));
+      const userRef = db.collection('users').doc(String(req.user.uid));
       await userRef.set(
         {
           strava: { connected: false },
@@ -39,15 +40,15 @@ function createStravaRoutes(deps) {
     }
   });
 
-  // GET /api/strava/sync/:uid — legacy: fetch last 56 days (no rate limit). Prefer POST /sync-now for webhook-first flow.
-  apiRouter.get('/sync/:uid', async (req, res) => {
+  // GET /api/strava/sync/:uid — legacy: fetch last 56 days (no rate limit). Protected: only own uid.
+  apiRouter.get('/sync/:uid', auth, async (req, res) => {
     try {
       if (!db) {
         return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
       }
       const uid = req.params.uid;
-      if (!uid) {
-        return res.status(400).json({ success: false, error: 'Missing uid' });
+      if (uid !== req.user.uid) {
+        return res.status(403).json({ success: false, error: 'Forbidden: cannot sync another user' });
       }
       const result = await stravaService.syncRecentActivities(uid, db, admin, { days: 56 });
       return res.json({ success: true, data: { newCount: result.count } });
@@ -57,17 +58,14 @@ function createStravaRoutes(deps) {
     }
   });
 
-  // POST /api/strava/sync-now — manual sync: fetch activities after lastStravaSyncedAt, rate limit 1 per 10 min per user
+  // POST /api/strava/sync-now — manual sync: fetch activities after lastStravaSyncedAt, rate limit 1 per 10 min per user. Protected: uid from token.
   const SYNC_NOW_COOLDOWN_MS = 10 * 60 * 1000;
-  apiRouter.post('/sync-now', async (req, res) => {
+  apiRouter.post('/sync-now', auth, async (req, res) => {
     try {
       if (!db) {
         return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
       }
-      const uid = (req.headers['x-user-uid'] || req.body?.userId || req.query?.uid || '').toString().trim();
-      if (!uid) {
-        return res.status(400).json({ success: false, error: 'Missing uid (X-User-Uid header or body.userId)' });
-      }
+      const uid = req.user.uid;
       const userRef = db.collection('users').doc(String(uid));
       const userSnap = await userRef.get();
       if (!userSnap.exists) {
@@ -107,12 +105,14 @@ function createStravaRoutes(deps) {
     }
   });
 
-  // GET /api/strava/activities/:uid — return stored activities (for dashboard & admin)
-  apiRouter.get('/activities/:uid', async (req, res) => {
+  // GET /api/strava/activities/:uid — return stored activities. Protected: only own uid.
+  apiRouter.get('/activities/:uid', auth, async (req, res) => {
     try {
       if (!db) return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
       const uid = req.params.uid;
-      if (!uid) return res.status(400).json({ success: false, error: 'Missing uid' });
+      if (uid !== req.user.uid) {
+        return res.status(403).json({ success: false, error: 'Forbidden: cannot list another user\'s activities' });
+      }
       const snap = await db.collection('users').doc(String(uid)).collection('activities').get();
       const activities = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       return res.json({ success: true, data: activities });
@@ -124,14 +124,12 @@ function createStravaRoutes(deps) {
 
   // --- /auth/strava (mount in server: app.use('/auth/strava', authRouter)) ---
 
-  // GET /auth/strava/connect — OAuth step 1: redirect to Strava
-  authRouter.get('/connect', (req, res) => {
+  // GET /auth/strava/connect — OAuth step 1: require auth, bind state to req.user.uid, redirect to Strava
+  // Frontend must call with Authorization: Bearer <idToken> (e.g. fetch with header, then window.location = Location)
+  authRouter.get('/connect', auth, (req, res) => {
     try {
-      const userId = (req.query.userId || '').toString().trim();
-      if (!userId) {
-        return res.status(400).send('Missing userId. Use /auth/strava/connect?userId=YOUR_USER_ID');
-      }
-      const url = stravaService.getAuthUrl(userId);
+      const state = createState(req.user.uid);
+      const url = stravaService.getAuthUrl(state);
       res.redirect(302, url);
     } catch (err) {
       console.error('Strava connect error:', err);
@@ -139,19 +137,25 @@ function createStravaRoutes(deps) {
     }
   });
 
-  // GET /auth/strava/callback — OAuth step 2: exchange code for tokens, save to Firestore
-  // FRONTEND_APP_URL must match the deployed frontend domain (e.g. Vercel URL or app.primeform.nl)
+  // GET /auth/strava/callback — OAuth step 2: resolve uid only from validated state; never trust query/body uid
   authRouter.get('/callback', async (req, res) => {
     const frontendUrl = (process.env.FRONTEND_APP_URL || 'http://localhost:9000').replace(/\/$/, '');
     const settingsPath = `${frontendUrl}/settings`;
 
     try {
-      const { code, state: userId, error } = req.query;
+      const { code, state, error } = req.query;
       if (error === 'access_denied') {
         return res.redirect(`${settingsPath}?status=strava_denied`);
       }
-      if (!code || !userId) {
-        return res.redirect(`${settingsPath}?status=strava_error&message=missing_code_or_state`);
+
+      const consumed = consumeState(state);
+      if (consumed.error) {
+        return res.redirect(`${settingsPath}?status=strava_error&message=state_${consumed.error}`);
+      }
+      const uid = consumed.uid;
+
+      if (!code) {
+        return res.redirect(`${settingsPath}?status=strava_error&message=missing_code`);
       }
 
       const tokens = await stravaService.exchangeToken(code);
@@ -163,7 +167,7 @@ function createStravaRoutes(deps) {
 
       const athlete = tokens.athlete || {};
       const athleteName = [athlete.firstname, athlete.lastname].filter(Boolean).join(' ') || null;
-      const userRef = db.collection('users').doc(String(userId));
+      const userRef = db.collection('users').doc(String(uid));
       await userRef.set(
         {
           strava: {
@@ -179,7 +183,7 @@ function createStravaRoutes(deps) {
         { merge: true }
       );
 
-      console.log(`✅ Strava connected for user ${userId}, athleteId ${athleteId}`);
+      console.log(`✅ Strava connected for user ${uid}, athleteId ${athleteId}`);
       res.redirect(302, `${frontendUrl}/intake?status=strava_connected`);
     } catch (err) {
       console.error('Strava callback error:', err);

@@ -57,7 +57,7 @@ const historyLogs = ref([])
 const historyLoading = ref(false)
 
 const lastPeriodDate = computed(() => {
-  return profile.value?.cycleData?.lastPeriod || ''
+  return profile.value?.cycleData?.lastPeriodDate || ''
 })
 
 const cycleLength = computed(() => {

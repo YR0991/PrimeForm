@@ -272,8 +272,8 @@ onMounted(() => {
     verifiedTeamName.value = 'Huidig team gekoppeld'
   }
   const p = authStore.profile || {}
-  if (p.lastPeriodDate || p.lastPeriod) {
-    const raw = (p.lastPeriodDate || p.lastPeriod || '').toString().trim()
+  if (p.lastPeriodDate) {
+    const raw = (p.lastPeriodDate || '').toString().trim()
     lastPeriodDate.value = raw.includes('-') ? raw.replace(/-/g, '/') : raw
   }
   if (p.cycleLength != null && p.cycleLength > 0) {

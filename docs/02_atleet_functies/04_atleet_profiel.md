@@ -11,7 +11,7 @@
 
 ## Wat de code doet
 
-1. **Bewerkbare velden (profile):** PUT /api/profile accepteert profilePatch. Merge: profile.fullName, email, birthDate, disclaimerAccepted, redFlags, goals, programmingType, cycleData (lastPeriod/lastPeriodDate, avgDuration, contraception). Root-level email wordt gezet uit mergedProfile.email. role, teamId, strava, onboardingComplete kunnen apart in body. isProfileComplete bepaalt profileComplete; zie 01_onboarding_flow.
+1. **Bewerkbare velden (profile):** PUT /api/profile accepteert profilePatch. Merge: profile.fullName, email, birthDate, disclaimerAccepted, redFlags, goals, programmingType, cycleData (**lastPeriodDate**, avgDuration, contraception). Canonical key: cycleData.lastPeriodDate (ISO YYYY-MM-DD). Root-level email wordt gezet uit mergedProfile.email. role, teamId, strava, onboardingComplete kunnen apart in body. isProfileComplete bepaalt profileComplete; zie 01_onboarding_flow.
 2. **Strava-koppeling:** Strava-gegevens op user doc: strava { connected, athleteId, accessToken, refreshToken, expiresAt, … }. athleteId gebruikt in webhook om uid te vinden (query users where strava.athleteId == payload.owner_id). Token refresh: stravaService.ensureValidToken. Routes: /api/strava/*, /auth/strava/*; sync-now en disconnect in stravaRoutes.
 3. **Waar tokens/athleteId staan:** users/{uid}.strava (accessToken, refreshToken, expiresAt, athleteId). Niet in profile; apart veld strava op user doc. GET /api/profile retourneert data inclusief strava (als aanwezig); PUT kan strava object meegeven (server slaat rootUpdates.strava op).
 
@@ -58,7 +58,7 @@ const userSnap = await db.collection('users').where('strava.athleteId', '==', at
 
 | Severity | Observatie | Impact | Fix-idee |
 |----------|------------|--------|----------|
-| P2 | lastPeriod vs lastPeriodDate in cycleData: isProfileComplete gebruikt lastPeriod; cycleService gebruikt lastPeriodDate. | Fout als alleen lastPeriodDate wordt opgeslagen. | Backend normaliseert naar lastPeriodDate of isProfileComplete accepteert beide. |
+| — | ~~lastPeriod vs lastPeriodDate~~ | — | **Opgelost:** Canonical lastPeriodDate; read-time migration; isProfileComplete en cycle logic gebruiken lastPeriodDate. |
 | P1 | Strava tokens op user doc; geen encryptie-at-rest in code. | Firestore security rules moeten leesbeperking afdwingen. | Documenteer; overweeg secrets manager voor tokens. |
 
 ---

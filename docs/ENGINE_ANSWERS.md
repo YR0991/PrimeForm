@@ -42,7 +42,7 @@ function cycleMode(profile) {
   const contraception = (cd.contraception || '').toLowerCase();
   if (contraception.includes('lng') || contraception.includes('iud') || contraception.includes('spiraal')) return 'HBC_LNG_IUD';
   if (contraception.includes('pil') || contraception.includes('patch') || contraception.includes('ring') || contraception.length > 0) return 'HBC_OTHER';
-  if (contraception === '' && (cd.lastPeriodDate || cd.lastPeriod)) return 'NATURAL';
+  if (contraception === '' && cd.lastPeriodDate) return 'NATURAL';
   return 'UNKNOWN';
 }
 ```
@@ -51,7 +51,7 @@ function cycleMode(profile) {
 |--------------|------------|
 | **HBC_LNG_IUD** | contraception bevat "lng", "iud" of "spiraal" |
 | **HBC_OTHER** | bevat "pil", "patch", "ring" of contraception niet leeg |
-| **NATURAL** | contraception leeg én (lastPeriodDate of lastPeriod) aanwezig |
+| **NATURAL** | contraception leeg én lastPeriodDate aanwezig |
 | **UNKNOWN** | Anders |
 
 **COPPER:** Komt **niet** als aparte mode voor. Koper-IUD (zonder LNG) valt in code onder HBC_OTHER (contraception niet leeg) of, bij alleen "koper", mogelijk UNKNOWN als het niet "lng"/"iud"/"spiraal" matcht en geen andere trefwoorden.
@@ -68,7 +68,7 @@ function cycleConfidence(mode, profile) {
   if (mode.startsWith('HBC')) return 'LOW';
   if (mode === 'UNKNOWN') return 'LOW';
   const cd = profile?.cycleData || {};
-  if (!(cd.lastPeriodDate || cd.lastPeriod)) return 'MED';
+  if (!cd.lastPeriodDate) return 'MED';
   return 'HIGH';
 }
 ```
@@ -76,8 +76,8 @@ function cycleConfidence(mode, profile) {
 | Confidence | Regels |
 |------------|--------|
 | **LOW** | mode is HBC_* of UNKNOWN |
-| **MED** | NATURAL maar geen lastPeriodDate én geen lastPeriod |
-| **HIGH** | NATURAL met lastPeriodDate of lastPeriod |
+| **MED** | NATURAL maar geen lastPeriodDate |
+| **HIGH** | NATURAL met lastPeriodDate |
 
 Gebruik: phase/phaseDay worden alleen getoond als cycleConf !== 'LOW' (getDailyBrief).
 
@@ -85,18 +85,55 @@ Gebruik: phase/phaseDay worden alleen getoond als cycleConf !== 'LOW' (getDailyB
 
 ## 4. Drie uitgewerkte voorbeelden
 
-**Voorbeeld 1 — NATURAL, lastPeriod aanwezig**  
-profile.cycleData = { contraception: '', lastPeriod: '2025-01-15' }  
-→ cycleMode = NATURAL, cycleConfidence = HIGH (lastPeriod aanwezig). phase/phaseDay uit reportService worden in brief gebruikt.
+**Voorbeeld 1 — NATURAL, lastPeriodDate aanwezig**  
+profile.cycleData = { contraception: '', lastPeriodDate: '2025-01-15' }  
+→ cycleMode = NATURAL, cycleConfidence = HIGH. phase/phaseDay uit reportService worden in brief gebruikt.
 
 **Voorbeeld 2 — HBC LNG-spiraal**  
 profile.cycleData = { contraception: 'LNG-spiraal' }  
 → cycleMode = HBC_LNG_IUD (contraception bevat "lng"), cycleConfidence = LOW. phase/phaseDay in brief = null (cycleConf !== 'LOW' check).
 
 **Voorbeeld 3 — NATURAL, nog geen menstruatie ingevuld**  
-profile.cycleData = { contraception: '' } (geen lastPeriod/lastPeriodDate)  
-→ cycleMode = NATURAL (contraception leeg; lastPeriod ontbreekt → tweede if niet, derde if wel: return NATURAL? Nee: contraception === '' && (cd.lastPeriodDate || cd.lastPeriod) is false, dus komt bij de laatste return niet; na tweede regel: HBC_OTHER niet (length > 0 is false). Dus NATURAL alleen als lastPeriod of lastPeriodDate bestaat. Bij alleen contraception: '' → geen lastPeriod → condition "contraception === '' && ..." is false → return UNKNOWN.  
-→ cycleMode = UNKNOWN, cycleConfidence = LOW.
+profile.cycleData = { contraception: '' } (geen lastPeriodDate)  
+→ contraception === '' maar cd.lastPeriodDate ontbreekt → cycleMode = UNKNOWN, cycleConfidence = LOW.
+
+---
+
+## 5. Status engine: decision table and tie-breakers
+
+**Single source of truth:** `PrimeForm-backed/services/statusEngine.js` — `computeStatus({ acwr, isSick, readiness, redFlags, cyclePhase, hrvVsBaseline, phaseDay })`. Used by **daily-brief** (status.tag / status.signal) and **save-checkin** (recommendation.status / reasons). Eliminates drift between ACWR-only brief and readiness/cycle check-in.
+
+### Decision order (priority)
+
+1. **isSick** → **RECOVER** (hard override; no ACWR/readiness/cycle).
+2. **ACWR hard bounds** (ceiling/floor) — see thresholds below.
+3. **Base status** from readiness + redFlags + cyclePhase (same logic as `cycleService.determineRecommendation`).
+4. **Lethargy override:** Luteal + readiness 4–6 + HRV > 105% baseline → **MAINTAIN**.
+5. **Elite override:** Menstrual day 1–3 + readiness ≥ 8 + HRV ≥ 98% baseline → **PUSH**.
+6. **Clamp** result of 3–5 to ACWR bounds.
+
+### ACWR thresholds (documented in code)
+
+| ACWR        | Effect |
+|------------|--------|
+| **> 1.5**  | Ceiling: tag = **RECOVER** (spike). |
+| **> 1.3**  | Ceiling: no PUSH (overreaching); PUSH → RECOVER. |
+| **0.8–1.3**| Sweet spot: PUSH / MAINTAIN / RECOVER allowed. |
+| **< 0.8**  | Floor: no PUSH; PUSH → MAINTAIN. |
+| **null**   | No ACWR constraint; status from readiness/cycle/overrides only. |
+
+### Tie-breaker rules
+
+- **ACWR ceiling overrides PUSH:** e.g. high readiness + Follicular would give PUSH, but ACWR > 1.3 → RECOVER.
+- **ACWR floor overrides PUSH:** e.g. readiness/cycle would give PUSH, but ACWR < 0.8 → MAINTAIN.
+- **isSick overrides everything:** no red-flag or ACWR logic when sick.
+- **Overrides (Lethargy, Elite) apply before ACWR clamp:** so e.g. Elite Rebound can set PUSH, then ACWR clamp may downgrade to RECOVER/MAINTAIN.
+
+### Output
+
+- **tag:** `REST` | `RECOVER` | `MAINTAIN` | `PUSH`
+- **signal:** `RED` (REST/RECOVER), `ORANGE` (MAINTAIN), `GREEN` (PUSH)
+- **reasons:** array of Dutch strings (base reasons + override + ACWR grens when clamp applied).
 
 ---
 

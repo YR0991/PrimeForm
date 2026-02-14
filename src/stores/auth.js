@@ -262,7 +262,7 @@ export const useAuthStore = defineStore('auth', {
           const p = data.profile || {}
           const cd = p.cycleData && typeof p.cycleData === 'object' ? p.cycleData : {}
           this.profile = {
-            lastPeriodDate: p.lastPeriodDate ?? p.lastPeriod ?? cd.lastPeriodDate ?? cd.lastPeriod ?? null,
+            lastPeriodDate: p.lastPeriodDate ?? cd.lastPeriodDate ?? null,
             cycleLength: p.cycleLength != null ? Number(p.cycleLength) : (p.avgDuration != null ? Number(p.avgDuration) : (cd.avgDuration != null ? Number(cd.avgDuration) : null)),
           }
           this.preferences = p.preferences || this.preferences || {}

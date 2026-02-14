@@ -6,6 +6,7 @@ const admin = require('firebase-admin');
 const OpenAI = require('openai');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const { Firestore, FieldValue } = require('@google-cloud/firestore');
 const stravaService = require('./services/stravaService');
@@ -19,6 +20,7 @@ const { createDashboardRouter } = require('./routes/dashboardRoutes');
 const { createActivityRouter } = require('./routes/activityRoutes');
 const { createStravaWebhookRouter } = require('./routes/stravaWebhookRoutes');
 const { runStravaFallbackSync, SIX_HOURS_MS } = require('./services/stravaFallbackJob');
+const { verifyIdToken, requireUser } = require('./middleware/auth');
 
 // SMTP transporter — Nodemailer. Required env: SMTP_HOST, SMTP_PORT (optional, default 587),
 // SMTP_USER, SMTP_PASS. Optional: SMTP_SECURE ('true' for TLS), SMTP_FROM (defaults to SMTP_USER).
@@ -127,16 +129,19 @@ const openai = new OpenAI({
 
 // Knowledge base: loaded at startup from knowledge/*.md
 let knowledgeBaseContent = '';
+/** SHA256 hash of KB content (stable ordering) — reproducible kbVersion for daily-brief meta */
+let kbVersion = process.env.PRIMEFORM_KB_VERSION || '1.0';
 
 /**
- * Load all .md files from knowledge/ into a single string.
+ * Load all .md files from knowledge/ into a single string and compute reproducible kbVersion (SHA256).
  * Called at server startup. Files are read in fixed order: logic, science, lingo, guardrails, examples.
+ * @returns {{ content: string, kbVersion: string }}
  */
 function loadKnowledgeBase() {
   const knowledgeDir = path.join(__dirname, 'knowledge');
   if (!fs.existsSync(knowledgeDir)) {
     console.warn('⚠️ knowledge/ directory not found; knowledge base will be empty.');
-    return '';
+    return { content: '', kbVersion: process.env.PRIMEFORM_KB_VERSION || '1.0' };
   }
 
   const order = ['logic.md', 'science.md', 'lingo.md', 'guardrails.md', 'examples.md'];
@@ -155,58 +160,59 @@ function loadKnowledgeBase() {
   }
 
   const combined = parts.join('\n\n');
-  console.log('📚 Knowledge base loaded:', combined.length, 'characters from', parts.length, 'file(s)');
-  return combined;
+  const hash = crypto.createHash('sha256').update(combined, 'utf8').digest('hex');
+  console.log('📚 Knowledge base loaded:', combined.length, 'characters from', parts.length, 'file(s); kbVersion=', hash);
+  return { content: combined, kbVersion: hash };
 }
 
-function isProfileComplete(profile) {
-  if (!profile || typeof profile !== 'object') return false;
+const { isProfileComplete, normalizeCycleData } = require('./lib/profileValidation');
 
-  const fullNameOk = typeof profile.fullName === 'string' && profile.fullName.trim().length >= 2;
-  const emailOk = typeof profile.email === 'string' && profile.email.includes('@');
-  const birthDateOk = typeof profile.birthDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(profile.birthDate);
-  const disclaimerOk = profile.disclaimerAccepted === true;
-
-  const redFlags = Array.isArray(profile.redFlags) ? profile.redFlags : [];
-  const redFlagsOk = redFlags.length === 0;
-
-  const goalsOk = Array.isArray(profile.goals) && profile.goals.length > 0 && profile.goals.length <= 2;
-
-  const programmingTypeOk =
-    typeof profile.programmingType === 'string' && profile.programmingType.trim().length > 0;
-
-  const cycleData = profile.cycleData && typeof profile.cycleData === 'object' ? profile.cycleData : null;
-  const cycleLastPeriodOk =
-    cycleData && typeof cycleData.lastPeriod === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(cycleData.lastPeriod);
-  const cycleAvgOk = cycleData && Number.isFinite(Number(cycleData.avgDuration)) && Number(cycleData.avgDuration) >= 21;
-  const contraceptionOk =
-    cycleData && typeof cycleData.contraception === 'string' && cycleData.contraception.trim().length > 0;
-
-  return (
-    fullNameOk &&
-    emailOk &&
-    birthDateOk &&
-    disclaimerOk &&
-    redFlagsOk &&
-    goalsOk &&
-    programmingTypeOk &&
-    cycleLastPeriodOk &&
-    cycleAvgOk &&
-    contraceptionOk
-  );
+/**
+ * Read-time migration: if profile.cycleData has lastPeriod but not lastPeriodDate, write lastPeriodDate and remove lastPeriod once.
+ * @param {FirebaseFirestore.DocumentReference} userDocRef
+ * @param {object} data - Full user doc data (will be mutated with normalized profile for response).
+ * @param {object} [FieldValue] - Firestore FieldValue for delete().
+ * @returns {Promise<boolean>} true if migration was performed
+ */
+async function ensureCycleDataCanonical(userDocRef, data, FieldValue) {
+  const profile = data?.profile;
+  const cd = profile?.cycleData && typeof profile.cycleData === 'object' ? profile.cycleData : null;
+  if (!cd || cd.lastPeriodDate != null) return false;
+  const legacy = cd.lastPeriod;
+  if (legacy == null || typeof legacy !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(legacy)) return false;
+  const updates = {
+    'profile.cycleData.lastPeriodDate': legacy,
+    'profile.cycleData.lastPeriod': FieldValue.delete()
+  };
+  await userDocRef.update(updates);
+  if (data.profile?.cycleData) {
+    data.profile.cycleData = { ...data.profile.cycleData, lastPeriodDate: legacy };
+    delete data.profile.cycleData.lastPeriod;
+  }
+  return true;
 }
 
-// Profile endpoints — full user document for Backend-First auth
-app.get('/api/profile', async (req, res) => {
+// Profile endpoints — full user document. Auth: token required; uid from req.user.uid (query.userId ignored).
+const userAuth = [verifyIdToken(admin), requireUser()];
+
+// GET /api/whoami — debugging: uid, email, claims (requires valid token)
+app.get('/api/whoami', userAuth, (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      uid: req.user.uid,
+      email: req.user.email || null,
+      claims: req.user.claims || {}
+    }
+  });
+});
+
+app.get('/api/profile', userAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
     }
-
-    const { userId } = req.query;
-    if (!userId) {
-      return res.status(400).json({ success: false, error: 'Missing userId' });
-    }
+    const userId = req.user.uid;
 
     const userDocRef = db.collection('users').doc(String(userId));
     const snap = await userDocRef.get();
@@ -244,6 +250,10 @@ app.get('/api/profile', async (req, res) => {
       }
     }
 
+    const migrated = await ensureCycleDataCanonical(userDocRef, data, FieldValue);
+    if (migrated) console.log(`Profile cycleData migrated to lastPeriodDate for userId ${userId}`);
+    if (data.profile?.cycleData) data.profile.cycleData = normalizeCycleData(data.profile.cycleData);
+
     console.log(`Profile loaded for userId ${userId}`);
     return res.json({
       success: true,
@@ -264,16 +274,13 @@ app.get('/api/profile', async (req, res) => {
   }
 });
 
-app.put('/api/profile', async (req, res) => {
+app.put('/api/profile', userAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
     }
-
-    const { userId, profilePatch, role, teamId, onboardingComplete: bodyOnboardingComplete, strava } = req.body || {};
-    if (!userId) {
-      return res.status(400).json({ success: false, error: 'Missing userId' });
-    }
+    const userId = req.user.uid;
+    const { profilePatch, role, teamId, onboardingComplete: bodyOnboardingComplete, strava } = req.body || {};
 
     const userDocRef = db.collection('users').doc(String(userId));
     const existing = await userDocRef.get();
@@ -284,10 +291,10 @@ app.put('/api/profile', async (req, res) => {
       const { onboardingCompleted, onboardingComplete, ...profileOnly } = profilePatch;
       mergedProfile = { ...mergedProfile, ...profileOnly };
       if (mergedProfile.cycleData || profileOnly.cycleData) {
-        mergedProfile.cycleData = {
+        mergedProfile.cycleData = normalizeCycleData({
           ...(mergedProfile.cycleData || {}),
           ...(profileOnly.cycleData || {})
-        };
+        });
       }
     }
 
@@ -347,16 +354,14 @@ app.put('/api/profile', async (req, res) => {
   }
 });
 
-// POST /api/activities — manual workout; backend is single source of truth for Prime Load (Duration × RPE, rounded)
-app.post('/api/activities', async (req, res) => {
+// POST /api/activities — manual workout; backend is single source of truth for Prime Load (Duration × RPE, rounded). Auth: uid from token (body.userId ignored).
+app.post('/api/activities', userAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
     }
-    const { userId, type, duration, rpe, date } = req.body || {};
-    if (!userId) {
-      return res.status(400).json({ success: false, error: 'Missing userId' });
-    }
+    const userId = req.user.uid;
+    const { type, duration, rpe, date } = req.body || {};
     const durationMinutes = Number(duration);
     const rpeValue = Number(rpe);
     if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
@@ -462,8 +467,8 @@ async function initFirebase() {
   }
 }
 
-// Route to fetch last 28 daily logs (most recent first)
-app.get('/api/history', async (req, res) => {
+// Route to fetch last 28 daily logs (most recent first). Auth: uid from token (query.userId ignored).
+app.get('/api/history', userAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({
@@ -471,15 +476,7 @@ app.get('/api/history', async (req, res) => {
         error: 'Firestore is not initialized'
       });
     }
-
-    const { userId } = req.query;
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing userId'
-      });
-    }
+    const userId = req.user.uid;
 
     const snapshot = await db
       .collection('users')
@@ -541,16 +538,18 @@ app.get('/', (req, res) => {
 // Start server (after Firebase init attempt)
 (async () => {
   await initFirebase();
-  knowledgeBaseContent = loadKnowledgeBase();
+  const kb = loadKnowledgeBase();
+  knowledgeBaseContent = kb.content;
+  kbVersion = kb.kbVersion;
   const stravaRoutes = createStravaRoutes({ db, admin, stravaService });
   app.use('/api/strava', stravaRoutes.apiRouter);
   app.use('/auth/strava', stravaRoutes.authRouter);
   app.use('/webhooks/strava', createStravaWebhookRouter({ db, admin }));
   const dailyRouter = createDailyRouter({ db, admin, openai, knowledgeBaseContent, FieldValue });
-  app.use('/api', createDashboardRouter({ db, admin }));
+  app.use('/api', createDashboardRouter({ db, admin, kbVersion }));
   app.use('/api', dailyRouter);
   app.use('/api/coach', createCoachRouter({ db, admin }));
-  app.use('/api/activities', createActivityRouter({ db }));
+  app.use('/api/activities', createActivityRouter({ db, admin }));
   app.use('/api/ai', createAiRouter({ db, admin, openai }));
   app.use('/api/admin', createAdminRouter({
     db,
@@ -561,14 +560,16 @@ app.get('/', (req, res) => {
     stravaService,
     FieldValue
   }));
-  app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
-    // Strava fallback: sync users with stale webhook every 6h
-    if (db) {
-      setInterval(() => runStravaFallbackSync(db, admin).catch((e) => console.error('Strava fallback:', e)), SIX_HOURS_MS);
-      setTimeout(() => runStravaFallbackSync(db, admin).catch((e) => console.error('Strava fallback (initial):', e)), 60000);
-    }
-  });
+  if (process.env.NODE_ENV !== 'test') {
+    app.listen(PORT, () => {
+      console.log(`Server is running on http://localhost:${PORT}`);
+      // Strava fallback: sync users with stale webhook every 6h
+      if (db) {
+        setInterval(() => runStravaFallbackSync(db, admin).catch((e) => console.error('Strava fallback:', e)), SIX_HOURS_MS);
+        setTimeout(() => runStravaFallbackSync(db, admin).catch((e) => console.error('Strava fallback (initial):', e)), 60000);
+      }
+    });
+  }
 })();
 
 module.exports = app;

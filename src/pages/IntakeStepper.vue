@@ -313,8 +313,8 @@ onMounted(async () => {
 
   // Pre-fill from auth store profile (cycle / bio data) so returning users see their data
   const authProfile = authStore.profile || {}
-  if (authProfile.lastPeriodDate || authProfile.lastPeriod) {
-    form.value.lastPeriod = form.value.lastPeriod || authProfile.lastPeriodDate || authProfile.lastPeriod || ''
+  if (authProfile.lastPeriodDate) {
+    form.value.lastPeriod = form.value.lastPeriod || authProfile.lastPeriodDate || ''
   }
   if (authProfile.cycleLength != null && authProfile.cycleLength > 0) {
     form.value.cycleAvgDuration = form.value.cycleAvgDuration ?? authProfile.cycleLength
@@ -331,7 +331,7 @@ onMounted(async () => {
         ...form.value,
         ...profile,
         cycleAvgDuration: profile?.cycleData?.avgDuration ?? form.value.cycleAvgDuration,
-        lastPeriod: profile?.cycleData?.lastPeriod ?? profile?.lastPeriod ?? form.value.lastPeriod,
+        lastPeriod: profile?.cycleData?.lastPeriodDate ?? form.value.lastPeriod,
         contraception: profile?.cycleData?.contraception ?? form.value.contraception,
         hrvBaseline: profile?.hrvBaseline ?? form.value.hrvBaseline,
         rhrBaseline: profile?.rhrBaseline ?? form.value.rhrBaseline
@@ -438,7 +438,7 @@ const saveProfile = async () => {
     rhrBaseline: form.value.rhrBaseline != null && form.value.rhrBaseline !== '' && Number.isFinite(Number(form.value.rhrBaseline)) ? Number(form.value.rhrBaseline) : null,
 
     cycleData: {
-      lastPeriod: form.value.lastPeriod ?? null,
+      lastPeriodDate: form.value.lastPeriod ?? null,
       avgDuration: Number(form.value.cycleAvgDuration) || 28,
       contraception: form.value.contraception ?? 'Geen',
     },

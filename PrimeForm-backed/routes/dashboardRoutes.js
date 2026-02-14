@@ -1,29 +1,29 @@
 /**
- * Dashboard route: GET /api/dashboard
+ * Dashboard route: GET /api/dashboard, GET /api/daily-brief
  * Returns telemetry (ACWR, phase, todayLog) for the cockpit.
  * todayLog = today's dailyLog from users/{uid}/dailyLogs (metrics, recommendation, aiMessage, cycleInfo).
+ * Protected: require Firebase ID token (Authorization: Bearer); uid from req.user.uid.
  */
 
 const express = require('express');
 const cycleService = require('../services/cycleService');
 const reportService = require('../services/reportService');
 const dailyBriefService = require('../services/dailyBriefService');
+const { verifyIdToken, requireUser } = require('../middleware/auth');
 
 /**
- * @param {object} deps - { db, admin }
+ * @param {object} deps - { db, admin, kbVersion }
  * @returns {express.Router}
  */
 function createDashboardRouter(deps) {
-  const { db, admin } = deps;
+  const { db, admin, kbVersion } = deps;
   const router = express.Router();
+  const auth = [verifyIdToken(admin), requireUser()];
 
-  // GET /api/dashboard — uid from X-User-Uid header or query.uid
-  router.get('/dashboard', async (req, res) => {
+  // GET /api/dashboard — uid from verified token (req.user.uid)
+  router.get('/dashboard', auth, async (req, res) => {
     try {
-      const uid = (req.headers['x-user-uid'] || req.query.uid || '').toString().trim();
-      if (!uid) {
-        return res.status(400).json({ success: false, error: 'Missing user id. Send X-User-Uid header or uid query.' });
-      }
+      const uid = req.user.uid;
       if (!db) {
         return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
       }
@@ -83,10 +83,10 @@ function createDashboardRouter(deps) {
         const userSnap = await db.collection('users').doc(String(uid)).get();
         const profile = userSnap.exists ? (userSnap.data() || {}).profile || {} : {};
         const cycleData = profile.cycleData && typeof profile.cycleData === 'object' ? profile.cycleData : {};
-        const lastPeriod = cycleData.lastPeriodDate || cycleData.lastPeriod || null;
+        const lastPeriodDate = cycleData.lastPeriodDate || null;
         const cycleLen = Number(cycleData.avgDuration) || 28;
-        if (lastPeriod) {
-          const phaseInfo = cycleService.getPhaseForDate(lastPeriod, cycleLen, todayIso);
+        if (lastPeriodDate) {
+          const phaseInfo = cycleService.getPhaseForDate(lastPeriodDate, cycleLen, todayIso);
           phase = phaseInfo.phaseName;
           phaseDay = phaseInfo.currentCycleDay;
           phaseLength = cycleLen;
@@ -154,13 +154,10 @@ function createDashboardRouter(deps) {
     }
   });
 
-  // GET /api/daily-brief — uid from X-User-Uid or query.uid; date from query.date (YYYY-MM-DD) or today Europe/Amsterdam
-  router.get('/daily-brief', async (req, res) => {
+  // GET /api/daily-brief — uid from verified token; date from query.date (YYYY-MM-DD) or today Europe/Amsterdam
+  router.get('/daily-brief', auth, async (req, res) => {
     try {
-      const uid = (req.headers['x-user-uid'] || req.query.uid || '').toString().trim();
-      if (!uid) {
-        return res.status(400).json({ success: false, error: 'Missing user id. Send X-User-Uid header or uid query.' });
-      }
+      const uid = req.user.uid;
       if (!db) {
         return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
       }
@@ -172,8 +169,15 @@ function createDashboardRouter(deps) {
         admin,
         uid,
         dateISO,
-        timezone: 'Europe/Amsterdam'
+        timezone: 'Europe/Amsterdam',
+        kbVersion
       });
+      console.log(JSON.stringify({
+        event: 'daily_brief',
+        engineVersion: brief.meta.engineVersion,
+        schemaVersion: brief.meta.schemaVersion,
+        kbVersion: brief.meta.kbVersion
+      }));
       return res.json({ success: true, data: brief });
     } catch (error) {
       console.error('GET /api/daily-brief error:', error);

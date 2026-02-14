@@ -51,7 +51,7 @@ Documentatie gegenereerd in **AUDIT MODE**: beschrijft wat er feitelijk in de co
 - Nuclear Delete wist geen root `daily_logs` op userId; legacy/PII kan blijven.
 - Intake-mail: geen idempotency; dubbele save kan dubbele mail.
 - ProfilePage toont "ACWR > 1.3" terwijl coach UI overal "Belastingsbalans" gebruikt — inconsistente terminologie.
-- lastPeriod vs lastPeriodDate in profile/cycle: isProfileComplete checkt lastPeriod; cycleService gebruikt lastPeriodDate — key-mismatch risico.
+- Canonical cycle key: profile.cycleData.lastPeriodDate (ISO). Read-time migration: legacy lastPeriod → lastPeriodDate once.
 - Strava: Firestore-index op `strava.athleteId` voor webhook lookup niet in code aangemaakt.
 
 **Top-sterktes**

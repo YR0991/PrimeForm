@@ -442,7 +442,7 @@ const profileDirty = computed(() => {
   const origTeam = u.teamId ?? null
   const origRole = p.role ?? 'user'
   const origCycleLength = cycle.avgDuration ?? null
-  const origLastPeriod = cycle.lastPeriod || ''
+  const origLastPeriod = cycle.lastPeriodDate || ''
   const origOnboarding =
     (u.onboardingComplete ?? p.onboardingCompleted ?? u.profileComplete) ?? false
   const origBirthDate = p.birthDate || ''
@@ -477,7 +477,7 @@ function hydrateFromProfile(profileOverride) {
   localRole.value = p.role ?? 'user'
 
   localCycleLength.value = cycle.avgDuration ?? null
-  localLastPeriodDate.value = cycle.lastPeriod || ''
+  localLastPeriodDate.value = cycle.lastPeriodDate || ''
   localOnboardingCompleted.value =
     (u?.onboardingComplete ?? p.onboardingCompleted ?? u?.profileComplete) ?? false
 
@@ -603,8 +603,8 @@ async function saveProfile() {
     if (curCycleLength !== (cycle.avgDuration ?? null)) {
       cyclePatch.avgDuration = curCycleLength
     }
-    if ((localLastPeriodDate.value || '') !== (cycle.lastPeriod || '')) {
-      cyclePatch.lastPeriod = localLastPeriodDate.value || null
+    if ((localLastPeriodDate.value || '') !== (cycle.lastPeriodDate || '')) {
+      cyclePatch.lastPeriodDate = localLastPeriodDate.value || null
     }
     if (Object.keys(cyclePatch).length > 0) {
       profilePatch.cycleData = cyclePatch

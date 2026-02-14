@@ -5,6 +5,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { FieldValue } = require('@google-cloud/firestore');
 const { calculateActivityLoad, calculatePrimeLoad, determineAthleteLevel, calculateACWR } = require('./calculationService');
 const cycleService = require('./cycleService');
 
@@ -62,13 +63,31 @@ function formatAthleteContext(profile) {
 
 /**
  * Get user profile (intake) from Firestore.
+ * Read-time migration: if cycleData.lastPeriod exists and lastPeriodDate missing, write lastPeriodDate and remove lastPeriod once.
  */
 async function getUserProfile(db, uid) {
-  const snap = await db.collection('users').doc(String(uid)).get();
+  const userRef = db.collection('users').doc(String(uid));
+  const snap = await userRef.get();
   if (!snap.exists) return null;
   const data = snap.data() || {};
+  let profile = data.profile || null;
+  const cd = profile?.cycleData && typeof profile.cycleData === 'object' ? profile.cycleData : null;
+  if (cd?.lastPeriod != null && cd.lastPeriodDate == null) {
+    const legacy = typeof cd.lastPeriod === 'string' ? cd.lastPeriod : String(cd.lastPeriod);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(legacy)) {
+      await userRef.update({
+        'profile.cycleData.lastPeriodDate': legacy,
+        'profile.cycleData.lastPeriod': FieldValue.delete()
+      });
+      profile = {
+        ...profile,
+        cycleData: { ...profile.cycleData, lastPeriodDate: legacy }
+      };
+      delete profile.cycleData.lastPeriod;
+    }
+  }
   return {
-    profile: data.profile || null,
+    profile,
     profileComplete: data.profileComplete === true,
     strava: data.strava || null
   };
@@ -312,7 +331,7 @@ async function getDashboardStats(opts) {
     const activities56 = [...(activities56Sub || []), ...(rootActivities56 || [])];
     const profile = profileData?.profile || {};
     const cycleData = profile.cycleData && typeof profile.cycleData === 'object' ? profile.cycleData : {};
-    const lastPeriodDate = cycleData.lastPeriodDate || cycleData.lastPeriod || null;
+    const lastPeriodDate = cycleData.lastPeriodDate || null;
     const cycleLength = Number(cycleData.avgDuration) || 28;
     const todayStr = new Date().toISOString().slice(0, 10);
     const phaseInfo = lastPeriodDate
@@ -516,7 +535,7 @@ async function generateWeeklyReport(opts) {
   }
 
   const cycleData = profile.cycleData && typeof profile.cycleData === 'object' ? profile.cycleData : {};
-  const lastPeriodDate = cycleData.lastPeriodDate || cycleData.lastPeriod || null;
+  const lastPeriodDate = cycleData.lastPeriodDate || null;
   const cycleLength = Number(cycleData.avgDuration) || 28;
   const maxHr = profile.max_heart_rate != null ? Number(profile.max_heart_rate) : null;
 

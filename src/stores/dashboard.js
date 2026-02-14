@@ -293,9 +293,7 @@ export const useDashboardStore = defineStore('dashboard', {
 
       const lastPeriodDate =
         profile.lastPeriodDate ||
-        profile.lastPeriod ||
         profile.cycleData?.lastPeriodDate ||
-        profile.cycleData?.lastPeriod ||
         todayIso
 
       const cycleLength =

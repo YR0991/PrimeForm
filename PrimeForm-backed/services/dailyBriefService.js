@@ -6,6 +6,7 @@
 const reportService = require('./reportService');
 const cycleService = require('./cycleService');
 const { calculateActivityLoad, calculatePrimeLoad } = require('./calculationService');
+const { computeStatus, tagToSignal } = require('./statusEngine');
 
 /** Meta-versies voor PrimeFormDailyBrief (hardcoded; zie docs/DAILY_BRIEF_SCHEMA.md) */
 const ENGINE_VERSION = process.env.PRIMEFORM_ENGINE_VERSION || '1.0.0';
@@ -49,22 +50,9 @@ function acwrBand(acwr) {
   return 'SPIKE';
 }
 
-/** status.tag from ACWR + overrides (isSick -> RADICAL REST not in brief contract; we use RECOVER) */
-function statusTag(acwr, isSick) {
-  if (isSick) return 'RECOVER';
-  if (acwr == null || !Number.isFinite(acwr)) return 'MAINTAIN';
-  const v = Number(acwr);
-  if (v > 1.5) return 'RECOVER';
-  if (v > 1.3) return 'RECOVER';
-  if (v >= 0.8 && v <= 1.3) return 'PUSH';
-  return 'MAINTAIN'; // < 0.8
-}
-
-/** signal from tag */
+/** signal from tag (re-export for fallback path) */
 function signalFromTag(tag) {
-  if (tag === 'PUSH') return 'GREEN';
-  if (tag === 'MAINTAIN') return 'ORANGE';
-  return 'RED'; // RECOVER | DELOAD
+  return tagToSignal(tag);
 }
 
 /** Cycle mode from profile */
@@ -73,7 +61,7 @@ function cycleMode(profile) {
   const contraception = (cd.contraception || '').toLowerCase();
   if (contraception.includes('lng') || contraception.includes('iud') || contraception.includes('spiraal')) return 'HBC_LNG_IUD';
   if (contraception.includes('pil') || contraception.includes('patch') || contraception.includes('ring') || contraception.length > 0) return 'HBC_OTHER';
-  if (contraception === '' && (cd.lastPeriodDate || cd.lastPeriod)) return 'NATURAL';
+  if (contraception === '' && cd.lastPeriodDate) return 'NATURAL';
   return 'UNKNOWN';
 }
 
@@ -82,7 +70,7 @@ function cycleConfidence(mode, profile) {
   if (mode.startsWith('HBC')) return 'LOW';
   if (mode === 'UNKNOWN') return 'LOW';
   const cd = profile && profile.cycleData && typeof profile.cycleData === 'object' ? profile.cycleData : {};
-  if (!(cd.lastPeriodDate || cd.lastPeriod)) return 'MED';
+  if (!cd.lastPeriodDate) return 'MED';
   return 'HIGH';
 }
 
@@ -147,7 +135,7 @@ async function getActivitiesInRange(db, uid, startDate, endDate, profile, admin)
   userSnap.docs.forEach((doc) => list.push({ ...doc.data(), id: doc.id }));
   rootSnap.docs.forEach((doc) => list.push({ ...doc.data(), id: doc.id }));
   const cycleData = profile && profile.cycleData && typeof profile.cycleData === 'object' ? profile.cycleData : {};
-  const lastPeriodDate = cycleData.lastPeriodDate || cycleData.lastPeriod || null;
+  const lastPeriodDate = cycleData.lastPeriodDate || null;
   const cycleLength = Number(cycleData.avgDuration) || 28;
   const maxHr = profile && profile.max_heart_rate != null ? Number(profile.max_heart_rate) : null;
   const out = [];
@@ -257,7 +245,7 @@ async function buildCycleMatch(opts) {
   }
 
   const cycleData = profile && profile.cycleData && typeof profile.cycleData === 'object' ? profile.cycleData : {};
-  const lastPeriodDate = cycleData.lastPeriodDate || cycleData.lastPeriod || null;
+  const lastPeriodDate = cycleData.lastPeriodDate || null;
   const cycleLength = Number(cycleData.avgDuration) || 28;
   if (!lastPeriodDate) {
     blindSpots.push('CycleMatch niet beschikbaar (onvoldoende cyclusdag-match data).');
@@ -480,16 +468,16 @@ function buildIntake(profile) {
 
 /**
  * getDailyBrief — Build PrimeFormDailyBrief for dateISO.
- * @param {{ db, admin, uid, dateISO, timezone }} opts
+ * @param {{ db, admin, uid, dateISO, timezone, kbVersion }} opts - kbVersion optional (SHA256 of KB at startup when provided)
  * @returns {Promise<object>} brief (PrimeFormDailyBrief)
  */
 async function getDailyBrief(opts) {
-  const { db, admin, uid, dateISO, timezone } = opts;
+  const { db, admin, uid, dateISO, timezone, kbVersion: optsKbVersion } = opts;
   const generatedAt = new Date().toISOString();
   const meta = {
     engineVersion: ENGINE_VERSION,
     schemaVersion: SCHEMA_VERSION,
-    kbVersion: KB_VERSION,
+    kbVersion: optsKbVersion != null ? optsKbVersion : KB_VERSION,
     generatedAt,
     timezone: timezone || 'Europe/Amsterdam'
   };
@@ -538,9 +526,6 @@ async function getDailyBrief(opts) {
   const acwrVal = stats.acwr != null && Number.isFinite(stats.acwr) ? stats.acwr : null;
   const band = acwrBand(acwrVal);
   const isSick = todayLog && todayLog.isSick === true;
-  const tag = statusTag(acwrVal, isSick);
-  const signal = signalFromTag(tag);
-  const oneLiner = tag === 'PUSH' ? 'Groen licht voor kwaliteit.' : tag === 'MAINTAIN' ? 'Stabiel; train met mate.' : 'Herstel voorop.';
   const confidence = buildConfidence(todayLog, stats, cycleConf);
   if (todayLog && todayLog.isSick !== true && profile.isSick === true) {
     confidence.blindSpots.push('Ziek/handrem niet in vandaagse log; profiel heeft isSick.');
@@ -557,6 +542,24 @@ async function getDailyBrief(opts) {
   const rhrBaseline = stats.rhr_baseline_28d != null ? Number(stats.rhr_baseline_28d) : null;
   const recoveryPct = hrvBaseline != null && hrvBaseline > 0 && hrvToday != null ? Math.round((hrvToday / hrvBaseline) * 1000) / 10 : null;
   const rhrDelta = rhrBaseline != null && rhrToday != null ? Math.round((rhrToday - rhrBaseline) * 10) / 10 : null;
+
+  const sleep = todayLog?.metrics?.sleep != null ? Number(todayLog.metrics.sleep) : null;
+  const redFlagsResult =
+    sleep != null && rhrToday != null && rhrBaseline != null && hrvToday != null && hrvBaseline != null
+      ? cycleService.calculateRedFlags(sleep, rhrToday, rhrBaseline, hrvToday, hrvBaseline, phase === 'Luteal')
+      : { count: 0 };
+  const statusResult = computeStatus({
+    acwr: acwrVal,
+    isSick,
+    readiness: todayLog?.metrics?.readiness != null ? Number(todayLog.metrics.readiness) : null,
+    redFlags: redFlagsResult.count,
+    cyclePhase: phase,
+    hrvVsBaseline: recoveryPct,
+    phaseDay
+  });
+  const tag = statusResult.tag;
+  const signal = statusResult.signal;
+  const oneLiner = tag === 'PUSH' ? 'Groen licht voor kwaliteit.' : tag === 'MAINTAIN' ? 'Stabiel; train met mate.' : 'Herstel voorop.';
 
   const internalCost = buildInternalCost(recoveryPct, rhrDelta, band, hardExposures7d, confidence.blindSpots);
   if (internalCost == null) {
@@ -592,13 +595,7 @@ async function getDailyBrief(opts) {
 
   // next48h is always present (required); deterministic from status.tag
   const brief = {
-    meta: {
-      engineVersion: ENGINE_VERSION,
-      schemaVersion: SCHEMA_VERSION,
-      kbVersion: KB_VERSION,
-      generatedAt,
-      timezone: timezone || 'Europe/Amsterdam'
-    },
+    meta,
     generatedAt,
     status: {
       tag,
@@ -642,4 +639,4 @@ async function getDailyBrief(opts) {
   return brief;
 }
 
-module.exports = { getDailyBrief };
+module.exports = { getDailyBrief, cycleMode, cycleConfidence };

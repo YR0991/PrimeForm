@@ -149,7 +149,7 @@ async function getSquadronData(db, admin) {
         ]);
 
         const cycleData = profile.cycleData && typeof profile.cycleData === 'object' ? profile.cycleData : {};
-        const lastPeriod = cycleData.lastPeriodDate || cycleData.lastPeriod || null;
+        const lastPeriod = cycleData.lastPeriodDate || null;
         const cycleLength = Number(cycleData.avgDuration) || 28;
         const targetDate = todayStr;
         const phaseInfo = lastPeriod
@@ -265,7 +265,7 @@ async function getSquadronData(db, admin) {
       } catch (err) {
         console.error(`coachService: error for user ${uid}:`, err.message);
         const cycleData = profile.cycleData || {};
-        const lastPeriod = cycleData.lastPeriodDate || cycleData.lastPeriod;
+        const lastPeriod = cycleData.lastPeriodDate || null;
         const cycleLength = Number(cycleData.avgDuration) || 28;
         const phaseInfo = lastPeriod
           ? cycleService.getPhaseForDate(lastPeriod, cycleLength, todayStr)

@@ -1,7 +1,7 @@
 /**
  * Daily advice and check-in routes.
  * - POST /api/daily-advice: full PrimeForm logic, overrides (Lethargy, Elite, Sick), Menstruatie Reset, Firestore dailyLogs.
- * - POST /api/save-checkin: validate + red flags + recommendation, save to daily_logs (root collection).
+ * - POST /api/save-checkin: validate + red flags + recommendation, save to daily_logs (root collection). Protected: uid from req.user.uid.
  * - POST /api/check-luteal-phase: cycle phase calculation only.
  */
 
@@ -9,6 +9,8 @@ const express = require('express');
 const cycleService = require('../services/cycleService');
 const { calculateActivityLoad, calculatePrimeLoad, calculateACWR } = require('../services/calculationService');
 const reportService = require('../services/reportService');
+const { computeStatus } = require('../services/statusEngine');
+const { verifyIdToken, requireUser } = require('../middleware/auth');
 
 /**
  * @param {object} deps - { db, admin, openai, knowledgeBaseContent, FieldValue }
@@ -16,6 +18,7 @@ const reportService = require('../services/reportService');
  */
 function createDailyRouter(deps) {
   const { db, admin, openai, knowledgeBaseContent, FieldValue } = deps;
+  const auth = [verifyIdToken(admin), requireUser()];
 
   async function getDetectedWorkoutForAI(userId) {
     if (!db || !userId) return '';
@@ -217,11 +220,11 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
     });
   });
 
-  // POST /api/save-checkin — unified daily check-in: full advice logic, Handrem, Period reset, AI, dual storage
-  router.post('/save-checkin', async (req, res) => {
+  // POST /api/save-checkin — unified daily check-in: full advice logic, Handrem, Period reset, AI, dual storage. Protected: uid from token.
+  router.post('/save-checkin', auth, async (req, res) => {
     try {
+      const userId = req.user.uid;
       const {
-        userId,
         lastPeriodDate,
         cycleLength,
         sleep,
@@ -234,7 +237,7 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
         isSick = false
       } = req.body;
 
-      const requiredFields = { userId, lastPeriodDate, sleep, rhr, rhrBaseline, hrv, hrvBaseline, readiness };
+      const requiredFields = { lastPeriodDate, sleep, rhr, rhrBaseline, hrv, hrvBaseline, readiness };
       const missingFields = Object.entries(requiredFields)
         .filter(([key, value]) => value === undefined || value === null)
         .map(([key]) => key);
@@ -286,9 +289,7 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
       const isSickFlag = Boolean(isSick);
       const cycleInfo = cycleService.calculateLutealPhase(effectiveLastPeriodDate, cycleLengthNum);
 
-      let recommendation;
       let redFlags;
-      let adviceContext = 'STANDARD';
       const metricsForAI = {
         readiness: numericFields.readiness,
         sleep: numericFields.sleep,
@@ -296,10 +297,7 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
         hrv: { current: numericFields.hrv, baseline: numericFields.hrvBaseline, adjustedBaseline: null, lutealOffsetApplied: false }
       };
 
-      // Handrem (Sick): bypass red-flag/recommendation logic; hardcode REST + recovery message; no AI call
       if (isSickFlag) {
-        recommendation = { status: 'REST', reasons: ['Gebruiker heeft ziek/geblesseerd gemeld – Handrem: Rust & Herstel.'] };
-        adviceContext = 'SICK_OVERRIDE';
         redFlags = { count: 0, reasons: [], details: { rhr: {}, hrv: {} } };
       } else {
         redFlags = cycleService.calculateRedFlags(
@@ -314,41 +312,38 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
         metricsForAI.rhr.lutealCorrection = redFlags.details.rhr.lutealCorrection;
         metricsForAI.hrv.adjustedBaseline = redFlags.details.hrv.adjustedBaseline;
         metricsForAI.hrv.lutealOffsetApplied = redFlags.details.hrv.lutealOffsetApplied;
-
-        recommendation = cycleService.determineRecommendation(
-          numericFields.readiness,
-          redFlags.count,
-          cycleInfo.phaseName
-        );
-
-        // Lethargy Override
-        const isLutealPhase = cycleInfo.phaseName === 'Luteal' || cycleInfo.isInLutealPhase === true;
-        if (isLutealPhase && numericFields.readiness >= 4 && numericFields.readiness <= 6) {
-          const baselineHRV = metricsForAI.hrv.adjustedBaseline ?? metricsForAI.hrv.baseline;
-          const currentHRV = metricsForAI.hrv.current;
-          if (typeof baselineHRV === 'number' && baselineHRV > 0 && typeof currentHRV === 'number' && currentHRV >= baselineHRV * 1.05) {
-            recommendation = {
-              status: 'MAINTAIN',
-              reasons: [...(recommendation.reasons || []), 'Lethargy Override: Luteale fase, readiness 4–6 maar HRV > 105% van baseline — MAINTAIN (Aerobic Flow).']
-            };
-            adviceContext = 'LETHARGY_OVERRIDE';
-          }
-        }
-
-        // Elite Override
-        if (cycleInfo.phaseName === 'Menstrual') {
-          const baselineHRV = metricsForAI.hrv.baseline ?? metricsForAI.hrv.adjustedBaseline;
-          const currentHRV = metricsForAI.hrv.current;
-          const hrvSafe = typeof baselineHRV === 'number' && baselineHRV > 0 && typeof currentHRV === 'number' && currentHRV >= baselineHRV * 0.98;
-          if (numericFields.readiness >= 8 && hrvSafe) {
-            recommendation = {
-              status: 'PUSH',
-              reasons: [...(recommendation.reasons || []), 'Elite Override: Menstruale fase, readiness 8+ en HRV ≥ 98% baseline — PUSH (Elite Rebound).']
-            };
-            adviceContext = 'ELITE_REBOUND';
-          }
-        }
       }
+
+      // Single source of truth: statusEngine.computeStatus (aligns with daily-brief status.tag)
+      let acwr = null;
+      try {
+        if (db && !isSickFlag) {
+          const stats = await reportService.getDashboardStats({ db, admin, uid: userId });
+          acwr = stats?.acwr != null && Number.isFinite(stats.acwr) ? stats.acwr : null;
+        }
+      } catch (e) {
+        console.error('getDashboardStats for save-checkin failed:', e);
+      }
+      const hrvVsBaseline =
+        numericFields.hrvBaseline != null && numericFields.hrvBaseline > 0 && numericFields.hrv != null
+          ? Math.round((numericFields.hrv / numericFields.hrvBaseline) * 1000) / 10
+          : null;
+      const recommendation = computeStatus({
+        acwr,
+        isSick: isSickFlag,
+        readiness: numericFields.readiness,
+        redFlags: redFlags.count,
+        cyclePhase: cycleInfo.phaseName,
+        hrvVsBaseline,
+        phaseDay: cycleInfo.currentCycleDay != null ? cycleInfo.currentCycleDay : null
+      });
+      const adviceContext = isSickFlag
+        ? 'SICK_OVERRIDE'
+        : recommendation.reasons.some((r) => r.includes('Lethargy Override'))
+          ? 'LETHARGY_OVERRIDE'
+          : recommendation.reasons.some((r) => r.includes('Elite Override'))
+            ? 'ELITE_REBOUND'
+            : 'STANDARD';
 
       let profileContext = null;
       try {
@@ -389,7 +384,7 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
         aiMessage = 'Systeem in herstelmodus. Geen training vandaag. Focus op slaap en hydratatie.';
       } else {
         aiMessage = await generateAICoachingMessage(
-          recommendation.status,
+          recommendation.tag,
           cycleInfo.phaseName,
           metricsForAI,
           { count: redFlags.count, reasons: redFlags.reasons },
@@ -426,7 +421,7 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
         cyclePhase: periodStarted ? 'Menstrual' : cycleInfo.phaseName,
         periodStarted,
         isSickOrInjured: isSickFlag,
-        recommendation: { status: recommendation.status, reasons: recommendation.reasons },
+        recommendation: { status: recommendation.tag, reasons: recommendation.reasons },
         adviceContext,
         aiMessage,
         advice: aiMessage,
@@ -471,7 +466,6 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
                 ...profileContext,
                 cycleData: {
                   ...(profileContext.cycleData || {}),
-                  lastPeriod: effectiveLastPeriodDate,
                   lastPeriodDate: effectiveLastPeriodDate,
                   avgDuration: cycleLengthNum
                 }
@@ -547,11 +541,11 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
         message: 'Check-in saved successfully',
         data: {
           id: userLogRef.id,
-          status: recommendation.status,
+          status: recommendation.tag,
           aiMessage,
           cycleInfo: cycleInfoPayload,
           date: todayIso,
-          recommendation: recommendation,
+          recommendation: { status: recommendation.tag, reasons: recommendation.reasons },
           metrics: payloadMetrics
         }
       });
@@ -561,15 +555,13 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
     }
   });
 
-  // POST /api/update-user-stats — aggregate latest check-in + 28d workouts, write user.stats for coach grid
-  router.post('/update-user-stats', async (req, res) => {
+  // POST /api/update-user-stats — aggregate latest check-in + 28d workouts, write user.stats for coach grid. Protected: uid from token.
+  router.post('/update-user-stats', auth, async (req, res) => {
     try {
-      const { userId } = req.body || {};
-      if (!userId || !db) {
-        return res.status(400).json({ error: 'Missing userId' });
+      if (!db) {
+        return res.status(503).json({ error: 'Firestore is not initialized' });
       }
-
-      const uid = String(userId);
+      const uid = req.user.uid;
       const userRef = db.collection('users').doc(uid);
 
       // 1) Latest check-in: users/{uid}/dailyLogs orderBy timestamp desc limit 1
@@ -596,7 +588,7 @@ Schrijf een korte coach-notitie met de gevraagde H3-structuur.`;
 
       const profile = (profileData && profileData.profile) || {};
       const cycleData = profile.cycleData && typeof profile.cycleData === 'object' ? profile.cycleData : {};
-      const lastPeriodDate = cycleData.lastPeriodDate || cycleData.lastPeriod || null;
+      const lastPeriodDate = cycleData.lastPeriodDate || null;
       const cycleLength = Number(cycleData.avgDuration) || 28;
       const maxHr = profile.max_heart_rate != null ? Number(profile.max_heart_rate) : null;
 
