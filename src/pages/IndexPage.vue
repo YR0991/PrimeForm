@@ -87,6 +87,30 @@
                 />
               </div>
 
+              <!-- Strava status: connection, last webhook, last sync, error/backoff, Sync nu -->
+              <div v-if="isStravaConnected" class="strava-status mono">
+                <span class="strava-status-badge connected">Strava gekoppeld</span>
+                <template v-if="stravaMeta">
+                  <span v-if="stravaMeta.lastWebhookAt" class="strava-meta">
+                    Webhook: {{ formatStravaTime(stravaMeta.lastWebhookAt) }}
+                    <span v-if="stravaMeta.lastWebhookEvent?.event_type" class="strava-meta-event">({{ stravaMeta.lastWebhookEvent.event_type }})</span>
+                  </span>
+                  <span v-if="stravaMeta.lastSyncedAt" class="strava-meta">Sync: {{ formatStravaTime(stravaMeta.lastSyncedAt) }}</span>
+                  <span v-if="stravaBackoffActive" class="strava-meta strava-backoff">Rate limit — probeer later</span>
+                  <span v-else-if="stravaMeta.lastError" class="strava-meta strava-error">{{ stravaMeta.lastError }}</span>
+                </template>
+                <q-btn
+                  dense
+                  flat
+                  size="sm"
+                  class="strava-sync-btn"
+                  :disable="stravaBackoffActive || dashboardStore.syncing"
+                  :loading="dashboardStore.syncing"
+                  label="Sync nu"
+                  @click="triggerStravaSync"
+                />
+              </div>
+
               <!-- Inline manual injection panel (openable from empty state or header) -->
               <div
                 v-if="manualPanelOpen"
@@ -145,7 +169,10 @@
                 class="log-empty-state"
               >
                 <div class="log-empty-msg mono">
-                  {{ isStravaConnected ? 'Nog geen activiteiten gesynchroniseerd. Check Strava of probeer opnieuw.' : 'Geen recente activiteiten.' }}
+                  <template v-if="!isStravaConnected">Geen recente activiteiten. Koppel Strava of voer handmatig in.</template>
+                  <template v-else>
+                    Nieuwe runs verschijnen meestal binnen 1–2 min via webhook. Geen activiteiten? Klik <strong>Sync nu</strong> of wacht even.
+                  </template>
                 </div>
                 <div class="log-empty-actions">
                   <q-btn
@@ -162,7 +189,8 @@
                     unelevated
                     no-caps
                     class="log-empty-btn-primary"
-                    label="Data importeren"
+                    label="Sync nu"
+                    :disable="stravaBackoffActive"
                     :loading="dashboardStore.syncing"
                     @click="triggerStravaSync"
                   />
@@ -366,7 +394,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useQuasar } from 'quasar'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
@@ -400,28 +428,16 @@ onMounted(() => {
   }
 })
 
-// Auto-trigger Strava sync once when connected but no activities (so Recent Telemetry fills)
-const stravaSyncTriggered = ref(false)
-watch(
-  () => ({
-    loading: dashboardStore.loading,
-    connected: isStravaConnected.value,
-    activities: (dashboardStore.telemetry?.activities || []).length,
-  }),
-  (curr) => {
-    if (curr.loading || stravaSyncTriggered.value) return
-    if (curr.connected && curr.activities === 0) {
-      stravaSyncTriggered.value = true
-      dashboardStore.syncStrava().catch(() => {
-        stravaSyncTriggered.value = false
-      })
-    }
-  },
-  { immediate: true }
-)
+// Webhook-first: no automatic Strava sync on dashboard load
 
 function triggerStravaSync() {
-  dashboardStore.syncStrava().catch(() => {})
+  dashboardStore.syncNow().catch((err) => {
+    $q.notify({
+      type: 'warning',
+      message: err?.message || 'Sync mislukt',
+      caption: err?.message?.includes('Rate limit') ? 'Max 1x per 10 min.' : undefined
+    })
+  })
 }
 
 const telemetry = computed(() => dashboardStore.telemetry || {})
@@ -635,6 +651,24 @@ const handleSubmitCheckin = async () => {
 // Strava connection: auth store (from profile fetch — data.strava?.connected)
 const isStravaConnected = computed(() => Boolean(authStore.stravaConnected))
 const activeUid = computed(() => authStore.activeUid || authStore.user?.uid || null)
+
+// Strava observability (dashboard strava_meta)
+const stravaMeta = computed(() => telemetry.value?.raw?.strava_meta || null)
+const stravaBackoffActive = computed(() => {
+  const until = stravaMeta.value?.backoffUntil
+  if (!until) return false
+  return new Date(until).getTime() > Date.now()
+})
+function formatStravaTime(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  const now = new Date()
+  const diff = (now - d) / 1000
+  if (diff < 60) return 'zojuist'
+  if (diff < 3600) return `${Math.floor(diff / 60)} min geleden`
+  if (diff < 86400) return `${Math.floor(diff / 3600)} u geleden`
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
 
 // LOG empty state: show when no activities or Strava not connected
 const showLogEmptyState = computed(
@@ -1444,6 +1478,25 @@ const formatActivityDate = (raw) => {
   justify-content: space-between;
   align-items: center;
 }
+
+.strava-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  font-size: 0.7rem;
+  color: rgba(156, 163, 175, 0.9);
+  margin-bottom: 10px;
+}
+.strava-status-badge.connected {
+  color: #22c55e;
+  font-weight: 600;
+}
+.strava-meta { color: rgba(156, 163, 175, 0.85); }
+.strava-meta-event { opacity: 0.9; }
+.strava-backoff { color: #fbbf24; }
+.strava-error { color: #ef4444; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.strava-sync-btn { font-size: 0.7rem; color: #fbbf24; margin-left: auto; }
 
 .manual-toggle-btn {
   font-size: 0.65rem;

@@ -39,7 +39,7 @@ function createStravaRoutes(deps) {
     }
   });
 
-  // GET /api/strava/sync/:uid — fetch last 56 days from Strava, store in users/{uid}/activities (for ACWR + Recent Telemetry)
+  // GET /api/strava/sync/:uid — legacy: fetch last 56 days (no rate limit). Prefer POST /sync-now for webhook-first flow.
   apiRouter.get('/sync/:uid', async (req, res) => {
     try {
       if (!db) {
@@ -54,6 +54,56 @@ function createStravaRoutes(deps) {
     } catch (err) {
       console.error('Strava sync error:', err);
       return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // POST /api/strava/sync-now — manual sync: fetch activities after lastStravaSyncedAt, rate limit 1 per 10 min per user
+  const SYNC_NOW_COOLDOWN_MS = 10 * 60 * 1000;
+  apiRouter.post('/sync-now', async (req, res) => {
+    try {
+      if (!db) {
+        return res.status(503).json({ success: false, error: 'Firestore is not initialized' });
+      }
+      const uid = (req.headers['x-user-uid'] || req.body?.userId || req.query?.uid || '').toString().trim();
+      if (!uid) {
+        return res.status(400).json({ success: false, error: 'Missing uid (X-User-Uid header or body.userId)' });
+      }
+      const userRef = db.collection('users').doc(String(uid));
+      const userSnap = await userRef.get();
+      if (!userSnap.exists) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+      const userData = userSnap.data() || {};
+      if (!userData.strava?.connected || !userData.strava?.refreshToken) {
+        return res.status(400).json({ success: false, error: 'Strava not connected' });
+      }
+      const lastSyncNowAt = userData.lastSyncNowAt;
+      const now = Date.now();
+      if (lastSyncNowAt != null) {
+        const ts = typeof lastSyncNowAt.toMillis === 'function' ? lastSyncNowAt.toMillis() : Number(lastSyncNowAt);
+        if (Number.isFinite(ts) && now - ts < SYNC_NOW_COOLDOWN_MS) {
+          return res.status(429).json({
+            success: false,
+            error: 'Rate limit: one sync per 10 minutes',
+            retryAfter: Math.ceil((SYNC_NOW_COOLDOWN_MS - (now - ts)) / 1000)
+          });
+        }
+      }
+      const lastStravaSyncedAt = userData.lastStravaSyncedAt;
+      let afterTimestamp = null;
+      if (lastStravaSyncedAt != null) {
+        if (typeof lastStravaSyncedAt.toMillis === 'function') afterTimestamp = lastStravaSyncedAt.toMillis();
+        else if (typeof lastStravaSyncedAt.toDate === 'function') afterTimestamp = lastStravaSyncedAt.toDate().getTime();
+        else if (Number.isFinite(Number(lastStravaSyncedAt))) afterTimestamp = Number(lastStravaSyncedAt);
+      }
+      if (afterTimestamp == null) afterTimestamp = now - 30 * 24 * 60 * 60 * 1000; // 30 days ago
+      const result = await stravaService.syncActivitiesAfter(uid, db, admin, { afterTimestamp });
+      await userRef.set({ lastSyncNowAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      return res.json({ success: true, data: { newCount: result.count } });
+    } catch (err) {
+      console.error('Strava sync-now error:', err);
+      const status = err.message && err.message.includes('backoff') ? 429 : 500;
+      return res.status(status).json({ success: false, error: err.message });
     }
   });
 

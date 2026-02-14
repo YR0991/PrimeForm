@@ -258,10 +258,98 @@ async function syncRecentActivities(userId, db, admin, options = {}) {
   return { count: stored };
 }
 
+const BACKOFF_MS = 15 * 60 * 1000; // 15 min (align with webhook)
+
+/**
+ * Sync activities from Strava after a given timestamp. Used by manual sync and fallback job.
+ * Sets lastStravaSyncedAt on user; writes ingested_from: 'manual_sync' on each activity.
+ * Respects stravaBackoffUntil; on 429 sets backoff and throws.
+ * @param {string} userId
+ * @param {object} db - Firestore
+ * @param {object} admin - firebase-admin
+ * @param {{ afterTimestamp?: number|object }} options - afterTimestamp: ms (number) or Firestore Timestamp
+ * @returns {Promise<{ count: number }>}
+ */
+async function syncActivitiesAfter(userId, db, admin, options = {}) {
+  if (!db) throw new Error('Firestore is not initialized');
+  const userRef = db.collection('users').doc(String(userId));
+  const snap = await userRef.get();
+  if (!snap.exists) throw new Error('User not found');
+  const userData = snap.data() || {};
+
+  const backoffUntil = userData.stravaBackoffUntil;
+  if (typeof backoffUntil === 'number' && backoffUntil > Date.now()) {
+    throw new Error('Strava backoff active; try again later');
+  }
+
+  const accessToken = await ensureValidToken(userData, db, admin, userId);
+
+  let afterSec = 0;
+  const at = options.afterTimestamp;
+  if (at != null) {
+    if (typeof at === 'number') afterSec = Math.floor(at / 1000);
+    else if (at && typeof at.toMillis === 'function') afterSec = Math.floor(at.toMillis() / 1000);
+    else if (at && typeof at.toDate === 'function') afterSec = Math.floor(at.toDate().getTime() / 1000);
+  }
+
+  const params = new URLSearchParams({
+    after: String(afterSec),
+    per_page: '100'
+  });
+  const url = `${STRAVA_ACTIVITIES_URL}?${params.toString()}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+
+  if (res.status === 429) {
+    const backoffUntilMs = Date.now() + BACKOFF_MS;
+    await userRef.set(
+      {
+        stravaLastError: 'Strava 429',
+        stravaBackoffUntil: backoffUntilMs
+      },
+      { merge: true }
+    );
+    throw new Error('Strava rate limit (429); try again in 15 minutes');
+  }
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `Strava API error: ${res.status}`);
+  }
+
+  const activities = await res.json();
+  if (!Array.isArray(activities)) {
+    await userRef.set({ lastStravaSyncedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    return { count: 0 };
+  }
+
+  const activitiesRef = userRef.collection('activities');
+  let stored = 0;
+  for (const raw of activities) {
+    const id = String(raw.id);
+    if (!id) continue;
+    const mapped = mapActivity(raw);
+    mapped.ingested_from = 'manual_sync';
+    mapped.updated_at = admin.firestore.FieldValue.serverTimestamp();
+    await activitiesRef.doc(id).set(mapped, { merge: true });
+    stored++;
+  }
+  await userRef.set(
+    {
+      lastStravaSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
+      stravaLastError: admin.firestore.FieldValue.delete()
+    },
+    { merge: true }
+  );
+  return { count: stored };
+}
+
 module.exports = {
   getAuthUrl,
   exchangeToken,
   refreshAccessToken,
   getRecentActivities,
-  syncRecentActivities
+  syncRecentActivities,
+  syncActivitiesAfter
 };

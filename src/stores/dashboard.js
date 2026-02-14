@@ -137,29 +137,51 @@ export const useDashboardStore = defineStore('dashboard', {
       }
     },
 
+    /** Legacy: full 56d sync (no rate limit). Prefer syncNow() for webhook-first flow. */
     async syncStrava() {
       const authStore = useAuthStore()
       const user = auth.currentUser
-      if (!user) {
-        throw new Error('Geen ingelogde gebruiker')
-      }
+      if (!user) throw new Error('Geen ingelogde gebruiker')
       this.syncing = true
       this.error = null
       try {
         const token = await user.getIdToken?.()
         const uid = authStore.activeUid || user.uid
-        const headers = token
-          ? { Authorization: `Bearer ${token}`, 'X-User-Uid': uid }
-          : { 'X-User-Uid': uid }
-        const res = await fetch(`${API_URL}/api/strava/sync/${uid}`, {
-          method: 'GET',
-          headers,
-        })
+        const headers = token ? { Authorization: `Bearer ${token}`, 'X-User-Uid': uid } : { 'X-User-Uid': uid }
+        const res = await fetch(`${API_URL}/api/strava/sync/${uid}`, { method: 'GET', headers })
         if (!res.ok) {
           const text = await res.text().catch(() => '')
           throw new Error(text || 'Strava sync mislukt')
         }
         await this.fetchUserDashboard()
+      } finally {
+        this.syncing = false
+      }
+    },
+
+    /** Manual sync (sync-now): rate limit 1 per 10 min; fetches after lastStravaSyncedAt. */
+    async syncNow() {
+      const authStore = useAuthStore()
+      const user = auth.currentUser
+      if (!user) throw new Error('Geen ingelogde gebruiker')
+      this.syncing = true
+      this.error = null
+      try {
+        const token = await user.getIdToken?.()
+        const uid = authStore.activeUid || user.uid
+        const headers = { 'Content-Type': 'application/json', 'X-User-Uid': uid }
+        if (token) headers.Authorization = `Bearer ${token}`
+        const res = await fetch(`${API_URL}/api/strava/sync-now`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ userId: uid }),
+        })
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          throw new Error(json?.error || res.statusText || 'Sync mislukt')
+        }
+        await this.fetchUserDashboard()
+        return json?.data
       } finally {
         this.syncing = false
       }

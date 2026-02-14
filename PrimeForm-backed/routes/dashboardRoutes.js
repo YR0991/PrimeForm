@@ -97,6 +97,33 @@ function createDashboardRouter(deps) {
         ? todayLog.metrics.readiness
         : null;
 
+      // Strava observability for UI (webhook-first)
+      let strava_meta = null;
+      try {
+        const userSnap = await db.collection('users').doc(String(uid)).get();
+        if (userSnap.exists) {
+          const u = userSnap.data() || {};
+          const toIso = (v) => {
+            if (v == null) return null;
+            if (typeof v.toDate === 'function') return v.toDate().toISOString();
+            if (typeof v.toMillis === 'function') return new Date(v.toMillis()).toISOString();
+            if (v.seconds != null) return new Date(v.seconds * 1000).toISOString();
+            if (Number.isFinite(Number(v))) return new Date(Number(v)).toISOString();
+            return null;
+          };
+          strava_meta = {
+            lastWebhookAt: toIso(u.stravaLastWebhookAt),
+            lastWebhookEvent: u.stravaLastWebhookEvent || null,
+            lastSyncedAt: toIso(u.lastStravaSyncedAt),
+            lastSyncNowAt: toIso(u.lastSyncNowAt),
+            backoffUntil: u.stravaBackoffUntil != null ? new Date(Number(u.stravaBackoffUntil)).toISOString() : null,
+            lastError: u.stravaLastError || null
+          };
+        }
+      } catch (e) {
+        console.error('Dashboard strava_meta:', e);
+      }
+
       const payload = {
         acwr: stats.acwr,
         phase,
@@ -112,7 +139,8 @@ function createDashboardRouter(deps) {
         history_logs: stats.history_logs || [],
         ghost_comparison: stats.ghost_comparison || [],
         rhr_baseline_28d: stats.rhr_baseline_28d ?? null,
-        hrv_baseline_28d: stats.hrv_baseline_28d ?? null
+        hrv_baseline_28d: stats.hrv_baseline_28d ?? null,
+        strava_meta
       };
 
       return res.json({ success: true, data: payload });

@@ -11,6 +11,35 @@ A fitness app for female athletes with menstrual cycle tracking capabilities.
 - Luteal phase correction for RHR baseline
 - Save check-in data to Firestore for tracking and analysis
 
+## Environment variables (required for full functionality)
+
+| Variable | Description |
+|----------|-------------|
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | JSON string of Firebase service account (e.g. on Render) or use local `firebase-key.json` |
+| `STRAVA_CLIENT_ID` | Strava OAuth application ID |
+| `STRAVA_CLIENT_SECRET` | Strava OAuth secret |
+| `STRAVA_REDIRECT_URI` | OAuth callback URL (e.g. `https://your-api.com/auth/strava/callback`) |
+| `STRAVA_VERIFY_TOKEN` | Secret string for webhook subscription verification (you choose it) |
+| `STRAVA_WEBHOOK_CALLBACK_URL` | Full URL for Strava webhook (e.g. `https://your-api.com/webhooks/strava`) |
+
+Optional: `FRONTEND_APP_URL`, `OPENAI_API_KEY`, SMTP vars for emails, etc.
+
+### Strava Webhook subscription (near real-time activities)
+
+1. Set `STRAVA_VERIFY_TOKEN` and `STRAVA_WEBHOOK_CALLBACK_URL` in your environment. The callback URL must be the exact path where the backend serves the webhook (e.g. `https://your-backend.onrender.com/webhooks/strava`).
+2. Create the subscription (one per app) via Strava’s API:
+   ```bash
+   curl -X POST https://www.strava.com/api/v3/push_subscriptions \
+     -F "client_id=YOUR_CLIENT_ID" \
+     -F "client_secret=YOUR_CLIENT_SECRET" \
+     -F "callback_url=STRAVA_WEBHOOK_CALLBACK_URL" \
+     -F "verify_token=STRAVA_VERIFY_TOKEN"
+   ```
+3. Strava will send a GET request to your callback URL with `hub.mode`, `hub.verify_token`, and `hub.challenge`. The backend responds with `200` and `{ "hub.challenge": "<challenge>" }` to complete verification.
+4. After that, Strava will POST activity create/update/delete events to the same URL. Activities are written to `users/{uid}/activities/{activity_id}` (uid resolved via `strava.athleteId`). Ensure Firestore has an index on `users` for `strava.athleteId` if the lookup query fails.
+
+To view or delete the subscription: `GET` or `DELETE https://www.strava.com/api/v3/push_subscriptions` (see [Strava Webhooks](https://developers.strava.com/docs/webhooks/)).
+
 ## Setup
 
 1. Install dependencies:

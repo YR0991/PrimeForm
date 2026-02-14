@@ -17,6 +17,8 @@ const { createStravaRoutes } = require('./routes/stravaRoutes');
 const { createDailyRouter } = require('./routes/dailyRoutes');
 const { createDashboardRouter } = require('./routes/dashboardRoutes');
 const { createActivityRouter } = require('./routes/activityRoutes');
+const { createStravaWebhookRouter } = require('./routes/stravaWebhookRoutes');
+const { runStravaFallbackSync, SIX_HOURS_MS } = require('./services/stravaFallbackJob');
 
 // SMTP transporter — Nodemailer. Required env: SMTP_HOST, SMTP_PORT (optional, default 587),
 // SMTP_USER, SMTP_PASS. Optional: SMTP_SECURE ('true' for TLS), SMTP_FROM (defaults to SMTP_USER).
@@ -543,6 +545,7 @@ app.get('/', (req, res) => {
   const stravaRoutes = createStravaRoutes({ db, admin, stravaService });
   app.use('/api/strava', stravaRoutes.apiRouter);
   app.use('/auth/strava', stravaRoutes.authRouter);
+  app.use('/webhooks/strava', createStravaWebhookRouter({ db, admin }));
   const dailyRouter = createDailyRouter({ db, admin, openai, knowledgeBaseContent, FieldValue });
   app.use('/api', createDashboardRouter({ db, admin }));
   app.use('/api', dailyRouter);
@@ -560,6 +563,11 @@ app.get('/', (req, res) => {
   }));
   app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
+    // Strava fallback: sync users with stale webhook every 6h
+    if (db) {
+      setInterval(() => runStravaFallbackSync(db, admin).catch((e) => console.error('Strava fallback:', e)), SIX_HOURS_MS);
+      setTimeout(() => runStravaFallbackSync(db, admin).catch((e) => console.error('Strava fallback (initial):', e)), 60000);
+    }
   });
 })();
 
