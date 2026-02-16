@@ -8,11 +8,10 @@
           </q-toolbar-title>
         </router-link>
         <q-space />
-        <div class="nav-links">
-          <router-link to="/dashboard" class="nav-link">Dashboard</router-link>
-          <router-link to="/" class="nav-link">Check-in</router-link>
-          <router-link to="/coach" class="nav-link">Coach</router-link>
-          <router-link to="/admin" class="nav-link">Admin</router-link>
+        <div v-if="!hideNav" class="nav-links">
+          <router-link v-if="showDashboard" to="/dashboard" class="nav-link">Dashboard</router-link>
+          <router-link v-if="showCoach" to="/coach" class="nav-link">Coach</router-link>
+          <router-link v-if="showAdmin" to="/admin" class="nav-link">Admin</router-link>
         </div>
       </q-toolbar>
     </q-header>
@@ -24,7 +23,23 @@
 </template>
 
 <script setup>
-// Premium minimal layout - Elite Dark nav
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
+
+const route = useRoute()
+const authStore = useAuthStore()
+
+const hideNav = computed(() => {
+  const path = route.path ?? ''
+  return path === '/login' || path === '/intake'
+})
+
+const showAdmin = computed(() => authStore.isAdmin)
+
+const showCoach = computed(() => authStore.isCoach || authStore.isAdmin)
+
+const showDashboard = computed(() => authStore.role === 'user')
 </script>
 
 <style scoped lang="scss">

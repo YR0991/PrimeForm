@@ -5,22 +5,7 @@ import {
   createWebHistory,
 } from 'vue-router'
 import routes from './routes'
-import { API_URL } from '../config/api.js'
-
-const getOrCreateUserId = () => {
-  const key = 'primeform_user_id'
-  const existing = localStorage.getItem(key)
-  if (existing) return existing
-  const newId = `pf_${Date.now()}`
-  localStorage.setItem(key, newId)
-  return newId
-}
-
-let profileCache = {
-  userId: null,
-  profileComplete: null,
-  fetchedAt: 0,
-}
+import { useAuthStore } from '../stores/auth'
 
 /*
  * If not building with SSR mode, you can
@@ -47,69 +32,41 @@ export default defineRouter(function (/* { store, ssrContext } */) {
     history,
   })
 
-  // Redirect to intake if profile is incomplete
   Router.beforeEach(async (to) => {
-    // Only run in browser
     if (process.env.SERVER) return true
 
-    // CRITICAL: Skip ALL checks for admin routes FIRST (admin has its own authentication)
-    if (to.path === '/admin' || to.path.startsWith('/admin')) {
-      return true
+    const authStore = useAuthStore()
+
+    // Wacht op Auth: tot Firebase weet wie de gebruiker is
+    if (!authStore.isAuthReady) {
+      if (typeof authStore.init === 'function') await authStore.init()
+      if (!authStore.isAuthReady) return true
     }
 
-    // Skip profile check for coach (different role)
-    if (to.path === '/coach') {
-      return true
+    // Login redirect: niet ingelogd en niet op /login → naar /login
+    if (!authStore.user && to.path !== '/login') {
+      return { path: '/login', query: to.path !== '/' ? { redirect: to.fullPath } : undefined }
     }
 
-    // Allow direct access to intake route
-    if (to.path === '/intake') {
-      // If already complete, bounce to dashboard
-      try {
-        const userId = getOrCreateUserId()
-        const now = Date.now()
-        const shouldRefetch = profileCache.userId !== userId || now - profileCache.fetchedAt > 30_000
+    // Alleen voor ingelogde gebruikers hierna
+    if (!authStore.user) return true
 
-        if (shouldRefetch) {
-          const resp = await fetch(`${API_URL}/api/profile?userId=${encodeURIComponent(userId)}`)
-          const json = await resp.json()
-          profileCache = {
-            userId,
-            profileComplete: json?.data?.profileComplete === true,
-            fetchedAt: now,
-          }
-        }
-
-        if (profileCache.profileComplete === true) return { path: '/' }
-      } catch {
-        // If profile check fails, still allow intake
-        return true
-      }
-      return true
+    // Admin: landt op / → /admin
+    if (authStore.isAdmin && to.path === '/') {
+      return { path: '/admin' }
     }
 
-    // For any other route: ensure profile is complete
-    try {
-      const userId = getOrCreateUserId()
-      const now = Date.now()
-      const shouldRefetch = profileCache.userId !== userId || now - profileCache.fetchedAt > 30_000
+    // Coach: landt op / of /dashboard → /coach
+    if (authStore.isCoach && (to.path === '/' || to.path === '/dashboard')) {
+      return { path: '/coach' }
+    }
 
-      if (shouldRefetch) {
-        const resp = await fetch(`${API_URL}/api/profile?userId=${encodeURIComponent(userId)}`)
-        const json = await resp.json()
-        profileCache = {
-          userId,
-          profileComplete: json?.data?.profileComplete === true,
-          fetchedAt: now,
-        }
+    // Atleet (user): landing / of /dashboard
+    if (!authStore.isAdmin && !authStore.isCoach) {
+      if (to.path === '/' || to.path === '/dashboard') {
+        if (authStore.profileComplete === false) return { path: '/intake' }
+        if (authStore.profileComplete === true && to.path === '/') return { path: '/dashboard' }
       }
-
-      if (profileCache.profileComplete !== true) {
-        return { path: '/intake' }
-      }
-    } catch {
-      // If backend is unreachable, don't hard-block navigation
-      return true
     }
 
     return true
