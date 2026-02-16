@@ -43,30 +43,30 @@ export default defineRouter(function (/* { store, ssrContext } */) {
       if (!authStore.isAuthReady) return true
     }
 
-    // Login redirect: niet ingelogd en niet op /login → naar /login
-    if (!authStore.user && to.path !== '/login') {
-      return { path: '/login', query: to.path !== '/' ? { redirect: to.fullPath } : undefined }
-    }
-
-    // Alleen voor ingelogde gebruikers hierna
-    if (!authStore.user) return true
-
-    // Admin: landt op / → /admin
-    if (authStore.isAdmin && to.path === '/') {
-      return { path: '/admin' }
-    }
-
-    // Coach: landt op / of /dashboard → /coach
-    if (authStore.isCoach && (to.path === '/' || to.path === '/dashboard')) {
-      return { path: '/coach' }
-    }
-
-    // Atleet (user): landing / of /dashboard
-    if (!authStore.isAdmin && !authStore.isCoach) {
-      if (to.path === '/' || to.path === '/dashboard') {
-        if (authStore.profileComplete === false) return { path: '/intake' }
-        if (authStore.profileComplete === true && to.path === '/') return { path: '/dashboard' }
+    // 1. Niet ingelogd? → /login
+    if (!authStore.user) {
+      if (to.path !== '/login') {
+        return { path: '/login', query: to.path !== '/' ? { redirect: to.fullPath } : undefined }
       }
+      return true
+    }
+
+    // 2. Admin? Hoogste prioriteit — nooit door profile guard. Altijd toegang; bij / → /admin
+    if (authStore.isAdmin) {
+      if (to.path === '/') return { path: '/admin' }
+      return true
+    }
+
+    // 3. Coach? Altijd toegang; bij / → /coach
+    if (authStore.isCoach) {
+      if (to.path === '/') return { path: '/coach' }
+      return true
+    }
+
+    // 4. Atleet (user): check profileComplete. false → /intake, true en / → /dashboard
+    if (to.path === '/' || to.path === '/dashboard') {
+      if (authStore.profileComplete === false) return { path: '/intake' }
+      if (authStore.profileComplete === true && to.path === '/') return { path: '/dashboard' }
     }
 
     return true

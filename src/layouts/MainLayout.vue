@@ -8,7 +8,7 @@
           </q-toolbar-title>
         </router-link>
         <q-space />
-        <div v-if="!hideNav" class="nav-links">
+        <div v-if="showNavContainer" class="nav-links">
           <router-link v-if="showDashboard" to="/dashboard" class="nav-link">Dashboard</router-link>
           <router-link v-if="showCoach" to="/coach" class="nav-link">Coach</router-link>
           <router-link v-if="showAdmin" to="/admin" class="nav-link">Admin</router-link>
@@ -23,17 +23,27 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
 
 const route = useRoute()
 const authStore = useAuthStore()
 
+// Zorg dat auth (en rol) zo snel mogelijk beschikbaar is, zodat de nav-links direct kloppen
+onMounted(() => {
+  if (!authStore.isAuthReady && typeof authStore.init === 'function') {
+    authStore.init()
+  }
+})
+
 const hideNav = computed(() => {
   const path = route.path ?? ''
   return path === '/login' || path === '/intake'
 })
+
+// Toon nav alleen als auth klaar is, dan reageren de link-computeds direct op de juiste rol
+const showNavContainer = computed(() => !hideNav.value && authStore.isAuthReady)
 
 const showAdmin = computed(() => authStore.isAdmin)
 

@@ -1,145 +1,81 @@
-// Admin Service - Firestore data operations for admin dashboard
-import { API_URL } from '../config/api.js'
+// Admin Service — uses api (Bearer token) from httpClient
+import { api } from './httpClient.js'
 
 /**
- * Fetch all users from Firestore
+ * Fetch all users (admin only). Uses Firebase Bearer token via api.
  * @returns {Promise<Array>} Array of user documents
  */
 export async function fetchAllUsers() {
-  try {
-    // Get admin email from localStorage
-    const adminEmail = localStorage.getItem('admin_email')
-    
-    if (!adminEmail) {
-      throw new Error('Admin email not found. Please login first.')
-    }
-    
-    const response = await fetch(`${API_URL}/api/admin/users?adminEmail=${encodeURIComponent(adminEmail)}`)
-    
-    if (!response.ok) {
-      if (response.status === 403) {
-        // Clear invalid admin email
-        localStorage.removeItem('admin_email')
-        throw new Error('Unauthorized: Invalid admin credentials')
-      }
-      throw new Error(`Failed to fetch users: ${response.statusText}`)
-    }
-    
-    const data = await response.json()
-    return data.data || []
-  } catch (error) {
-    console.error('Error fetching users:', error)
-    throw error
-  }
+  const res = await api.get('/api/admin/users')
+  const data = res.data?.data
+  return Array.isArray(data) ? data : []
 }
 
 /**
- * Get user details including intake data
+ * Get user details including intake data. Uses api (Bearer token).
  * @param {string} userId - User ID
- * @returns {Promise<Object>} User profile with intake data
+ * @returns {Promise<Object|null>} User profile with intake data
  */
 export async function getUserDetails(userId) {
-  try {
-    const response = await fetch(`${API_URL}/api/profile?userId=${encodeURIComponent(userId)}`)
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch user details: ${response.statusText}`)
-    }
-    
-    const data = await response.json()
-    return data.data?.profile || null
-  } catch (error) {
-    console.error('Error fetching user details:', error)
-    throw error
-  }
+  const res = await api.get('/api/profile', { params: { userId } })
+  return res.data?.data?.profile ?? null
 }
 
 /**
- * Get user check-in history
+ * Get user check-in history.
  * @param {string} userId - User ID
  * @returns {Promise<Array>} Array of check-in logs
  */
 export async function getUserHistory(userId) {
-  try {
-    const response = await fetch(`${API_URL}/api/history?userId=${encodeURIComponent(userId)}`)
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch user history: ${response.statusText}`)
-    }
-    
-    const data = await response.json()
-    return data.data || []
-  } catch (error) {
-    console.error('Error fetching user history:', error)
-    throw error
+  const res = await api.get('/api/history', { params: { userId } })
+  return res.data?.data ?? []
+}
+
+/**
+ * Fetch admin dashboard stats (totalMembers, newThisWeek, checkinsToday).
+ * @returns {Promise<{ totalMembers: number, newThisWeek: number, checkinsToday: number }>}
+ */
+export async function fetchAdminStats() {
+  const res = await api.get('/api/admin/stats')
+  const data = res.data?.data ?? {}
+  return {
+    totalMembers: Number(data.totalMembers) || 0,
+    newThisWeek: Number(data.newThisWeek) || 0,
+    checkinsToday: Number(data.checkinsToday) || 0,
   }
 }
 
 /**
- * Calculate statistics from users array
+ * Calculate statistics from users array (fallback when stats API not used).
  * @param {Array} users - Array of user documents
  * @returns {Object} Statistics object
  */
 export function calculateStats(users) {
   const now = new Date()
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-  
-  const newThisWeek = users.filter(user => {
+
+  const newThisWeek = (users || []).filter((user) => {
     const createdAt = user.createdAt?.toDate ? user.createdAt.toDate() : new Date(user.createdAt)
     return createdAt >= weekAgo
   }).length
-  
-  // For check-ins today, we'd need to query dailyLogs
-  // This is a placeholder - you'd need to aggregate from history
-  const checkinsToday = 0 // Placeholder
-  
+
   return {
-    totalMembers: users.length,
+    totalMembers: (users || []).length,
     newThisWeek,
-    checkinsToday
+    checkinsToday: 0,
   }
 }
 
 /**
- * Import historical HRV/RHR data for a user
+ * Import historical HRV/RHR data for a user.
  * @param {string} userId - User ID
  * @param {Array} entries - Array of {date, hrv, rhr} objects
  * @returns {Promise<Object>} Import result
  */
 export async function importHistory(userId, entries) {
-  try {
-    const adminEmail = localStorage.getItem('admin_email')
-    
-    if (!adminEmail) {
-      throw new Error('Admin email not found. Please login first.')
-    }
-    
-    const response = await fetch(`${API_URL}/api/admin/import-history`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-admin-email': adminEmail
-      },
-      body: JSON.stringify({
-        userId,
-        entries,
-        adminEmail
-      })
-    })
-    
-    if (!response.ok) {
-      if (response.status === 403) {
-        localStorage.removeItem('admin_email')
-        throw new Error('Unauthorized: Invalid admin credentials')
-      }
-      const errorData = await response.json()
-      throw new Error(errorData.error || `Failed to import history: ${response.statusText}`)
-    }
-    
-    const data = await response.json()
-    return data.data
-  } catch (error) {
-    console.error('Error importing history:', error)
-    throw error
-  }
+  const res = await api.post('/api/admin/import-history', {
+    userId,
+    entries,
+  })
+  return res.data?.data
 }

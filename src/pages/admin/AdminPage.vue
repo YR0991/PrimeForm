@@ -400,7 +400,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { fetchAllUsers, getUserDetails, getUserHistory, calculateStats, importHistory } from '../../services/adminService.js'
+import { fetchAllUsers, fetchAdminStats, getUserDetails, getUserHistory, importHistory } from '../../services/adminService.js'
 import { getSystemHealth, getWeeklyReportForUser } from '../../services/userService.js'
 
 const loading = ref(false)
@@ -539,15 +539,20 @@ const columns = [
 const loadUsers = async () => {
   loading.value = true
   try {
-    // For now, we'll need to create a backend endpoint
-    // This is a placeholder - you'll need to implement /api/admin/users
-    const allUsers = await fetchAllUsers()
-    users.value = allUsers
-    stats.value = calculateStats(allUsers)
+    const [allUsers, adminStats] = await Promise.all([
+      fetchAllUsers(),
+      fetchAdminStats(),
+    ])
+    users.value = Array.isArray(allUsers) ? allUsers : []
+    stats.value = {
+      totalMembers: adminStats.totalMembers ?? users.value.length,
+      newThisWeek: adminStats.newThisWeek ?? 0,
+      checkinsToday: adminStats.checkinsToday ?? 0,
+    }
   } catch (error) {
-    console.error('Failed to load users:', error)
-    // Fallback: show empty state or error message
+    console.error('Failed to load users or stats:', error)
     users.value = []
+    stats.value = { totalMembers: 0, newThisWeek: 0, checkinsToday: 0 }
   } finally {
     loading.value = false
   }
