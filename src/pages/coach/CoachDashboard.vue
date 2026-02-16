@@ -114,7 +114,25 @@
               class="deep-dive-activity"
             >
               <span class="elite-data">{{ act.date }}</span>
-              <span>{{ act.type }}</span>
+              <span class="activity-source">
+                <q-badge
+                  v-if="act.source === 'manual' || act.source === 'primeform'"
+                  class="source-badge primeform-badge"
+                  outline
+                  dense
+                >
+                  PrimeForm
+                </q-badge>
+                <q-badge
+                  v-else
+                  class="source-badge strava-badge"
+                  outline
+                  dense
+                >
+                  Strava
+                </q-badge>
+                <span class="activity-type">{{ act.type }}</span>
+              </span>
               <span class="elite-data">Raw {{ act.rawLoad }}</span>
               <span class="elite-data" style="color: #fbbf24">Prime {{ act.load }}</span>
             </div>
@@ -394,5 +412,32 @@ onMounted(() => {
   padding: 8px 0;
   font-size: 0.8rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.activity-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.source-badge {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.6rem;
+  border-radius: 2px;
+}
+
+.primeform-badge {
+  border-color: rgba(255, 255, 255, 0.6);
+  color: rgba(249, 250, 251, 0.9);
+}
+
+.strava-badge {
+  border-color: #fc4c02;
+  color: #fc4c02;
+}
+
+.activity-type {
+  color: #e5e7eb;
 }
 </style>
