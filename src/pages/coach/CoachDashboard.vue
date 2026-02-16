@@ -144,10 +144,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, watch } from 'vue'
+import { useAuthStore } from '../../stores/auth.js'
 import { getCoachSquad } from '../../services/coachService.js'
 import { getAthleteDeepDive } from '../../services/userService.js'
 
+// E-mail alleen uit authStore.user.email (geen localStorage)
+const authStore = useAuthStore()
 const loading = ref(false)
 const squad = ref([])
 const deepDiveOpen = ref(false)
@@ -203,11 +206,17 @@ const getLevelIcon = (level) => {
 }
 
 const loadSquad = async () => {
+  const email = authStore.user?.email ?? null
+  if (!email || !String(email).trim()) {
+    squad.value = []
+    return
+  }
   loading.value = true
   try {
-    squad.value = await getCoachSquad()
+    squad.value = await getCoachSquad(email)
   } catch (e) {
     console.error('Squad load failed:', e)
+    squad.value = []
   } finally {
     loading.value = false
   }
@@ -223,9 +232,14 @@ const onRowClick = async (_evt, row) => {
   }
 }
 
-onMounted(() => {
-  loadSquad()
-})
+// Pas laden zodra auth klaar is én coach-e-mail uit authStore beschikbaar is (geen localStorage)
+watch(
+  () => ({ ready: authStore.isAuthReady, email: authStore.user?.email }),
+  ({ ready, email }) => {
+    if (ready && email) loadSquad()
+  },
+  { immediate: true },
+)
 </script>
 
 <style scoped lang="scss">
