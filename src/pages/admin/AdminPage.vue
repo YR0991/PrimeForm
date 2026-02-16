@@ -501,29 +501,39 @@ const canImport = computed(() => {
          importRows.value.some(row => row.hrv !== null && row.rhr !== null)
 })
 
+function parseFirestoreDate(val) {
+  if (val == null) return null
+  if (typeof val?.toDate === 'function') return val.toDate()
+  if (typeof val === 'object' && typeof val.seconds === 'number') return new Date(val.seconds * 1000)
+  if (val instanceof Date) return val
+  const parsed = new Date(val)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
 const columns = [
   {
     name: 'name',
     required: true,
     label: 'Naam',
     align: 'left',
-    field: row => row.profile?.fullName || 'Geen naam',
+    field: (row) =>
+      row.profile?.fullName || row.displayName || row.fullName || row.email || row.profile?.email || 'Naamloze atleet',
     sortable: true
   },
   {
     name: 'email',
     label: 'E-mail',
     align: 'left',
-    field: row => row.profile?.email || 'Geen e-mail',
+    field: row => row.profile?.email || row.email || 'Geen e-mail',
     sortable: true
   },
   {
     name: 'createdAt',
     label: 'Aangemeld',
     align: 'left',
-    field: row => {
-      if (!row.createdAt) return 'Onbekend'
-      const date = row.createdAt?.toDate ? row.createdAt.toDate() : new Date(row.createdAt)
+    field: (row) => {
+      const date = parseFirestoreDate(row.createdAt)
+      if (!date) return 'Onbekend'
       return date.toLocaleDateString('nl-NL')
     },
     sortable: true
@@ -538,24 +548,31 @@ const columns = [
 
 const loadUsers = async () => {
   loading.value = true
-  try {
-    const [allUsers, adminStats] = await Promise.all([
-      fetchAllUsers(),
-      fetchAdminStats(),
-    ])
-    users.value = Array.isArray(allUsers) ? allUsers : []
+  const [usersResult, statsResult] = await Promise.allSettled([
+    fetchAllUsers(),
+    fetchAdminStats(),
+  ])
+
+  if (usersResult.status === 'fulfilled') {
+    users.value = Array.isArray(usersResult.value) ? usersResult.value : []
+  } else {
+    console.error('Failed to load users:', usersResult.reason)
+    users.value = []
+  }
+
+  if (statsResult.status === 'fulfilled') {
+    const adminStats = statsResult.value
     stats.value = {
       totalMembers: adminStats.totalMembers ?? users.value.length,
       newThisWeek: adminStats.newThisWeek ?? 0,
       checkinsToday: adminStats.checkinsToday ?? 0,
     }
-  } catch (error) {
-    console.error('Failed to load users or stats:', error)
-    users.value = []
+  } else {
+    console.error('Failed to load admin stats:', statsResult.reason)
     stats.value = { totalMembers: 0, newThisWeek: 0, checkinsToday: 0 }
-  } finally {
-    loading.value = false
   }
+
+  loading.value = false
 }
 
 const openUserDialog = async (user) => {
@@ -579,9 +596,9 @@ const openUserDialog = async (user) => {
   await loadUserHistory(user.id || user.userId)
 }
 
-const formatDate = (dateString) => {
-  if (!dateString) return 'Onbekend'
-  const date = new Date(dateString)
+const formatDate = (val) => {
+  const date = parseFirestoreDate(val)
+  if (!date) return 'Onbekend'
   return date.toLocaleDateString('nl-NL', {
     year: 'numeric',
     month: 'long',
