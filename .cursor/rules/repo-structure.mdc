@@ -1,0 +1,8 @@
+# PrimeForm workspace rules (repo boundaries)
+
+- This repo is the APP repo: /primeform-app (frontend + marketing + docs).
+- Frontend deploy target is /primeform-frontend (Quasar/Vue). Vercel builds from this folder.
+- Do not create submodules. Do not embed other git repos inside this repo.
+- Backend lives in a separate sibling repo: /primeform-api (outside this repo).
+- Marketing site lives in separate sibling repo: /website-2026 (outside this repo).
+- Never refer to any folder named "PrimeForm/" inside the app repo.
