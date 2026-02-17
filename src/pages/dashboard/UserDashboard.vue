@@ -452,7 +452,6 @@ const activitiesLoading = ref(false)
 const historyLoading = ref(false)
 const historyLogs = ref([])
 const stravaSyncing = ref(false)
-const stravaConnecting = ref(false)
 
 // Check-in dialog state
 const showCheckinDialog = ref(false)
@@ -600,37 +599,7 @@ function toCycleDay(dateStr, lastPeriodDate, cycleLength) {
   return day >= 1 && day <= len ? day : null
 }
 
-function rollingAvg(arr, idx, window) {
-  let sum = 0
-  let count = 0
-  for (let i = Math.max(0, idx - window + 1); i <= idx; i++) {
-    const v = arr[i]
-    if (v != null && Number.isFinite(v)) {
-      sum += v
-      count += 1
-    }
-  }
-  return count > 0 ? Math.round((sum / count) * 10) / 10 : null
-}
-
-const hrvRhrPoints = computed(() => {
-  const logs = Array.isArray(historyLogs.value) ? historyLogs.value : []
-  const cleaned = logs
-    .map((l) => {
-      const dateStr = toDateStr(l.date ?? l.timestamp)
-      const hrv = l.hrv ?? l.metrics?.hrv ?? (typeof l.metrics?.hrv === 'object' ? l.metrics?.hrv?.current : null)
-      const rhr = l.rhr ?? l.metrics?.rhr ?? (typeof l.metrics?.rhr === 'object' ? l.metrics?.rhr?.current : null)
-      return {
-        dateStr,
-        ts: dateStr ? new Date(dateStr).getTime() : 0,
-        hrv: hrv != null && Number.isFinite(Number(hrv)) ? Number(hrv) : null,
-        rhr: rhr != null && Number.isFinite(Number(rhr)) ? Number(rhr) : null
-      }
-    })
-    .filter((p) => p.dateStr && p.ts > 0)
-    .sort((a, b) => a.ts - b.ts)
-  return cleaned
-})
+// HRV/RHR cycle-aligned charts (huidige vs vorige cyclus)
 
 const hrvChartSeries = computed(() => {
   const logs = Array.isArray(historyLogs.value) ? historyLogs.value : []
@@ -853,22 +822,6 @@ const eliteChartOptions = (colors, cycleLength) => ({
 
 const hrvChartOptions = computed(() => eliteChartOptions(['#22c55e', '#16a34a'], data.value.cycleLength || 28))
 const rhrChartOptions = computed(() => eliteChartOptions(['#ef4444', '#dc2626'], data.value.cycleLength || 28))
-
-async function connectStrava() {
-  stravaConnecting.value = true
-  try {
-    const res = await api.get('/api/strava/connect-url')
-    const url = res.data?.url ?? res.data?.data?.url
-    if (url && typeof url === 'string') {
-      window.location.href = url
-      return
-    }
-    throw new Error('Geen koppel-URL ontvangen.')
-  } catch (e) {
-    console.error('Strava connect failed', e)
-    stravaConnecting.value = false
-  }
-}
 
 async function syncStravaNow() {
   stravaSyncing.value = true
