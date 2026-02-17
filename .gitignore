@@ -10,3 +10,4 @@ yarn-error.log*
 firebase-key.json
 **/firebase-key.json
 PrimeForm/PrimeForm-backed/firebase-key.json
+PrimeForm/
