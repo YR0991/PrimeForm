@@ -1,0 +1,35 @@
+// PRIMEFORM ELITE THEME - Quasar Variables
+// --------------------------------------------------
+// Core palette + Quasar overrides. Matches Tailwind config.
+
+// 1. Core Palette (Elite Dark Mode)
+$prime-black: #050505;
+$prime-surface: rgba(255, 255, 255, 0.03);
+$prime-gold: #fbbf24;
+$prime-gray: #9ca3af;
+
+// 2. Status Colors (Signal Red / Signal Green)
+$status-push: #22c55e;
+$status-maintain: #f97316;
+$status-recover: #ef4444;
+
+// 3. Quasar Brand Overrides
+$primary: $prime-gold;
+$secondary: $prime-surface;
+$accent: $prime-gold;
+$dark: $prime-black;
+$dark-page: $prime-black;
+
+$positive: $status-push;
+$negative: $status-recover;
+$info: $prime-gray;
+$warning: $status-maintain;
+
+// 4. Typography Stacks
+$typography-font-family: 'Inter', sans-serif;
+$head-font: 'Montserrat', sans-serif;
+$mono-font: 'JetBrains Mono', monospace;
+
+// 5. Borders & Radius
+$border-subtle: 1px solid rgba(255, 255, 255, 0.08);
+$radius-sm: 2px;

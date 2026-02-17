@@ -1,7 +1,8 @@
 {
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist/spa",
-  "installCommand": "npm install",
+  "//": "Root Vercel config: delegate build to primeform-frontend Quasar app",
+  "buildCommand": "cd primeform-frontend && npm run build",
+  "outputDirectory": "primeform-frontend/dist/spa",
+  "installCommand": "cd primeform-frontend && npm install",
   "framework": null,
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
