@@ -314,6 +314,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import VueApexCharts from 'vue3-apexcharts'
 import { API_URL } from '../config/api.js'
+import { api } from '../services/httpClient.js'
 
 const ApexChart = VueApexCharts
 
@@ -390,7 +391,7 @@ const loadSettings = async () => {
   // Overlay with Firestore profile values (source of truth)
   try {
     if (!userId.value) return
-    const resp = await axios.get(`${API_URL}/api/profile`, {
+    const resp = await api.get('/api/profile', {
       params: { userId: userId.value }
     })
     const profile = resp.data?.data?.profile
@@ -425,7 +426,7 @@ const saveSettings = async () => {
 
   try {
     if (userId.value) {
-      await axios.put(`${API_URL}/api/profile`, {
+      await api.put('/api/profile', {
         userId: userId.value,
         profilePatch: {
           rhrBaseline: rhrBaseline.value,
