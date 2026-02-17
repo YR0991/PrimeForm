@@ -2,33 +2,42 @@
   <div class="debug-timeline">
     <div class="timeline-toolbar row items-center q-gutter-sm q-mb-md">
       <span class="timeline-label">LAATSTE {{ days }} DAGEN</span>
-      <q-btn
+      <q-toggle
+        v-model="showDebugDetails"
+        color="amber"
+        label="Toon debug details"
         dense
-        flat
-        size="sm"
-        :label="filterRestRecover ? 'REST/RECOVER' : 'All'"
-        :color="filterRestRecover ? 'primary' : 'grey'"
-        class="filter-chip"
-        @click="filterRestRecover = !filterRestRecover"
+        class="debug-toggle"
       />
-      <q-btn
-        dense
-        flat
-        size="sm"
-        :label="filterNeedsCheckin ? 'Needs check-in' : 'All'"
-        :color="filterNeedsCheckin ? 'primary' : 'grey'"
-        class="filter-chip"
-        @click="filterNeedsCheckin = !filterNeedsCheckin"
-      />
-      <q-btn
-        dense
-        flat
-        size="sm"
-        :label="filterFlagsLow ? 'Flags LOW' : 'All'"
-        :color="filterFlagsLow ? 'primary' : 'grey'"
-        class="filter-chip"
-        @click="filterFlagsLow = !filterFlagsLow"
-      />
+      <template v-if="showDebugDetails">
+        <q-btn
+          dense
+          flat
+          size="sm"
+          :label="filterRestRecover ? 'REST/RECOVER' : 'All'"
+          :color="filterRestRecover ? 'primary' : 'grey'"
+          class="filter-chip"
+          @click="filterRestRecover = !filterRestRecover"
+        />
+        <q-btn
+          dense
+          flat
+          size="sm"
+          :label="filterNeedsCheckin ? 'Needs check-in' : 'All'"
+          :color="filterNeedsCheckin ? 'primary' : 'grey'"
+          class="filter-chip"
+          @click="filterNeedsCheckin = !filterNeedsCheckin"
+        />
+        <q-btn
+          dense
+          flat
+          size="sm"
+          :label="filterFlagsLow ? 'Flags LOW' : 'All'"
+          :color="filterFlagsLow ? 'primary' : 'grey'"
+          class="filter-chip"
+          @click="filterFlagsLow = !filterFlagsLow"
+        />
+      </template>
     </div>
 
     <q-inner-loading :showing="loading" color="#fbbf24">
@@ -48,9 +57,19 @@
         v-for="row in filteredDays"
         :key="row.date"
         class="timeline-row"
-        :class="{ expanded: expandedDate === row.date }"
+        :class="{ expanded: showDebugDetails && expandedDate === row.date }"
       >
+        <!-- Minimal view: date + key events only -->
         <div
+          v-if="!showDebugDetails"
+          class="timeline-row-main timeline-row-minimal row items-center no-wrap"
+        >
+          <span class="col date-cell mono-text">{{ row.date }}</span>
+          <span class="col events-cell text-grey-7">{{ eventSummary(row) }}</span>
+        </div>
+        <!-- Full debug view: all columns + expand -->
+        <div
+          v-else
           class="timeline-row-main row items-center no-wrap"
           @click="toggleExpand(row.date)"
         >
@@ -68,7 +87,7 @@
           </span>
           <q-icon :name="expandedDate === row.date ? 'expand_less' : 'expand_more'" size="sm" class="col-auto" />
         </div>
-        <div v-show="expandedDate === row.date" class="timeline-row-detail q-pa-sm">
+        <div v-show="showDebugDetails && expandedDate === row.date" class="timeline-row-detail q-pa-sm">
           <div class="detail-grid">
             <div class="detail-item">
               <span class="detail-label">sourceSummary</span>
@@ -185,6 +204,7 @@ const loading = ref(false)
 const error = ref(null)
 const timelineData = ref({ profile: null, days: [] })
 const expandedDate = ref(null)
+const showDebugDetails = ref(false)
 const filterRestRecover = ref(false)
 const filterNeedsCheckin = ref(false)
 const filterFlagsLow = ref(false)
@@ -203,6 +223,16 @@ const filteredDays = computed(() => {
   }
   return list
 })
+
+/** Minimal view: key events from sourceSummary (check-in saved, history import, Strava sync). */
+function eventSummary(row) {
+  const s = row.sourceSummary || {}
+  const parts = []
+  if (s.hasCheckin === true) parts.push('Check-in saved')
+  if (s.hasImport === true) parts.push('History import')
+  if (s.hasStrava === true) parts.push('Strava sync')
+  return parts.length ? parts.join(' · ') : '—'
+}
 
 function tagClass(tag) {
   if (tag === 'PUSH') return 'tag-push'
@@ -328,9 +358,19 @@ watch([() => props.uid, () => props.days], () => load(), { immediate: true })
 }
 
 .date-cell { width: 100px; }
+.events-cell { flex: 1; min-width: 0; }
 .tag-cell { width: 72px; font-weight: 600; }
 .instruction-cell { width: 120px; }
 .needs-cell { width: 72px; }
+
+.timeline-row-minimal .events-cell {
+  font-size: 0.8rem;
+}
+.debug-toggle {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
 
 .tag-push { color: #22c55e; }
 .tag-maintain { color: #fbbf24; }

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import {
   fetchAllUsers,
   fetchAllTeams,
+  fetchAdminStats,
   assignUserToTeam as assignUserToTeamApi,
   deleteUser as deleteUserApi,
   renameTeam as renameTeamApi,
@@ -13,11 +14,18 @@ export const useAdminStore = defineStore('admin', {
     users: [],
     teams: [],
     loading: false,
+    adminStats: { checkinsToday: null },
   }),
 
   getters: {
     totalUsers: (state) => state.users.length,
     totalTeams: (state) => state.teams.length,
+    /** Count users with role === 'athlete' (profile?.role ?? role ?? 'athlete'). */
+    athletesCount: (state) =>
+      state.users.filter((u) => {
+        const role = u.profile?.role ?? u.role ?? 'athlete'
+        return role === 'athlete'
+      }).length,
     orphanedUsers: (state) =>
       state.users.filter((u) => {
         const role = u.profile?.role ?? u.role ?? 'user'
@@ -42,6 +50,18 @@ export const useAdminStore = defineStore('admin', {
         throw err
       } finally {
         this.loading = false
+      }
+    },
+
+    async fetchAdminStats() {
+      try {
+        const data = await fetchAdminStats()
+        this.adminStats = {
+          checkinsToday: data.checkinsToday != null ? Number(data.checkinsToday) : null,
+        }
+      } catch (err) {
+        console.error('AdminStore: failed to fetch admin stats', err)
+        this.adminStats = { checkinsToday: null }
       }
     },
 

@@ -47,25 +47,14 @@
         <q-card class="kpi-card" flat>
           <q-card-section>
             <div class="kpi-label">ACTIEVE ATLETEN</div>
-            <div class="kpi-value">{{ adminStore.stats.totalMembers }}</div>
+            <div class="kpi-value">{{ adminStore.athletesCount }}</div>
           </q-card-section>
         </q-card>
 
         <q-card class="kpi-card" flat>
           <q-card-section>
-            <div class="kpi-label">SYSTEM LOAD</div>
-            <div class="kpi-value">
-              <span v-if="systemCapacity > 0">
-                {{ systemLoadPercent.toFixed(0) }}%
-              </span>
-              <span v-else>Niet ingesteld</span>
-            </div>
-            <div class="kpi-caption" v-if="systemCapacity > 0">
-              {{ adminStore.stats.totalMembers }} / {{ systemCapacity }} atleten
-            </div>
-            <div class="kpi-caption text-grey" v-else>
-              Stel teamlimieten in voor load-indicator
-            </div>
+            <div class="kpi-label">CHECK-INS VANDAAG</div>
+            <div class="kpi-value">{{ adminStore.adminStats.checkinsToday != null ? adminStore.adminStats.checkinsToday : '—' }}</div>
           </q-card-section>
         </q-card>
       </div>
@@ -114,7 +103,7 @@
                     size="sm"
                     icon="visibility"
                     color="amber-4"
-                    @click="handleBekijkAlsAtleet(props.row)"
+                    @click.stop="handleBekijkAlsAtleet(props.row)"
                   >
                     <q-tooltip>Bekijk als atleet (Shadow Mode)</q-tooltip>
                   </q-btn>
@@ -125,7 +114,7 @@
                     icon="delete"
                     color="negative"
                     :loading="deletingUserId === (props.row.id ?? props.row.userId)"
-                    @click="handleDeleteUser(props.row)"
+                    @click.stop="handleDeleteUser(props.row)"
                   >
                     <q-tooltip>Gebruiker verwijderen (Auth + Firestore)</q-tooltip>
                   </q-btn>
@@ -1066,8 +1055,10 @@ const handleDeleteTeam = (team) => {
 
 const deletingUserId = vueRef(null)
 const handleBekijkAlsAtleet = async (user) => {
-  if (!user?.id && !user?.userId) return
-  authStore.startImpersonation(user)
+  const uid = user?.id ?? user?.userId
+  if (!uid) return
+  const targetUser = user.id != null ? user : { ...user, id: user.userId }
+  authStore.startImpersonation(targetUser)
   await router.push('/dashboard')
   dashboardStore.fetchUserDashboard().catch(() => {})
 }
@@ -1088,7 +1079,7 @@ const handleDeleteUser = (user) => {
   }).onOk(async () => {
     deletingUserId.value = uid
     try {
-      await adminStore.deleteUser(uid)
+      await adminStore.deleteUser(user.id ?? user.userId)
       Notify.create({
         type: 'positive',
         message: 'Gebruiker verwijderd (Auth + Firestore).',
@@ -1110,7 +1101,7 @@ const handleDeleteUser = (user) => {
 const systemCapacity = vueComputed(() => adminStore.systemCapacity || 0)
 const systemLoadPercent = vueComputed(() => {
   if (!systemCapacity.value) return 0
-  const total = adminStore.stats?.totalMembers ?? 0
+  const total = adminStore.athletesCount ?? 0
   return (total / systemCapacity.value) * 100
 })
 
@@ -1126,6 +1117,7 @@ watch(
 onMountedHook(() => {
   if (authStore.isAdmin) {
     adminStore.fetchAllData()
+    adminStore.fetchAdminStats()
   }
 })
 </script>
