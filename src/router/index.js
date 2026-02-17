@@ -57,11 +57,33 @@ export default defineRouter(function (/* { store, ssrContext } */) {
       return true
     }
 
-    // Alleen voor atleten (rol 'user'): profileComplete-check; coaches/admins zijn hier al doorgelaten
+    // Onboarding lock: intake is one-way zodra onboardingComplete of onboardingLockedAt is gezet
+    const onboardingLocked =
+      authStore.onboardingComplete === true ||
+      Boolean(authStore.onboardingLockedAt)
+
+    // Alleen voor atleten (rol 'user'): intake / dashboard routing; coaches/admins zijn hier al doorgelaten
     const isAthlete = authStore.role === 'user' || (!authStore.isAdmin && !authStore.isCoach)
-    if (isAthlete && (to.path === '/' || to.path === '/dashboard')) {
-      if (authStore.profileComplete === false) return { path: '/intake' }
-      if (authStore.profileComplete === true && to.path === '/') return { path: '/dashboard' }
+    if (isAthlete) {
+      // A) Locked atleet mag nooit terug naar /intake
+      if (to.path === '/intake' && onboardingLocked) {
+        return { path: '/dashboard' }
+      }
+
+      // B) Intake onboarding voor niet-locked atleet
+      if (to.path === '/' || to.path === '/dashboard') {
+        // Alleen als onboarding NIET gelocked is en profiel nog niet compleet is → naar intake
+        if (!onboardingLocked && authStore.profileComplete === false) {
+          return { path: '/intake' }
+        }
+
+        // Als je naar root ('/') gaat en je hoeft niet naar intake → altijd naar dashboard
+        if (to.path === '/') {
+          return { path: '/dashboard' }
+        }
+
+        // Als je al op '/dashboard' bent en onboardingLocked true is, blijf je gewoon op dashboard
+      }
     }
 
     return true
