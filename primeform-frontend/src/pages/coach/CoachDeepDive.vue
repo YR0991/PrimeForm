@@ -61,7 +61,7 @@
             <span class="label">Belastingsbalans</span>
             <span
               class="value elite-data"
-              :class="loadBalanceClass"
+              :class="loadBalanceClass(athlete)"
             >
               {{ athlete.metrics?.acwr != null ? athlete.metrics.acwr.toFixed(2) : '—' }}
             </span>
@@ -265,13 +265,6 @@ function handleDayClick(dateKey, activities, totalLoad) {
     .filter((a) => a._primeLoad != null)
     .sort((a, b) => b._primeLoad - a._primeLoad)
 }
-
-const loadBalanceClass = computed(() => {
-  const acwr = athlete.value?.metrics?.acwr
-  if (acwr == null || !Number.isFinite(acwr)) return 'load-balance-unknown'
-  if (acwr >= 0.8 && acwr <= 1.3) return 'load-balance-optimal'
-  return 'load-balance-outside'
-})
 
 function getAcwr(row) {
   const v = row.metrics?.acwr ?? row.acwr
