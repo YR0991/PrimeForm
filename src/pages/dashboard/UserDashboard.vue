@@ -19,7 +19,7 @@
 
       <!-- Primary KPI: Vandaag — Opdracht (dagadvies) -->
       <q-card class="kpi-card today-card" flat>
-        <q-card-section class="kpi-section today-section">
+        <q-card-section class="kpi-section today-section today-advice-card">
           <div class="kpi-label">VANDAAG — OPDRACHT</div>
 
           <template v-if="!todayHasMessage">
@@ -35,24 +35,22 @@
           </template>
 
           <template v-else>
-            <div class="today-status-row">
+            <div class="advice-status-row">
               <span class="today-status-dot" :class="`today-status-${todayStatusLevel}`"></span>
               <span class="today-status-label">
                 {{ todayStatusLabel }}
               </span>
             </div>
 
-            <ul class="today-bullets">
-              <li v-for="(line, idx) in todayBullets" :key="idx">
-                {{ line }}
-              </li>
-            </ul>
+            <div class="advice-text">
+              {{ formatAiAdvice(data.dailyAdvice) }}
+            </div>
 
             <q-btn
               flat
               dense
               no-caps
-              class="today-secondary-btn"
+              class="today-secondary-btn action-link"
               @click="openCheckinResult"
             >
               BEKIJK CHECK-IN
@@ -432,37 +430,31 @@ const greetingName = computed(() => {
 
 const todayLog = computed(() => data.value.todayLog || null)
 
-function extractBullets(aiMessage) {
-  if (!aiMessage || typeof aiMessage !== 'string') return []
-  const text = aiMessage.trim()
-  if (!text) return []
+function formatAiAdvice(raw) {
+  if (!raw) return ''
+  let t = String(raw)
 
-  const lines = text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean)
+  // 1) remove markdown headings like ### ...
+  t = t.replace(/^#{1,6}\s*/gm, '')
 
-  const bulletLines = lines.filter((l) => l.startsWith('-') || l.startsWith('•'))
+  // 2) remove bullet markers ("•", "-", "*") aan begin van regels
+  t = t.replace(/^\s*([•*-]|\d+\.)\s+/gm, '')
 
-  let bullets
-  if (bulletLines.length) {
-    bullets = bulletLines.map((l) => l.replace(/^[-•]\s*/, '').trim()).filter(Boolean)
-  } else {
-    const sentenceMatches = text.match(/[^.!?]+[.!?]?/g) || []
-    bullets = sentenceMatches.map((s) => s.trim()).filter(Boolean)
-  }
+  // 3) remove bold/italic markdown
+  t = t.replace(/\*\*(.*?)\*\*/g, '$1')
+  t = t.replace(/\*(.*?)\*/g, '$1')
+  t = t.replace(/__(.*?)__/g, '$1')
+  t = t.replace(/_(.*?)_/g, '$1')
 
-  return bullets.slice(0, 5)
+  // 4) collapse excessive blank lines
+  t = t.replace(/\n{3,}/g, '\n\n').trim()
+
+  return t
 }
 
 const todayHasMessage = computed(() => {
   const msg = todayLog.value?.aiMessage
   return typeof msg === 'string' && msg.trim().length > 0
-})
-
-const todayBullets = computed(() => {
-  if (!todayHasMessage.value) return []
-  return extractBullets(todayLog.value.aiMessage)
 })
 
 function normalizeTodayStatus(raw) {
@@ -1130,6 +1122,7 @@ async function loadDashboard() {
         phaseDay,
         ghostComparison,
         todayLog: todayLogPayload,
+        dailyAdvice: todayLogPayload?.aiMessage ?? data.value.dailyAdvice,
       }
       historyLogs.value = payload.history_logs || []
     }
@@ -1744,5 +1737,60 @@ onMounted(async () => {
 .checkin-dialog .q-card {
   background: #0d0f14 !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.advice-text {
+  white-space: pre-wrap;
+  text-align: left;
+  line-height: 1.6;
+  font-size: 15px;
+  opacity: 0.92;
+}
+
+.today-advice-card {
+  text-align: left;
+}
+
+.today-advice-card .kpi-label,
+.today-advice-card .kpi-title,
+.today-advice-card .kpi-subtitle,
+.today-advice-card .advice-status-row,
+.today-advice-card .advice-text,
+.today-advice-card .action-link {
+  text-align: left;
+}
+
+.advice-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.today-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: q.$prime-gray;
+}
+
+.today-status-push {
+  background: q.$status-push;
+}
+
+.today-status-maintain {
+  background: q.$prime-gold;
+}
+
+.today-status-recover,
+.today-status-rest {
+  background: q.$status-recover;
+}
+
+.today-status-label {
+  font-family: q.$mono-font;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 </style>

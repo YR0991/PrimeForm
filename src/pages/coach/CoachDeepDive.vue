@@ -8,9 +8,49 @@
 
       <q-card v-if="athlete" class="deep-dive-card" flat>
         <q-card-section class="deep-dive-header">
-          <div class="deep-dive-title">{{ athlete.name }}</div>
+          <div class="deep-dive-title-row">
+            <div class="deep-dive-title">{{ athleteDisplayName }}</div>
+            <div class="deep-dive-header-meta">
+              <span class="header-pill" :class="hasCheckinToday(athlete) ? 'pill-ok' : 'pill-warn'">
+                Check-in: {{ headerCheckinLabel }}
+              </span>
+              <span class="header-pill">
+                {{ headerLastSyncText }}
+              </span>
+            </div>
+          </div>
         </q-card-section>
         <q-card-section class="deep-dive-body">
+          <div class="triage-row">
+            <div class="triage-card">
+              <div class="triage-label">Belastingsbalans</div>
+              <div class="triage-value elite-data" :class="loadBalanceClass(athlete)">
+                {{ formatAcwr(athlete) }}
+              </div>
+              <div class="triage-sub">{{ getLoadBalanceBand(athlete) }}</div>
+            </div>
+            <div class="triage-card">
+              <div class="triage-label">Trainingbelasting (7d)</div>
+              <div class="triage-value elite-data">
+                {{ formatLoad7d(athlete) }}
+              </div>
+              <div class="triage-sub">PrimeLoad som 7 dagen</div>
+            </div>
+            <div class="triage-card">
+              <div class="triage-label">Readiness</div>
+              <div class="triage-value elite-data">
+                {{ formatReadiness(athlete) }}
+              </div>
+              <div class="triage-sub">Laatste check-in</div>
+            </div>
+            <div class="triage-card">
+              <div class="triage-label">Strava</div>
+              <div class="triage-value elite-data" :class="stravaHasError ? 'triage-bad' : 'triage-ok'">
+                {{ stravaHasError ? 'Issue' : 'OK' }}
+              </div>
+              <div class="triage-sub">{{ headerLastSyncShort }}</div>
+            </div>
+          </div>
           <div class="deep-dive-row">
             <span class="label">Cyclus</span>
             <span class="value elite-data">
@@ -34,6 +74,52 @@
             <span class="label">Readiness</span>
             <span class="value elite-data">{{ athlete.readiness != null ? `${athlete.readiness}/10` : '—' }}</span>
           </div>
+
+          <div class="deep-dive-section-label">BELASTING PER DAG (PRIMELOAD)</div>
+          <div class="prime-load-section">
+            <PrimeLoadDailyChart
+              :activities="athlete.activities || []"
+              :days="14"
+              @day-click="handleDayClick"
+            />
+            <div class="prime-load-detail" v-if="selectedDayKey">
+              <div class="prime-load-detail-header">
+                <span class="prime-load-date">{{ selectedDayLabel }}</span>
+                <span class="prime-load-total elite-data">
+                  Totaal PrimeLoad: {{ formatPrimeLoad(selectedDayTotal) }}
+                </span>
+              </div>
+              <table v-if="selectedDayActivities.length" class="prime-load-activity-table">
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Naam</th>
+                    <th class="th-right">PrimeLoad</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="(act, idx) in selectedDayActivities"
+                    :key="act.id || act.name || idx"
+                  >
+                    <td class="elite-data">
+                      {{ act.type || 'Workout' }}
+                    </td>
+                    <td class="elite-data">
+                      {{ act.name || act.title || act.date || '—' }}
+                    </td>
+                    <td class="elite-data prime-load">
+                      {{ formatPrimeLoad(act._primeLoad) }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div v-else class="deep-dive-empty">
+                Geen workouts met PrimeLoad voor deze dag.
+              </div>
+            </div>
+          </div>
+
           <div class="deep-dive-section-label">LAATSTE 7 ACTIVITEITEN (MET PRIMELOAD)</div>
           <table v-if="athlete.activities?.length" class="deep-dive-activity-table">
             <thead>
@@ -68,7 +154,16 @@
             Geen activiteiten in de laatste 7 dagen.
           </div>
 
-          <div class="deep-dive-section-label">HRV & RHR TRENDS (7D / 28D GEM.)</div>
+          <div class="deep-dive-section-label trends-label">
+            <span>HRV & RHR TRENDS (cycle-over-cycle)</span>
+            <q-toggle
+              v-model="showDebugTimelines"
+              color="grey-5"
+              keep-color
+              dense
+              label="Debug: toon tijdslijnen"
+            />
+          </div>
           <template v-if="hasHrvRhrData">
             <div class="chart-block">
               <div class="chart-title">HRV</div>
@@ -76,8 +171,8 @@
                 <VueApexCharts
                   type="line"
                   height="180"
-                  :options="hrvChartOptions"
-                  :series="hrvChartSeries"
+                  :options="displayHrvOptions"
+                  :series="displayHrvSeries"
                 />
               </div>
             </div>
@@ -87,8 +182,8 @@
                 <VueApexCharts
                   type="line"
                   height="180"
-                  :options="rhrChartOptions"
-                  :series="rhrChartSeries"
+                  :options="displayRhrOptions"
+                  :series="displayRhrSeries"
                 />
               </div>
             </div>
@@ -99,7 +194,7 @@
         </q-card-section>
       </q-card>
 
-      <div v-else-if="loading" class="loading-row">
+      <div v-else-if="squadronStore.deepDiveLoading" class="loading-row">
         <q-spinner color="primary" size="32px" />
         <span>Atleet laden…</span>
       </div>
@@ -115,23 +210,197 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import VueApexCharts from 'vue3-apexcharts'
-import { useAuthStore } from '../../stores/auth.js'
-import { getAthleteDetail } from '../../services/coachService.js'
+import { useSquadronStore } from '../../stores/squadron.js'
+import PrimeLoadDailyChart from '../../components/coach/PrimeLoadDailyChart.vue'
 
 const route = useRoute()
 const router = useRouter()
-const authStore = useAuthStore()
-const athlete = ref(null)
-const loading = ref(false)
+const squadronStore = useSquadronStore()
 const error = ref(null)
+const showDebugTimelines = ref(false)
+const selectedDayKey = ref(null)
+const selectedDayActivities = ref([])
+const selectedDayTotal = ref(null)
 
 const athleteId = computed(() => route.params.id)
+const athlete = computed(() => squadronStore.selectedAtleet || squadronStore.getAthlete(athleteId.value))
+
+const athleteDisplayName = computed(() => {
+  const a = athlete.value || {}
+  return (
+    a.name ||
+    a.profile?.fullName ||
+    a.displayName ||
+    a.email ||
+    'Onbekende atleet'
+  )
+})
+
+const selectedDayLabel = computed(() => {
+  if (!selectedDayKey.value) return 'Geen dag geselecteerd'
+  const d = new Date(selectedDayKey.value)
+  if (Number.isNaN(d.getTime())) return selectedDayKey.value
+  return d.toLocaleDateString('nl-NL', { day: '2-digit', month: 'short', year: 'numeric' })
+})
+
+function formatPrimeLoad(val) {
+  const n = Number(val)
+  if (!Number.isFinite(n)) return '—'
+  return n.toFixed(1)
+}
+
+function handleDayClick(dateKey, activities, totalLoad) {
+  selectedDayKey.value = dateKey
+  selectedDayTotal.value = Number.isFinite(Number(totalLoad)) ? Number(totalLoad) : null
+  const list = Array.isArray(activities) ? activities : []
+  selectedDayActivities.value = list
+    .map((a) => {
+      const loadRaw = a._loadUsed ?? a.loadUsed ?? a.load ?? null
+      const loadNum = loadRaw != null && Number.isFinite(Number(loadRaw)) ? Number(loadRaw) : null
+      return {
+        ...a,
+        _primeLoad: loadNum,
+      }
+    })
+    .filter((a) => a._primeLoad != null)
+    .sort((a, b) => b._primeLoad - a._primeLoad)
+}
 
 const loadBalanceClass = computed(() => {
   const acwr = athlete.value?.metrics?.acwr
   if (acwr == null || !Number.isFinite(acwr)) return 'load-balance-unknown'
   if (acwr >= 0.8 && acwr <= 1.3) return 'load-balance-optimal'
   return 'load-balance-outside'
+})
+
+function getAcwr(row) {
+  const v = row.metrics?.acwr ?? row.acwr
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+function formatAcwr(row) {
+  const v = getAcwr(row)
+  return v != null ? v.toFixed(2) : '—'
+}
+
+function getLoadBalanceBand(row) {
+  const v = getAcwr(row)
+  if (v == null) return 'Geen data'
+  if (v < 0.8) return '<0.80 Onder'
+  if (v < 1.3) return '0.80–1.30 In balans'
+  if (v < 1.5) return '1.30–1.50 Hoog'
+  return '>1.50 Piek'
+}
+
+function loadBalanceClass(row) {
+  const v = getAcwr(row)
+  if (v == null) return 'load-balance-unknown'
+  if (v >= 0.8 && v <= 1.3) return 'load-balance-optimal'
+  return 'load-balance-outside'
+}
+
+function formatLoad7d(row) {
+  const v = row.metrics?.acuteLoad ?? row.acuteLoad
+  const n = Number(v)
+  return Number.isFinite(n) ? n.toFixed(1) : '—'
+}
+
+function formatReadiness(row) {
+  const v = row.metrics?.readiness ?? row.readiness
+  const n = Number(v)
+  return Number.isFinite(n) ? `${n}/10` : '—'
+}
+
+function parseMaybeTimestamp(v) {
+  if (!v) return null
+  if (typeof v?.toDate === 'function') {
+    const d = v.toDate()
+    return Number.isNaN(d.getTime()) ? null : d
+  }
+  if (v instanceof Date) {
+    return Number.isNaN(v.getTime()) ? null : v
+  }
+  if (typeof v === 'string' || typeof v === 'number') {
+    const d = new Date(v)
+    return Number.isNaN(d.getTime()) ? null : d
+  }
+  if (typeof v === 'object') {
+    const s = v._seconds ?? v.seconds
+    if (Number.isFinite(Number(s))) {
+      const d = new Date(Number(s) * 1000)
+      return Number.isNaN(d.getTime()) ? null : d
+    }
+  }
+  return null
+}
+
+const stravaMeta = computed(() => athlete.value?.stravaMeta || athlete.value?.strava || {})
+
+const stravaHasError = computed(() => {
+  const m = stravaMeta.value || {}
+  return !!(m.lastError || m.error)
+})
+
+const headerLastSyncText = computed(() => {
+  const m = stravaMeta.value || {}
+  const raw =
+    m.lastWebhookAt ||
+    m.lastSyncedAt ||
+    m.lastSyncAt ||
+    m.lastSuccessAt
+  const d = parseMaybeTimestamp(raw)
+  if (!d) return 'Laatste sync: —'
+  const ts = d.toLocaleDateString('nl-NL', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+  return `Laatste sync: ${ts}`
+})
+
+const headerLastSyncShort = computed(() => {
+  const m = stravaMeta.value || {}
+  const raw =
+    m.lastWebhookAt ||
+    m.lastSyncedAt ||
+    m.lastSyncAt ||
+    m.lastSuccessAt
+  const d = parseMaybeTimestamp(raw)
+  if (!d) return 'Geen sync'
+  return d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
+})
+
+function getLastCheckinDate(row) {
+  if (!row) return null
+  const candidates = [
+    row.lastCheckinDate,
+    row.last_checkin_date,
+    row.lastCheckin,
+    row.last_checkin,
+    row.metrics?.lastCheckinDate,
+    row.metrics?.last_checkin_date,
+  ]
+  for (const v of candidates) {
+    const d = parseMaybeTimestamp(v)
+    if (d) return d.toISOString().slice(0, 10)
+  }
+  const ts = row.metrics?.readiness_ts ?? row.readiness_ts
+  const d = parseMaybeTimestamp(ts)
+  return d ? d.toISOString().slice(0, 10) : null
+}
+
+function hasCheckinToday(row) {
+  const today = new Date().toISOString().slice(0, 10)
+  const last = getLastCheckinDate(row)
+  return !!last && last === today
+}
+
+const headerCheckinLabel = computed(() => {
+  if (!athlete.value) return 'Onbekend'
+  return hasCheckinToday(athlete.value) ? 'Vandaag' : 'Niet gedaan'
 })
 
 // --- HRV/RHR uit history_logs (zelfde diepgang als atleet-dashboard) ---
@@ -197,6 +466,37 @@ const rhrChartSeries = computed(() => {
   ]
 })
 
+// Cycle-aligned variants: dag-index 1..N voor snelle cycle-overview
+const cycleHrvSeries = computed(() => {
+  const points = hrvRhrPoints.value
+  const hrvVals = points.map((x) => x.hrv)
+  const hrv7 = points
+    .map((_, i) => ({ x: i + 1, y: rollingAvg(hrvVals, i, 7) }))
+    .filter((d) => d.y != null)
+  const hrv28 = points
+    .map((_, i) => ({ x: i + 1, y: rollingAvg(hrvVals, i, 28) }))
+    .filter((d) => d.y != null)
+  return [
+    { name: 'HRV 7d', data: hrv7 },
+    { name: 'HRV 28d', data: hrv28 },
+  ]
+})
+
+const cycleRhrSeries = computed(() => {
+  const points = hrvRhrPoints.value
+  const rhrVals = points.map((x) => x.rhr)
+  const rhr7 = points
+    .map((_, i) => ({ x: i + 1, y: rollingAvg(rhrVals, i, 7) }))
+    .filter((d) => d.y != null)
+  const rhr28 = points
+    .map((_, i) => ({ x: i + 1, y: rollingAvg(rhrVals, i, 28) }))
+    .filter((d) => d.y != null)
+  return [
+    { name: 'RHR 7d', data: rhr7 },
+    { name: 'RHR 28d', data: rhr28 },
+  ]
+})
+
 const hasHrvRhrData = computed(() => {
   const a = hrvChartSeries.value[0].data.length
   const b = hrvChartSeries.value[1].data.length
@@ -241,23 +541,74 @@ const eliteChartOptions = (colors) => ({
 const hrvChartOptions = computed(() => eliteChartOptions(['#22c55e', '#16a34a']))
 const rhrChartOptions = computed(() => eliteChartOptions(['#ef4444', '#dc2626']))
 
+const eliteCycleChartOptions = (colors) => ({
+  chart: {
+    type: 'line',
+    background: 'transparent',
+    toolbar: { show: false },
+    zoom: { enabled: false },
+    foreColor: 'rgba(255,255,255,0.75)',
+  },
+  theme: { mode: 'dark' },
+  stroke: { curve: 'smooth', width: 2 },
+  colors: colors || ['#22c55e', '#16a34a'],
+  grid: {
+    borderColor: 'rgba(255,255,255,0.08)',
+    strokeDashArray: 4,
+    xaxis: { lines: { show: false } },
+    yaxis: { lines: { show: true } },
+  },
+  xaxis: {
+    type: 'numeric',
+    labels: {
+      style: { colors: 'rgba(255,255,255,0.55)' },
+    },
+    axisBorder: { color: 'rgba(255,255,255,0.08)' },
+    axisTicks: { color: 'rgba(255,255,255,0.08)' },
+    title: {
+      text: 'Dag-index',
+      style: { color: 'rgba(255,255,255,0.55)', fontSize: '10px' },
+    },
+  },
+  yaxis: {
+    labels: { style: { colors: 'rgba(255,255,255,0.55)' } },
+  },
+  legend: {
+    labels: { colors: '#9ca3af' },
+    fontSize: '11px',
+  },
+  tooltip: { theme: 'dark' },
+})
+
+const hrvCycleChartOptions = computed(() => eliteCycleChartOptions(['#22c55e', '#16a34a']))
+const rhrCycleChartOptions = computed(() => eliteCycleChartOptions(['#ef4444', '#dc2626']))
+
+const displayHrvSeries = computed(() =>
+  showDebugTimelines.value ? hrvChartSeries.value : cycleHrvSeries.value
+)
+const displayRhrSeries = computed(() =>
+  showDebugTimelines.value ? rhrChartSeries.value : cycleRhrSeries.value
+)
+
+const displayHrvOptions = computed(() =>
+  showDebugTimelines.value ? hrvChartOptions.value : hrvCycleChartOptions.value
+)
+const displayRhrOptions = computed(() =>
+  showDebugTimelines.value ? rhrChartOptions.value : rhrCycleChartOptions.value
+)
+
 async function loadAthlete() {
   const id = athleteId.value
-  const email = authStore.user?.email
-  if (!id || !email) {
-    error.value = 'Atleet of coach niet gevonden.'
+  if (!id) {
+    error.value = 'Atleet niet gevonden.'
     return
   }
-  loading.value = true
   error.value = null
-  athlete.value = null
   try {
-    athlete.value = await getAthleteDetail(id, email)
+    await squadronStore.fetchAthleteDeepDive(id)
   } catch (e) {
     console.error('Deep dive load failed:', e)
     error.value = e?.response?.status === 404 ? 'Atleet niet gevonden.' : (e?.message || 'Laden mislukt.')
-  } finally {
-    loading.value = false
   }
 }
 
@@ -361,6 +712,68 @@ watch(athleteId, (id) => {
 
 .prime-load {
   color: q.$prime-gold;
+}
+
+.prime-load-section {
+  margin-bottom: 8px;
+}
+
+.prime-load-detail {
+  margin-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 10px;
+}
+
+.prime-load-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+
+.prime-load-date {
+  font-family: q.$typography-font-family;
+  font-size: 0.8rem;
+  color: #ffffff;
+}
+
+.prime-load-total {
+  font-family: q.$mono-font;
+  font-size: 0.8rem;
+}
+
+.prime-load-activity-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.prime-load-activity-table thead tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.prime-load-activity-table th {
+  font-family: q.$typography-font-family;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: q.$prime-gray;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-align: left;
+  padding: 4px 0;
+}
+
+.prime-load-activity-table th.th-right {
+  text-align: right;
+}
+
+.prime-load-activity-table tbody tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.prime-load-activity-table td {
+  padding: 4px 0;
+  vertical-align: middle;
 }
 
 .deep-dive-section-label {

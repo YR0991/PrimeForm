@@ -69,6 +69,8 @@ export async function fetchWeekReport(athleteId, opts = {}) {
       ...(opts.coachNotes != null && { coachNotes: opts.coachNotes }),
       ...(opts.directive != null && { directive: opts.directive }),
       ...(opts.injuries != null && { injuries: Array.isArray(opts.injuries) ? opts.injuries : [opts.injuries] }),
+      ...(opts.from != null && { from: opts.from }),
+      ...(opts.to != null && { to: opts.to }),
     }
     const res = await api.post('/api/ai/week-report', body)
     return res.data

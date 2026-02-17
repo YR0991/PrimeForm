@@ -7,7 +7,12 @@
   >
     <q-card class="week-report-card" flat dark>
       <q-card-section class="week-report-header">
-        <div class="week-report-title">WEEKRAPPORT</div>
+        <div class="week-report-header-main">
+          <div class="week-report-title">WEEKRAPPORT</div>
+          <div v-if="athleteName" class="week-report-subtitle">
+            {{ athleteName }}
+          </div>
+        </div>
         <q-btn flat round icon="close" color="grey" @click="emit('update:modelValue', false)" />
       </q-card-section>
 
@@ -69,13 +74,18 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { Notify, copyToClipboard } from 'quasar'
 import { fetchWeekReport } from '../../services/coachService'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   athleteId: { type: String, default: '' },
+  athleteName: { type: String, default: '' },
+  defaultWeekRange: {
+    type: Object,
+    default: null,
+  },
   coachNotes: { type: String, default: '' },
   directive: { type: String, default: '' },
   injuries: { type: String, default: '' },
@@ -87,6 +97,12 @@ const loading = ref(false)
 const reportMessage = ref('')
 const reportStats = ref('')
 
+const effectiveRange = computed(() => {
+  const r = props.defaultWeekRange || null
+  if (!r || !r.from || !r.to) return null
+  return { from: String(r.from).slice(0, 10), to: String(r.to).slice(0, 10) }
+})
+
 async function loadReport() {
   if (!props.athleteId) return
 
@@ -95,10 +111,13 @@ async function loadReport() {
   reportStats.value = ''
 
   try {
+    const range = effectiveRange.value
     const result = await fetchWeekReport(props.athleteId, {
       coachNotes: props.coachNotes || undefined,
       directive: props.directive || undefined,
       injuries: props.injuries ? [props.injuries] : undefined,
+      from: range?.from,
+      to: range?.to,
     })
     reportStats.value = result.stats || ''
     reportMessage.value = result.message || ''
@@ -118,48 +137,44 @@ async function regenerate() {
 }
 
 /**
- * Format markdown for WhatsApp: *bold*, headers as *Kop:*, listjes met witregels.
- * De weergave in het dialoog blijft gewoon Markdown.
+ * Maak plain text voor WhatsApp:
+ * - Geen markdown headers / bullets
+ * - Geen **vet** of _italic_ syntax
  */
-function formatForWhatsApp(markdownText) {
+function toPlainText(markdownText) {
   if (!markdownText || typeof markdownText !== 'string') return ''
   let s = markdownText.trim()
-  // Headers (### ## #) aan begin van regel → *Kop:*
-  s = s.replace(/^#{1,6}\s+(.+)$/gm, '*$1:*')
-  // Dubbele sterretjes **tekst** → enkele *tekst* (WhatsApp vet)
-  s = s.replace(/\*\*([^*]+)\*\*/g, '*$1*')
-  // Lijstjes: witregel vóór en na een blok met - punt
-  const lines = s.split('\n')
-  const out = []
-  let prevWasList = false
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    const isListLine = /^\s*-\s+/.test(line)
-    if (isListLine) {
-      if (!prevWasList && out.length > 0) out.push('')
-      out.push(line)
-      prevWasList = true
-    } else {
-      if (prevWasList) out.push('')
-      out.push(line)
-      prevWasList = false
-    }
-  }
-  return out.join('\n')
+  // Verwijder code fences
+  s = s.replace(/```[\s\S]*?```/g, '')
+  // Headers (# ...) verwijderen
+  s = s.replace(/^#{1,6}\s+/gm, '')
+  // Bullet-prefixes (-, *, +) verwijderen
+  s = s.replace(/^\s*[-*+]\s+/gm, '')
+  // Inline markdown-symbolen verwijderen
+  s = s.replace(/[*_`]/g, '')
+  // Meerdere lege regels samenvoegen
+  s = s.replace(/\n{3,}/g, '\n\n')
+  return s.trim()
 }
 
 function doCopy() {
-  const raw = [reportStats.value, reportMessage.value].filter(Boolean).join('\n\n')
+  const raw = (reportMessage.value || '').trim()
   if (!raw) {
     Notify.create({ type: 'warning', message: 'Geen inhoud om te kopiëren.' })
     return
   }
-  const text = formatForWhatsApp(raw)
-  copyToClipboard(text)
+  const text = toPlainText(raw)
+  const doNativeCopy = typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function'
+
+  const copyPromise = doNativeCopy
+    ? navigator.clipboard.writeText(text)
+    : copyToClipboard(text)
+
+  copyPromise
     .then(() => {
       Notify.create({
         type: 'positive',
-        message: 'Gekopieerd voor WhatsApp!',
+        message: 'Gekopieerd',
       })
     })
     .catch(() => {
@@ -208,6 +223,11 @@ watch(
   padding: 16px 20px;
 }
 
+.week-report-header-main {
+  display: flex;
+  flex-direction: column;
+}
+
 .week-report-title {
   font-family: q.$typography-font-family;
   font-weight: 700;
@@ -215,6 +235,13 @@ watch(
   color: #ffffff;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.week-report-subtitle {
+  margin-top: 2px;
+  font-family: q.$typography-font-family;
+  font-size: 0.75rem;
+  color: q.$prime-gray;
 }
 
 .week-report-loading {
