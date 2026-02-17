@@ -19,6 +19,8 @@ export const useAuthStore = defineStore('auth', {
     loading: false,
     error: null,
     isAuthReady: false,
+    /** Set when admin uses "Bekijk als atleet" — dashboard can load this user's data */
+    impersonatingUser: null,
   }),
 
   getters: {
@@ -116,9 +118,19 @@ export const useAuthStore = defineStore('auth', {
         this.role = null
         this.profileComplete = false
         this.error = null
+        this.impersonatingUser = null
       } finally {
         this.loading = false
       }
+    },
+
+    /** Admin: switch view to another user's dashboard (Shadow Mode) */
+    startImpersonation(user) {
+      this.impersonatingUser = user ?? null
+    },
+
+    clearImpersonation() {
+      this.impersonatingUser = null
     },
   },
 })
