@@ -4,7 +4,7 @@
       <!-- Header: Greeting + Cycle Phase -->
       <header class="pilot-header">
         <h1 class="pilot-greeting">
-          Goedemorgen<span v-if="greetingName">, {{ greetingName }}</span>
+          Hoi<span v-if="greetingName">, {{ greetingName }}</span>
         </h1>
         <div class="cycle-phase-badge">
           <template v-if="cycle.phaseLabel">
@@ -17,14 +17,47 @@
         </div>
       </header>
 
-      <!-- Primary KPI: Readiness / Daily Advice (Daily Brief) -->
-      <q-card class="kpi-card" flat>
-        <q-card-section class="kpi-section">
-          <div class="kpi-label">READINESS</div>
-          <div class="kpi-value">{{ data.readiness }}/10</div>
-          <div class="advice-badge" :class="`advice-${data.dailyAdvice?.toLowerCase()}`">
-            {{ data.dailyAdvice }}
-          </div>
+      <!-- Primary KPI: Vandaag — Opdracht (dagadvies) -->
+      <q-card class="kpi-card today-card" flat>
+        <q-card-section class="kpi-section today-section">
+          <div class="kpi-label">VANDAAG — OPDRACHT</div>
+
+          <template v-if="!todayHasMessage">
+            <div class="today-empty-text">Nog geen check-in vandaag.</div>
+            <q-btn
+              class="today-primary-btn"
+              unelevated
+              no-caps
+              @click="openCheckinDialog"
+            >
+              START CHECK-IN
+            </q-btn>
+          </template>
+
+          <template v-else>
+            <div class="today-status-row">
+              <span class="today-status-dot" :class="`today-status-${todayStatusLevel}`"></span>
+              <span class="today-status-label">
+                {{ todayStatusLabel }}
+              </span>
+            </div>
+
+            <ul class="today-bullets">
+              <li v-for="(line, idx) in todayBullets" :key="idx">
+                {{ line }}
+              </li>
+            </ul>
+
+            <q-btn
+              flat
+              dense
+              no-caps
+              class="today-secondary-btn"
+              @click="openCheckinResult"
+            >
+              BEKIJK CHECK-IN
+            </q-btn>
+          </template>
         </q-card-section>
       </q-card>
 
@@ -49,7 +82,7 @@
             </thead>
             <tbody>
               <tr v-for="(act, i) in activities" :key="act.id || i">
-                <td class="elite-data activity-date">{{ formatActivityDate(act) }}</td>
+                <td class="elite-data activity-date">{{ formatDate(act.startDate) }}</td>
                 <td>
                   <span class="activity-type-cell">
                     <q-icon :name="activityIcon(act.type)" size="14px" class="q-mr-xs" />
@@ -201,7 +234,7 @@
       </q-card>
 
       <!-- Check-in Dialog -->
-      <q-dialog v-model="showCheckinDialog" persistent>
+      <q-dialog v-model="showCheckinDialog" persistent class="checkin-dialog">
         <q-card class="checkin-card">
           <q-card-section>
             <div class="checkin-title">Dagelijkse check-in</div>
@@ -268,27 +301,12 @@
               />
             </div>
 
-            <div class="checkin-field">
-              <label class="checkin-label">Laatste menstruatie (YYYY-MM-DD)</label>
-              <q-input
-                v-model="checkinForm.lastPeriodDate"
-                type="date"
-                outlined
-                dark
-                dense
-              />
-            </div>
-
-            <div class="checkin-field">
-              <label class="checkin-label">Gemiddelde cyclusduur (dagen)</label>
-              <q-input
-                v-model.number="checkinForm.cycleLength"
-                type="number"
-                outlined
-                dark
-                dense
-                :min="21"
-                :max="35"
+            <div class="checkin-field checkin-row">
+              <q-checkbox
+                v-model="checkinForm.isSickOrInjured"
+                color="red-5"
+                keep-color
+                label="Handrem (ziek of geblesseerd)"
               />
             </div>
 
@@ -364,6 +382,7 @@ const data = ref({
   cycleLength: 28,
   phaseDay: null,
   ghostComparison: null,
+  todayLog: null,
 })
 
 const menstruationLengthDefault = 5
@@ -409,6 +428,65 @@ const greetingName = computed(() => {
   if (localPart) return localPart
 
   return ''
+})
+
+const todayLog = computed(() => data.value.todayLog || null)
+
+function extractBullets(aiMessage) {
+  if (!aiMessage || typeof aiMessage !== 'string') return []
+  const text = aiMessage.trim()
+  if (!text) return []
+
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+
+  const bulletLines = lines.filter((l) => l.startsWith('-') || l.startsWith('•'))
+
+  let bullets
+  if (bulletLines.length) {
+    bullets = bulletLines.map((l) => l.replace(/^[-•]\s*/, '').trim()).filter(Boolean)
+  } else {
+    const sentenceMatches = text.match(/[^.!?]+[.!?]?/g) || []
+    bullets = sentenceMatches.map((s) => s.trim()).filter(Boolean)
+  }
+
+  return bullets.slice(0, 5)
+}
+
+const todayHasMessage = computed(() => {
+  const msg = todayLog.value?.aiMessage
+  return typeof msg === 'string' && msg.trim().length > 0
+})
+
+const todayBullets = computed(() => {
+  if (!todayHasMessage.value) return []
+  return extractBullets(todayLog.value.aiMessage)
+})
+
+function normalizeTodayStatus(raw) {
+  if (!raw) return null
+  const s = String(raw).trim().toUpperCase()
+  if (s === 'PUSH') return 'push'
+  if (s === 'MAINTAIN') return 'maintain'
+  if (s === 'RECOVER') return 'recover'
+  if (s === 'REST') return 'rest'
+  return null
+}
+
+const todayStatusLevel = computed(() => {
+  const raw = todayLog.value?.recommendation?.status || todayLog.value?.status
+  return normalizeTodayStatus(raw) || 'maintain'
+})
+
+const todayStatusLabel = computed(() => {
+  if (!todayHasMessage.value) return '—'
+  const lvl = todayStatusLevel.value
+  if (lvl === 'push') return 'PUSH'
+  if (lvl === 'recover') return 'RECOVER'
+  if (lvl === 'rest') return 'REST'
+  return 'MAINTAIN'
 })
 
 const stravaMeta = computed(() => data.value.stravaMeta || {})
@@ -464,8 +542,7 @@ const checkinForm = ref({
   hrv: null,
   rhr: null,
   menstruationStarted: false,
-  lastPeriodDate: '',
-  cycleLength: 28,
+  isSickOrInjured: false,
 })
 
 function parseFirestoreDate(value) {
@@ -489,14 +566,26 @@ function parseFirestoreDate(value) {
   return null
 }
 
-function formatActivityDate(act) {
-  const raw =
-    act.start ||
-    act.start_date_local ||
-    act.start_date ||
-    act.date ||
-    act.timestamp
-  const d = parseFirestoreDate(raw)
+function toJsDate(v) {
+  if (!v) return null
+  if (typeof v?.toDate === 'function') return v.toDate()
+  if (v instanceof Date) return v
+  if (typeof v === 'string' || typeof v === 'number') {
+    const d = new Date(v)
+    return isNaN(d.getTime()) ? null : d
+  }
+  if (typeof v === 'object') {
+    const s = v._seconds ?? v.seconds
+    if (Number.isFinite(Number(s))) {
+      const d = new Date(Number(s) * 1000)
+      return isNaN(d.getTime()) ? null : d
+    }
+  }
+  return null
+}
+
+function formatDate(value) {
+  const d = toJsDate(value)
   if (!d) return '—'
   return d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
 }
@@ -544,16 +633,27 @@ function normalizeStravaActivities(list) {
   const enriched = items
     .filter(isStravaActivity)
     .map((a, idx) => {
-      const raw =
+      const start_date_raw =
         a.start_date_local ||
         a.start_date ||
+        a.date ||
+        null
+      const preferredDate = toJsDate(start_date_raw)
+      const rawFallback =
         a.start ||
+        a.start_date_local ||
+        a.start_date ||
         a.date ||
         a.timestamp
-      const d = parseFirestoreDate(raw)
+      const d = preferredDate || parseFirestoreDate(rawFallback)
       return {
         src: a,
         start: d,
+        startDate: preferredDate
+          ? preferredDate.toISOString()
+          : d
+            ? d.toISOString()
+            : null,
         index: idx,
       }
     })
@@ -566,6 +666,7 @@ function normalizeStravaActivities(list) {
     return {
       id: a.id || a.activityId || a._id || x.index || i,
       start: x.start,
+      startDate: x.startDate,
       type: a.type || 'Workout',
       name: a.name || a.workout_name || '',
       primeLoad: extractPrimeLoad(a),
@@ -840,28 +941,59 @@ function openCheckinDialog() {
   checkinError.value = ''
   checkinResult.value = null
 
-  const profile = authStore.profile || {}
-  const cd = profile.cycleData || {}
-  const lastPeriod =
-    checkinForm.value.lastPeriodDate ||
-    profile.lastPeriodDate ||
-    cd.lastPeriodDate ||
-    cd.lastPeriod ||
-    ''
-  const cycleLength =
-    checkinForm.value.cycleLength ||
-    profile.cycleLength ||
-    cd.avgDuration ||
-    28
-
   checkinForm.value = {
     readiness: checkinForm.value.readiness ?? data.value.readiness ?? 7,
     sleep: checkinForm.value.sleep ?? 8,
     hrv: checkinForm.value.hrv,
     rhr: checkinForm.value.rhr,
     menstruationStarted: checkinForm.value.menstruationStarted || false,
-    lastPeriodDate: lastPeriod,
-    cycleLength: Number.isFinite(Number(cycleLength)) ? Number(cycleLength) : 28,
+    isSickOrInjured: checkinForm.value.isSickOrInjured || false,
+  }
+
+  showCheckinDialog.value = true
+}
+
+function openCheckinResult() {
+  const tl = todayLog.value
+  if (!tl) {
+    openCheckinDialog()
+    return
+  }
+
+  checkinError.value = ''
+
+  checkinResult.value = {
+    recommendation: {
+      status: tl.recommendation?.status || tl.status || null,
+    },
+    status: tl.status || null,
+    aiMessage: tl.aiMessage || '',
+  }
+
+  const readinessVal =
+    tl.metrics?.readiness ??
+    tl.readiness ??
+    checkinForm.value.readiness
+  const hrvVal =
+    tl.metrics?.hrv ??
+    tl.hrv ??
+    checkinForm.value.hrv
+  const rhrVal =
+    tl.metrics?.rhr ??
+    tl.rhr ??
+    checkinForm.value.rhr
+  const sleepVal =
+    tl.metrics?.sleep ??
+    tl.sleep ??
+    checkinForm.value.sleep
+
+  checkinForm.value = {
+    ...checkinForm.value,
+    readiness: readinessVal ?? checkinForm.value.readiness,
+    hrv: hrvVal ?? checkinForm.value.hrv,
+    rhr: rhrVal ?? checkinForm.value.rhr,
+    sleep: sleepVal,
+    isSickOrInjured: Boolean(tl.isSickOrInjured ?? checkinForm.value.isSickOrInjured),
   }
 
   showCheckinDialog.value = true
@@ -879,8 +1011,6 @@ async function submitCheckin() {
   const hrvVal = Number(checkinForm.value.hrv)
   const rhrVal = Number(checkinForm.value.rhr)
   const sleepVal = checkinForm.value.sleep != null ? Number(checkinForm.value.sleep) : NaN
-  const cycleLenVal = Number(checkinForm.value.cycleLength)
-  let lastPeriodDate = (checkinForm.value.lastPeriodDate || '').toString().trim()
 
   if (!Number.isFinite(readinessVal) || readinessVal < 1 || readinessVal > 10) {
     checkinError.value = 'Readiness moet tussen 1 en 10 liggen.'
@@ -897,28 +1027,7 @@ async function submitCheckin() {
     return
   }
 
-  if (!Number.isFinite(cycleLenVal) || cycleLenVal < 21 || cycleLenVal > 35) {
-    checkinError.value = 'Gemiddelde cyclusduur moet tussen 21 en 35 dagen liggen.'
-    return
-  }
-
-  if (!lastPeriodDate) {
-    if (!checkinForm.value.menstruationStarted) {
-      checkinError.value = 'Vul je laatste menstruatiedatum in.'
-      return
-    }
-    // Als menstruatie vandaag gestart is, gebruik vandaag als Day 1
-    lastPeriodDate = new Date().toISOString().slice(0, 10)
-  }
-
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(lastPeriodDate)) {
-    checkinError.value = 'Gebruik het formaat YYYY-MM-DD voor je laatste menstruatie.'
-    return
-  }
-
   const body = {
-    lastPeriodDate,
-    cycleLength: cycleLenVal,
     sleep: Number.isFinite(sleepVal) ? sleepVal : undefined,
     rhr: rhrVal,
     rhrBaseline: Number(effectiveRhrBaseline.value) || rhrVal,
@@ -926,6 +1035,7 @@ async function submitCheckin() {
     hrvBaseline: Number(effectiveHrvBaseline.value) || hrvVal,
     readiness: readinessVal,
     menstruationStarted: Boolean(checkinForm.value.menstruationStarted),
+    isSickOrInjured: Boolean(checkinForm.value.isSickOrInjured),
   }
 
   checkinLoading.value = true
@@ -998,6 +1108,12 @@ async function loadDashboard() {
         payload.ghostComparison ??
         data.value.ghostComparison ??
         null
+      const todayLogPayload =
+        payload.todayLog ??
+        payload.today_log ??
+        payload.today ??
+        data.value.todayLog ??
+        null
       data.value = {
         ...data.value,
         readiness: readiness ?? data.value.readiness,
@@ -1013,6 +1129,7 @@ async function loadDashboard() {
         cycleLength,
         phaseDay,
         ghostComparison,
+        todayLog: todayLogPayload,
       }
       historyLogs.value = payload.history_logs || []
     }
@@ -1331,8 +1448,6 @@ onMounted(async () => {
 }
 
 .checkin-card {
-  background: q.$prime-black;
-  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: q.$radius-sm;
   width: 100%;
   max-width: 480px;
@@ -1620,5 +1735,14 @@ onMounted(async () => {
 
 .apex-wrap :deep(.apexcharts-canvas) {
   border-radius: 2px;
+}
+
+.checkin-dialog .q-dialog__backdrop {
+  background: rgba(0, 0, 0, 0.75) !important;
+}
+
+.checkin-dialog .q-card {
+  background: #0d0f14 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 </style>
