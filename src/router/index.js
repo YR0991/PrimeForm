@@ -37,13 +37,13 @@ export default defineRouter(function (/* { store, ssrContext } */) {
 
     const authStore = useAuthStore()
 
-    // Wacht op Auth: tot Firebase weet wie de gebruiker is
+    // Auth Sync: wacht tot rol bekend is (init haalt profile + role op)
     if (!authStore.isAuthReady) {
       if (typeof authStore.init === 'function') await authStore.init()
       if (!authStore.isAuthReady) return true
     }
 
-    // 1. Niet ingelogd? → /login
+    // Niet ingelogd? → /login
     if (!authStore.user) {
       if (to.path !== '/login') {
         return { path: '/login', query: to.path !== '/' ? { redirect: to.fullPath } : undefined }
@@ -51,20 +51,15 @@ export default defineRouter(function (/* { store, ssrContext } */) {
       return true
     }
 
-    // 2. Admin? Hoogste prioriteit — nooit door profile guard. Altijd toegang; bij / → /admin
-    if (authStore.isAdmin) {
-      if (to.path === '/') return { path: '/admin' }
+    // Role Bypass: Coach en Admin gaan nooit naar /intake; direct door
+    if (authStore.isCoach || authStore.isAdmin) {
+      if (to.path === '/') return { path: authStore.isAdmin ? '/admin' : '/coach' }
       return true
     }
 
-    // 3. Coach? Altijd toegang; bij / → /coach
-    if (authStore.isCoach) {
-      if (to.path === '/') return { path: '/coach' }
-      return true
-    }
-
-    // 4. Atleet (user): check profileComplete. false → /intake, true en / → /dashboard
-    if (to.path === '/' || to.path === '/dashboard') {
+    // Alleen voor atleten (rol 'user'): profileComplete-check; coaches/admins zijn hier al doorgelaten
+    const isAthlete = authStore.role === 'user' || (!authStore.isAdmin && !authStore.isCoach)
+    if (isAthlete && (to.path === '/' || to.path === '/dashboard')) {
       if (authStore.profileComplete === false) return { path: '/intake' }
       if (authStore.profileComplete === true && to.path === '/') return { path: '/dashboard' }
     }

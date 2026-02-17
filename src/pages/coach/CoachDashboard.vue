@@ -48,14 +48,15 @@
             </q-td>
           </template>
 
-          <template #body-cell-acwr="props">
+          <template #body-cell-loadBalance="props">
             <q-td :props="props">
               <span
-                class="acwr-cell elite-data"
-                :class="`acwr-${props.row.acwrStatus}`"
+                class="load-balance-cell elite-data"
+                :class="`load-balance-${props.row.loadBalanceStatus}`"
               >
-                {{ props.row.acwr?.toFixed(2) }}
+                {{ props.row.loadBalance != null ? props.row.loadBalance.toFixed(2) : '—' }}
               </span>
+              <span v-if="props.row.loadBalanceStatus === 'optimal'" class="load-balance-hint">Optimale opbouw</span>
             </q-td>
           </template>
 
@@ -80,81 +81,20 @@
           </template>
         </q-table>
       </q-card>
-
-      <!-- Deep Dive Modal -->
-      <q-dialog v-model="deepDiveOpen" position="right" full-height>
-        <q-card class="deep-dive-card" flat>
-          <q-card-section class="deep-dive-header">
-            <div class="deep-dive-title">{{ selectedAthlete?.name }}</div>
-            <q-btn flat round icon="close" @click="deepDiveOpen = false" />
-          </q-card-section>
-          <q-card-section v-if="selectedAthlete" class="deep-dive-body">
-            <div class="deep-dive-row">
-              <span class="label">Cyclus</span>
-              <span class="value elite-data">{{ selectedAthlete.cyclePhase }} · D{{ selectedAthlete.cycleDay }}</span>
-            </div>
-            <div class="deep-dive-row">
-              <span class="label">ACWR</span>
-              <span class="value elite-data" :class="`acwr-${selectedAthlete.acwrStatus}`">
-                {{ selectedAthlete.acwr?.toFixed(2) }}
-              </span>
-            </div>
-            <div class="deep-dive-row">
-              <span class="label">Prime Load 7d</span>
-              <span class="value elite-data">{{ selectedAthlete.primeLoad7d }}</span>
-            </div>
-            <div class="deep-dive-row">
-              <span class="label">Readiness</span>
-              <span class="value elite-data">{{ selectedAthlete.readiness }}/10</span>
-            </div>
-            <div class="deep-dive-section-label">ACTIVITEITEN (Strava vs Prime)</div>
-            <div
-              v-for="(act, i) in selectedAthlete.activities"
-              :key="i"
-              class="deep-dive-activity"
-            >
-              <span class="elite-data">{{ act.date }}</span>
-              <span class="activity-source">
-                <q-badge
-                  v-if="act.source === 'manual' || act.source === 'primeform'"
-                  class="source-badge primeform-badge"
-                  outline
-                  dense
-                >
-                  PrimeForm
-                </q-badge>
-                <q-badge
-                  v-else
-                  class="source-badge strava-badge"
-                  outline
-                  dense
-                >
-                  Strava
-                </q-badge>
-                <span class="activity-type">{{ act.type }}</span>
-              </span>
-              <span class="elite-data">Raw {{ act.rawLoad }}</span>
-              <span class="elite-data" style="color: #fbbf24">Prime {{ act.load }}</span>
-            </div>
-          </q-card-section>
-        </q-card>
-      </q-dialog>
     </div>
   </q-page>
 </template>
 
 <script setup>
 import { ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth.js'
 import { getCoachSquad } from '../../services/coachService.js'
-import { getAthleteDeepDive } from '../../services/userService.js'
 
-// E-mail alleen uit authStore.user.email (geen localStorage)
+const router = useRouter()
 const authStore = useAuthStore()
 const loading = ref(false)
 const squad = ref([])
-const deepDiveOpen = ref(false)
-const selectedAthlete = ref(null)
 
 const columns = [
   {
@@ -170,9 +110,9 @@ const columns = [
     align: 'left',
   },
   {
-    name: 'acwr',
-    label: 'ACWR',
-    field: 'acwr',
+    name: 'loadBalance',
+    label: 'BELASTINGSBALANS',
+    field: 'loadBalance',
     align: 'center',
     sortable: true,
   },
@@ -222,14 +162,8 @@ const loadSquad = async () => {
   }
 }
 
-const onRowClick = async (_evt, row) => {
-  selectedAthlete.value = null
-  deepDiveOpen.value = true
-  try {
-    selectedAthlete.value = await getAthleteDeepDive(row.id)
-  } catch (e) {
-    console.error('Deep dive failed:', e)
-  }
+const onRowClick = (_evt, row) => {
+  router.push({ name: 'CoachDeepDive', params: { id: row.id } })
 }
 
 // Pas laden zodra auth klaar is én coach-e-mail uit authStore beschikbaar is (geen localStorage)
@@ -326,16 +260,25 @@ watch(
   color: q.$prime-gold;
 }
 
-.acwr-cell.acwr-spike {
-  color: q.$status-recover;
-}
-
-.acwr-cell.acwr-undertraining {
-  color: q.$status-maintain;
-}
-
-.acwr-cell.acwr-sweet {
+.load-balance-cell.load-balance-optimal {
   color: q.$status-push;
+}
+
+.load-balance-cell.load-balance-outside {
+  color: #f97316;
+}
+
+.load-balance-cell.load-balance-unknown {
+  color: q.$prime-gray;
+}
+
+.load-balance-hint {
+  display: block;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: q.$status-push;
+  margin-top: 2px;
 }
 
 .compliance-badge {
@@ -358,100 +301,5 @@ watch(
 .compliance-badge.pending {
   color: q.$prime-gray;
   border-color: rgba(255, 255, 255, 0.2);
-}
-
-/* Deep Dive Modal */
-.deep-dive-card {
-  background: q.$prime-black !important;
-  border-left: 1px solid rgba(255, 255, 255, 0.08) !important;
-  min-width: 360px;
-  max-width: 420px;
-}
-
-.deep-dive-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 20px;
-}
-
-.deep-dive-title {
-  font-family: q.$typography-font-family;
-  font-weight: 700;
-  font-size: 1rem;
-  color: #ffffff;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.deep-dive-body {
-  padding: 20px;
-}
-
-.deep-dive-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.deep-dive-row .label {
-  font-family: q.$typography-font-family;
-  font-size: 0.7rem;
-  color: q.$prime-gray;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.deep-dive-row .value {
-  font-family: q.$mono-font;
-  font-size: 0.9rem;
-  color: #ffffff;
-}
-
-.deep-dive-section-label {
-  font-family: q.$typography-font-family;
-  font-size: 0.65rem;
-  font-weight: 700;
-  color: q.$prime-gray;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin: 20px 0 12px 0;
-}
-
-.deep-dive-activity {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 0;
-  font-size: 0.8rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-}
-
-.activity-source {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.source-badge {
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.6rem;
-  border-radius: 2px;
-}
-
-.primeform-badge {
-  border-color: rgba(255, 255, 255, 0.6);
-  color: rgba(249, 250, 251, 0.9);
-}
-
-.strava-badge {
-  border-color: #fc4c02;
-  color: #fc4c02;
-}
-
-.activity-type {
-  color: #e5e7eb;
 }
 </style>

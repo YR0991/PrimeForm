@@ -21,6 +21,9 @@ export const useAuthStore = defineStore('auth', {
     isAuthReady: false,
     /** Set when admin uses "Bekijk als atleet" — dashboard can load this user's data */
     impersonatingUser: null,
+    /** Strava: from GET /api/profile data.strava */
+    stravaConnected: false,
+    stravaLastSyncAt: null,
   }),
 
   getters: {
@@ -68,6 +71,8 @@ export const useAuthStore = defineStore('auth', {
         if (data) {
           this.role = data.role ?? data.profile?.role ?? this.role
           this.profileComplete = data.profileComplete === true
+          this.stravaConnected = data.strava?.connected === true
+          this.stravaLastSyncAt = data.strava?.lastSuccessAt ?? null
         }
       } catch {
         // Keep existing state on profile fetch failure
@@ -119,6 +124,8 @@ export const useAuthStore = defineStore('auth', {
         this.profileComplete = false
         this.error = null
         this.impersonatingUser = null
+        this.stravaConnected = false
+        this.stravaLastSyncAt = null
       } finally {
         this.loading = false
       }

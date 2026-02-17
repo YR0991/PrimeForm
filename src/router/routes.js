@@ -20,9 +20,21 @@ const routes = [
     children: [{ path: '', component: () => import('pages/LoginPage.vue') }],
   },
   {
+    path: '/auth/strava/callback',
+    component: () => import('layouts/MainLayout.vue'),
+    children: [{ path: '', component: () => import('pages/auth/StravaCallbackPage.vue') }],
+  },
+  {
     path: '/coach',
     component: () => import('layouts/MainLayout.vue'),
-    children: [{ path: '', component: () => import('pages/coach/CoachDashboard.vue') }],
+    children: [
+      { path: '', component: () => import('pages/coach/CoachDashboard.vue') },
+      {
+        path: 'athlete/:id',
+        name: 'CoachDeepDive',
+        component: () => import('pages/coach/CoachDeepDive.vue'),
+      },
+    ],
   },
   {
     path: '/admin',
