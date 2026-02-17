@@ -233,15 +233,6 @@ const columns = [
   },
 ]
 
-const getInitials = (name) => {
-  return name
-    ?.split(' ')
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase() || '?'
-}
-
 const getLevelIcon = (level) => {
   if (level === 'elite') return 'emoji_events'
   if (level === 'active') return 'directions_run'

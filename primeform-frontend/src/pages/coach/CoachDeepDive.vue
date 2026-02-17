@@ -431,11 +431,6 @@ function parseMaybeTimestamp(v) {
 
 const stravaMeta = computed(() => athlete.value?.stravaMeta || athlete.value?.strava || {})
 
-const stravaHasError = computed(() => {
-  const m = stravaMeta.value || {}
-  return !!(m.lastError || m.error)
-})
-
 const headerLastSyncText = computed(() => {
   const m = stravaMeta.value || {}
   const raw =
@@ -453,18 +448,6 @@ const headerLastSyncText = computed(() => {
     minute: '2-digit',
   })
   return `Laatste sync: ${ts}`
-})
-
-const headerLastSyncShort = computed(() => {
-  const m = stravaMeta.value || {}
-  const raw =
-    m.lastWebhookAt ||
-    m.lastSyncedAt ||
-    m.lastSyncAt ||
-    m.lastSuccessAt
-  const d = parseMaybeTimestamp(raw)
-  if (!d) return 'Geen sync'
-  return d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
 })
 
 function getLastCheckinDate(row) {

@@ -1110,14 +1110,6 @@ const handleDeleteUser = (user) => {
   })
 }
 
-// KPIs
-const systemCapacity = vueComputed(() => adminStore.systemCapacity || 0)
-const systemLoadPercent = vueComputed(() => {
-  if (!systemCapacity.value) return 0
-  const total = adminStore.stats?.totalMembers ?? 0
-  return (total / systemCapacity.value) * 100
-})
-
 // Redirect non-admins (router also guards /admin; this handles late-load or direct mount)
 watch(
   () => authStore.isAuthReady && !authStore.isAdmin,
