@@ -1,9 +1,11 @@
 // PRIMEFORM ELITE THEME - Global Styles
 // -------------------------------------
-// F1 Telemetry aesthetic. No Material Design shadows or rounded corners.
+// Financial Terminal / F1 Telemetry aesthetic.
+// No Material Design shadows or rounded corners.
 
 @use './quasar.variables' as q;
 
+// --- Body & Layout ---
 body,
 .q-layout,
 .q-page-container {
@@ -14,6 +16,7 @@ body {
   color: #ffffff;
 }
 
+// --- Cards: Panels with Borders (no shadows) ---
 .q-card {
   background: q.$prime-surface !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
@@ -25,13 +28,38 @@ body {
   color: #ffffff;
 }
 
+// --- Elite Dark: force transparent backgrounds (fix white blocks) ---
+.q-card,
+.q-item,
+.q-field--filled .q-field__control,
+.q-banner {
+  background-color: transparent !important;
+}
+
+.q-stepper,
+.q-stepper__header,
+.q-stepper__content {
+  background-color: transparent !important;
+}
+
+/* Specifically fix the login 'awaiting identity' block */
+.q-card__section {
+  background: transparent !important;
+}
+
+// --- Mono font for numbers, dates, KPIs ---
 .elite-data,
 .stat-value,
+.alert-count,
 .admin-table .q-td,
-.q-table .q-td {
+.report-stats-table .q-td,
+.import-table .q-td,
+.history-entry,
+.intake-value {
   font-family: q.$mono-font !important;
 }
 
+// --- Q-Table: Data Grid ---
 .q-table {
   background: transparent !important;
 
@@ -42,12 +70,13 @@ body {
     font-size: 0.75rem !important;
     font-weight: 700 !important;
     text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
+    letter-spacing: 0.1em !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
   }
 
   tbody tr {
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    transition: background 0.15s ease;
   }
 
   tbody tr:hover {
@@ -60,6 +89,7 @@ body {
   }
 }
 
+// --- Status Badge (utility class, replaces q-chip for status) ---
 .status-badge {
   display: inline-block;
   border: 1px solid;
@@ -90,6 +120,7 @@ body {
   background: rgba(249, 115, 22, 0.1);
 }
 
+// --- Q-Drawer (Sidebar) ---
 .q-drawer {
   background: rgba(5, 5, 5, 0.95) !important;
   backdrop-filter: blur(10px);
@@ -102,6 +133,7 @@ body {
   background: rgba(251, 191, 36, 0.05) !important;
 }
 
+// --- Q-Input ---
 .q-field--outlined .q-field__control:before {
   border-color: rgba(255, 255, 255, 0.2) !important;
   border-radius: q.$radius-sm !important;
@@ -125,6 +157,8 @@ body {
   border-radius: q.$radius-sm !important;
 }
 
+// --- Q-Banner (sharp corners) ---
+.elite-banner,
 .q-banner {
   border-radius: q.$radius-sm !important;
 }

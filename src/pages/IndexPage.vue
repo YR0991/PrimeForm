@@ -3,16 +3,19 @@
     <div class="dashboard-container">
       
       <!-- Header -->
-      <div class="header">
-        <h1 class="header-title">PRIMEFORM</h1>
-        <q-btn
-          flat
-          round
-          icon="settings"
-          color="white"
-          class="settings-btn"
-          @click="settingsDialog = true"
-        />
+      <div class="dashboard-header">
+        <div class="brand-row">
+          <h1 class="brand">PRIMEFORM</h1>
+          <q-btn
+            flat
+            round
+            icon="settings"
+            color="white"
+            class="settings-btn"
+            @click="settingsDialog = true"
+          />
+        </div>
+        <div class="subtitle">Atleet dashboard</div>
       </div>
 
       <!-- Cycle Tracker Card -->
@@ -59,20 +62,21 @@
         <div class="input-group">
           <div class="input-header">
             <span class="input-label">Readiness</span>
-            <span class="input-value">{{ readiness }}/10</span>
+            <span class="input-value mono">{{ readiness }}/10 — {{ readinessDescription }}</span>
           </div>
           <q-slider
             v-model="readiness"
             :min="1"
             :max="10"
             color="#fbbf24"
+            track-color="grey-8"
             class="custom-slider"
           />
-          <div
-            class="readiness-description"
-            :class="readinessColorClass"
-          >
-            {{ readinessDescription }}
+          <div class="readiness-scale-hints mono">
+            <div class="readiness-scale-row"><span class="readiness-scale-label">1–3:</span><span class="readiness-scale-text">Herstel / Buiten gebruik</span></div>
+            <div class="readiness-scale-row"><span class="readiness-scale-label">4–6:</span><span class="readiness-scale-text">Lage energie / Matig</span></div>
+            <div class="readiness-scale-row"><span class="readiness-scale-label">7–8:</span><span class="readiness-scale-text">Stabiel / Heel goed</span></div>
+            <div class="readiness-scale-row"><span class="readiness-scale-label">9–10:</span><span class="readiness-scale-text">Topvorm / Onstuitbaar</span></div>
           </div>
         </div>
 
@@ -150,8 +154,8 @@
       <transition name="fade-scale">
         <div v-if="advice || loading" class="advice-card" :class="statusGlowClass">
           <!-- Premium Loading State -->
-          <q-inner-loading :showing="loading" color="#D4AF37">
-            <q-spinner-gears size="64px" color="#D4AF37" />
+          <q-inner-loading :showing="loading" color="#fbbf24">
+            <q-spinner-gears size="64px" color="#fbbf24" />
             <div class="loading-message">{{ currentLoadingMessage }}</div>
           </q-inner-loading>
 
@@ -355,13 +359,6 @@ const readinessDescriptions = {
 const readinessDescription = computed(() => {
   const value = Math.round(readiness.value)
   return readinessDescriptions[value] || ''
-})
-
-const readinessColorClass = computed(() => {
-  const value = Math.round(readiness.value)
-  if (value <= 4) return 'readiness-low'
-  if (value <= 7) return 'readiness-medium'
-  return 'readiness-high'
 })
 
 // Settings state
@@ -645,7 +642,7 @@ const hrvChartOptions = computed(() => ({
   stroke: {
     curve: 'smooth',
     width: 3,
-    colors: ['#D4AF37']
+    colors: ['#fbbf24']
   },
   fill: {
     type: 'gradient',
@@ -655,7 +652,7 @@ const hrvChartOptions = computed(() => ({
       opacityTo: 0.04,
       stops: [0, 70, 100]
     },
-    colors: ['#D4AF37']
+    colors: ['#fbbf24']
   },
   grid: {
     borderColor: 'rgba(255,255,255,0.08)',
@@ -858,10 +855,10 @@ const renderMarkdown = (text) => {
 </script>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@1,900&family=Inter:wght@300;400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@1,900&family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 
 .dashboard-page {
-  background: #000000;
+  background: #050505;
   min-height: 100vh;
   padding: 24px 16px;
 }
@@ -874,49 +871,61 @@ const renderMarkdown = (text) => {
   gap: 20px;
 }
 
-/* Header */
-.header {
+/* Header (Elite Dark — brand + subtitle) */
+.dashboard-header {
+  margin-bottom: 16px;
+}
+
+.brand-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
-  position: relative;
 }
 
-.header-title {
-  font-family: 'Montserrat', sans-serif;
-  font-weight: 900;
+.brand {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 700;
   font-style: italic;
-  font-size: 2.5rem;
-  color: #fbbf24;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-size: 0.9rem;
+  color: #D4AF37;
   margin: 0;
-  letter-spacing: 2px;
-  flex: 1;
-  text-align: center;
+}
+
+.subtitle {
+  margin-top: 4px;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #F5F5F5;
 }
 
 .settings-btn {
-  position: absolute;
-  right: 0;
+  flex-shrink: 0;
 }
 
-/* Glass Card */
+.mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* Glass Card (Elite Dark: 2px radius, 0.08 border) */
 .glass-card {
-  background: rgba(18, 18, 18, 0.8);
+  background: rgba(255, 255, 255, 0.03);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
   padding: 24px;
 }
 
 .card-label {
-  font-family: 'Inter', sans-serif;
-  font-weight: 400;
-  font-size: 0.875rem;
-  color: rgba(255, 255, 255, 0.6);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  color: #D4AF37;
   margin-bottom: 16px;
 }
 
@@ -944,7 +953,7 @@ const renderMarkdown = (text) => {
 }
 
 .input-value {
-  font-family: 'Inter', sans-serif;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-weight: 400;
   font-size: 1rem;
   color: #fbbf24;
@@ -952,7 +961,7 @@ const renderMarkdown = (text) => {
 
 .divider {
   height: 1px;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
   margin: 20px 0;
 }
 
@@ -1027,26 +1036,32 @@ const renderMarkdown = (text) => {
 
 .custom-slider :deep(.q-slider__thumb) {
   background: #fbbf24;
-  border: 2px solid #000000;
+  border: 2px solid #050505;
 }
 
-.readiness-description {
-  margin-top: 8px;
-  font-family: 'Inter', sans-serif;
-  font-weight: 500;
-  font-size: 0.9rem;
+/* Readiness scale hints (reference: check-in dialog) */
+.readiness-scale-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 10px;
+  font-size: 0.7rem;
+  color: rgba(156, 163, 175, 0.9);
 }
 
-.readiness-low {
-  color: #f97373;
+.readiness-scale-row {
+  display: flex;
+  gap: 4px;
 }
 
-.readiness-medium {
-  color: #fb923c;
+.readiness-scale-label {
+  width: 56px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
-.readiness-high {
-  color: #4ade80;
+.readiness-scale-text {
+  flex: 1;
 }
 
 .special-flags {
@@ -1060,18 +1075,18 @@ const renderMarkdown = (text) => {
   color: rgba(255, 255, 255, 0.95);
 }
 
-/* Action Button */
+/* Action Button (Elite Dark: 2px, letter-spacing) */
 .action-button {
   width: 100%;
   background: #fbbf24 !important;
-  color: #000000 !important;
-  font-family: 'Inter', sans-serif;
+  color: #050505 !important;
+  font-family: 'Inter', system-ui, sans-serif;
   font-weight: 700;
   font-size: 1rem;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.08em;
   padding: 16px;
-  border-radius: 4px;
+  border-radius: 2px;
   border: none;
 }
 
@@ -1079,13 +1094,13 @@ const renderMarkdown = (text) => {
   background: #f59e0b !important;
 }
 
-/* Advice Card */
+/* Advice Card (Elite Dark) */
 .advice-card {
-  background: rgba(18, 18, 18, 0.95);
+  background: rgba(255, 255, 255, 0.03);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
   padding: 32px 24px;
   margin-top: 8px;
 }
@@ -1105,24 +1120,23 @@ const renderMarkdown = (text) => {
   box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
 }
 
-/* Premium Loading State */
+/* Premium Loading State (Prime Gold) */
 .loading-message {
   margin-top: 16px;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
   font-weight: 400;
   font-size: 1rem;
-  color: #D4AF37;
+  color: #fbbf24;
   text-align: center;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.08em;
 }
 
 .advice-header {
-  font-family: 'Inter', sans-serif;
-  font-weight: 400;
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.6);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  letter-spacing: 2px;
+  color: #9ca3af;
   margin-bottom: 16px;
 }
 
@@ -1169,13 +1183,13 @@ const renderMarkdown = (text) => {
   color: rgba(255, 255, 255, 0.7);
 }
 
-/* Apex trend card */
+/* Apex trend card (Elite Dark) */
 .trend-card {
-  background: rgba(18, 18, 18, 0.8);
+  background: rgba(255, 255, 255, 0.03);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
 }
 
 .trend-card-header {
@@ -1197,7 +1211,7 @@ const renderMarkdown = (text) => {
   margin: -32px -24px 24px -24px;
   padding: 0;
   overflow: hidden;
-  border-radius: 8px 8px 0 0;
+  border-radius: 2px 2px 0 0;
   background: rgba(0, 0, 0, 0.3);
 }
 
@@ -1313,26 +1327,27 @@ const renderMarkdown = (text) => {
 }
 
 .settings-card {
-  background: #000000;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  background: #050505;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
   max-width: 500px;
   width: 100%;
 }
 
 .settings-header {
   padding: 32px 24px 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .settings-title {
-  font-family: 'Montserrat', sans-serif;
-  font-weight: 900;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 700;
   font-style: italic;
-  font-size: 1.5rem;
-  color: #fbbf24;
+  font-size: 0.9rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #D4AF37;
   text-align: center;
-  letter-spacing: 1px;
 }
 
 .settings-content {
@@ -1388,14 +1403,14 @@ const renderMarkdown = (text) => {
 .settings-save-btn {
   width: 100%;
   background: #fbbf24 !important;
-  color: #000000 !important;
-  font-family: 'Inter', sans-serif;
+  color: #050505 !important;
+  font-family: 'Inter', system-ui, sans-serif;
   font-weight: 700;
   font-size: 1rem;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.08em;
   padding: 16px;
-  border-radius: 4px;
+  border-radius: 2px;
   border: none;
 }
 

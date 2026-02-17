@@ -1,79 +1,82 @@
 /**
- * Coach Service — API client for Coach Dashboard (Squadron View)
- * Uses api (Bearer token) and coach email from authStore.
+ * Coach Service — API client for Coach Dashboard.
+ * Backend-First: no transformations. Return response.data directly.
  */
 
 import { api } from './httpClient.js'
+import { useAuthStore } from '../stores/auth.js'
+import { deleteUserActivity } from './adminService.js'
 
-/**
- * Get squadron data for coach dashboard.
- * @param {string} coachEmail - Coach email (use authStore.user.email)
- * @returns {Promise<Array>} Squadron rows: id, name, avatar, level, cyclePhase, cycleDay, acwr, acwrStatus, compliance, lastActivity
- */
-export async function getCoachSquad(coachEmail) {
-  if (!coachEmail || !String(coachEmail).trim()) {
-    throw new Error('Coach email not found. Log in as coach.')
-  }
-
-  const res = await api.get('/api/coach/squadron', {
-    headers: {
-      'x-coach-email': String(coachEmail).trim(),
-    },
-  })
-
-  const data = res.data?.data ?? []
-
-  return data.map((row) => {
-    const acwrVal = row.metrics?.loadBalance?.acwr ?? row.metrics?.acwr ?? row.acwr
-    const numVal = acwrVal != null && Number.isFinite(Number(acwrVal)) ? Number(acwrVal) : null
-    const loadBalance = numVal
-    const loadBalanceStatus =
-      numVal == null ? 'unknown' : numVal >= 0.8 && numVal <= 1.3 ? 'optimal' : 'outside'
-    return {
-      id: row.id,
-      name: row.name || 'Onbekend',
-      avatar: row.avatar || null,
-      level: row.level || 'rookie',
-      cyclePhase: row.cyclePhase || row.metrics?.cyclePhase || 'Unknown',
-      cycleDay: row.cycleDay ?? row.metrics?.cycleDay ?? 0,
-      acwr: numVal ?? 0,
-      acwrStatus: row.acwrStatus || 'sweet',
-      loadBalance,
-      loadBalanceStatus,
-      compliance: Boolean(row.compliance),
-      lastActivity: row.lastActivity
-        ? {
-            time: row.lastActivity.time || '',
-            type: row.lastActivity.type || 'Workout',
-            date: row.lastActivity.date || ''
-          }
-        : null
-    }
-  })
+function requireCoachEmail() {
+  const authStore = useAuthStore()
+  const email = authStore.user?.email || ''
+  if (!email) throw new Error('Coach email not found. Log in first.')
+  return email
 }
 
 /**
- * Get athlete detail for Coach Deep Dive (last 7 activities via API).
- * @param {string} athleteId - User document ID
- * @param {string} coachEmail - Coach email (use authStore.user.email)
- * @returns {Promise<{ id, profile, metrics, activities, ... }>}
+ * GET /api/coach/squadron
+ * Returns the squadron array. Backend sends { success, data: array }.
  */
-export async function getAthleteDetail(athleteId, coachEmail) {
-  if (!athleteId || !coachEmail?.trim()) {
-    throw new Error('Athlete id and coach email required')
-  }
-  const res = await api.get(`/api/coach/athletes/${encodeURIComponent(athleteId)}`, {
-    headers: {
-      'x-coach-email': String(coachEmail).trim()
-    }
+export async function getCoachSquad() {
+  requireCoachEmail()
+  const res = await api.get('/api/coach/squadron')
+  const body = res.data
+  if (Array.isArray(body)) return body
+  if (body && Array.isArray(body.data)) return body.data
+  return body?.data ?? []
+}
+
+/**
+ * GET /api/coach/athletes/:id
+ * Returns response.data.data (payload). Backend sends { success, data }.
+ */
+export async function getAthleteDetail(id) {
+  requireCoachEmail()
+  const res = await api.get(`/api/coach/athletes/${id}`)
+  return res.data?.data ?? res.data
+}
+
+/**
+ * Delete a manual activity for an athlete (coach/admin). Uses admin route; requires admin role.
+ * @param {string} activityId - Activity document id
+ * @param {string} athleteId - Owner user id (target of delete)
+ */
+export async function deleteManualActivity(activityId, athleteId) {
+  requireCoachEmail()
+  return deleteUserActivity(athleteId, activityId)
+}
+
+/**
+ * PUT /api/coach/athletes/:id/notes — save coach logbook (Engineering Notes)
+ */
+export async function saveAthleteNotes(athleteId, adminNotes) {
+  requireCoachEmail()
+  const res = await api.put(`/api/coach/athletes/${encodeURIComponent(athleteId)}/notes`, {
+    adminNotes: adminNotes != null ? String(adminNotes) : '',
   })
-  const data = res.data?.data
-  if (!data) throw new Error('Invalid athlete detail response')
-  // API returns activities; take last 7 for Deep Dive
-  const activities = (data.activities || []).slice(0, 7)
-  return {
-    ...data,
-    name: data.profile?.fullName || data.name || 'Onbekend',
-    activities
+  return res.data?.data ?? res.data
+}
+
+/**
+ * POST /api/ai/week-report — generate performance opdracht (optionally with coachNotes, directive, injuries)
+ */
+export async function fetchWeekReport(athleteId, opts = {}) {
+  requireCoachEmail()
+  try {
+    const body = {
+      athleteId,
+      ...(opts.coachNotes != null && { coachNotes: opts.coachNotes }),
+      ...(opts.directive != null && { directive: opts.directive }),
+      ...(opts.injuries != null && { injuries: Array.isArray(opts.injuries) ? opts.injuries : [opts.injuries] }),
+    }
+    const res = await api.post('/api/ai/week-report', body)
+    return res.data
+  } catch (err) {
+    if (err.response?.status === 403) {
+      throw new Error('Unauthorized: Admin or Coach access required')
+    }
+    const msg = err.response?.data?.error ?? err.response?.data?.message ?? err.message
+    throw new Error(msg || 'Request failed')
   }
 }

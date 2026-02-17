@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { fetchAllTeams, createTeam as createTeamApi } from '../services/adminService.js'
+import { fetchAllTeams, createTeam as createTeamApi } from '../services/adminService'
 
 export const useTeamsStore = defineStore('teams', {
   state: () => ({
@@ -14,7 +14,7 @@ export const useTeamsStore = defineStore('teams', {
         const list = await fetchAllTeams()
         this.teams = Array.isArray(list) ? list.map((t) => ({ id: t.id, ...t })) : []
       } catch (err) {
-        console.error('TeamsStore: failed to fetch teams', err)
+        console.error('Failed to fetch teams', err)
         throw err
       } finally {
         this.loading = false
@@ -23,7 +23,10 @@ export const useTeamsStore = defineStore('teams', {
 
     async createTeam(payload) {
       const { name, coachEmail, memberLimit } = payload || {}
-      if (!name) throw new Error('Team name is required')
+      if (!name) {
+        throw new Error('Team name is required')
+      }
+
       this.loading = true
       try {
         const { id } = await createTeamApi({ name, coachEmail, memberLimit })
@@ -31,7 +34,7 @@ export const useTeamsStore = defineStore('teams', {
         this.teams = Array.isArray(list) ? list.map((t) => ({ id: t.id, ...t })) : []
         return id
       } catch (err) {
-        console.error('TeamsStore: failed to create team', err)
+        console.error('Failed to create team', err)
         throw err
       } finally {
         this.loading = false
@@ -39,3 +42,4 @@ export const useTeamsStore = defineStore('teams', {
     },
   },
 })
+

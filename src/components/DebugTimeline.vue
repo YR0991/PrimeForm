@@ -173,15 +173,13 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { getDebugHistory, deleteActivity, deleteUserActivity } from '../services/adminService.js'
+import { getDebugHistory, deleteActivity, deleteUserActivity } from '../services/adminService'
 
 const props = defineProps({
   uid: { type: String, default: '' },
   days: { type: Number, default: 14 },
   isAdmin: { type: Boolean, default: false }
 })
-
-const emit = defineEmits(['activity-deleted'])
 
 const loading = ref(false)
 const error = ref(null)
@@ -244,7 +242,6 @@ async function onDeleteActivity(activityId) {
       await deleteActivity(activityId)
     }
     await load()
-    emit('activity-deleted')
   } catch (e) {
     const status = e.response?.status
     if (status === 409) error.value = 'Activiteit hoort niet bij deze atleet'

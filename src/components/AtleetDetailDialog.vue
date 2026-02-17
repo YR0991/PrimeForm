@@ -316,13 +316,7 @@
 
         <!-- Tab 2: Baseline Import (HRV/RHR) -->
         <q-tab-panel name="timeline" class="q-pa-lg">
-          <DebugTimeline
-            v-if="user?.id"
-            :uid="user.id"
-            :days="14"
-            :is-admin="authStore.isAdmin"
-            @activity-deleted="onActivityDeleted"
-          />
+          <DebugTimeline v-if="user?.id" :uid="user.id" :days="14" :is-admin="authStore.isAdmin" />
         </q-tab-panel>
         <q-tab-panel name="injector" class="q-pa-lg">
           <div class="injector-section">
@@ -390,19 +384,12 @@
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Notify } from 'quasar'
-import {
-  importBaseline,
-  updateUserProfile,
-  migrateUserData,
-  getUserDetails,
-  getUserHistory,
-  recomputeStats,
-} from '../services/adminService.js'
+import { importBaseline, updateUserProfile, migrateUserData, getUserDetails, getUserHistory } from '../services/adminService'
 import DebugTimeline from './DebugTimeline.vue'
 import StravaStatusPanel from './StravaStatusPanel.vue'
-import { useAdminStore } from '../stores/admin.js'
-import { useAuthStore } from '../stores/auth.js'
-import { useDashboardStore } from '../stores/dashboard.js'
+import { useAdminStore } from '../stores/admin'
+import { useAuthStore } from '../stores/auth'
+import { useDashboardStore } from '../stores/dashboard'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -794,18 +781,6 @@ async function handleImpersonate() {
     dashboardStore.fetchUserDashboard().catch(() => {})
   } catch (e) {
     console.error('Navigation to /dashboard failed', e)
-  }
-}
-
-async function onActivityDeleted() {
-  const uid = props.user?.id
-  if (!uid) return
-  try {
-    await recomputeStats(uid)
-    emit('updated')
-  } catch (e) {
-    console.error('Recompute stats after delete failed', e)
-    Notify.create({ type: 'warning', message: 'Load-balans niet bijgewerkt.' })
   }
 }
 
