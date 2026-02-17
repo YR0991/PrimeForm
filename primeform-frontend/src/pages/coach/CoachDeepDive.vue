@@ -9,7 +9,14 @@
       <q-card v-if="athlete" class="deep-dive-card" flat>
         <q-card-section class="deep-dive-header">
           <div class="deep-dive-title-row">
-            <div class="deep-dive-title">{{ athleteDisplayName }}</div>
+            <div class="row items-center no-wrap q-gutter-sm">
+              <AthleteAvatar
+                :avatar="athlete.profile?.avatar"
+                :name="athleteDisplayName"
+                size="40px"
+              />
+              <div class="deep-dive-title">{{ athleteDisplayName }}</div>
+            </div>
             <div class="deep-dive-header-meta">
               <span class="header-pill" :class="hasCheckinToday(athlete) ? 'pill-ok' : 'pill-warn'">
                 Check-in: {{ headerCheckinLabel }}
@@ -17,6 +24,16 @@
               <span class="header-pill">
                 {{ headerLastSyncText }}
               </span>
+              <q-btn
+                flat
+                dense
+                no-caps
+                color="amber"
+                icon="description"
+                label="Weekadvies"
+                class="weekadvies-cta"
+                @click="openWeekReport"
+              />
             </div>
           </div>
         </q-card-section>
@@ -41,21 +58,24 @@
               <div class="triage-value elite-data">
                 {{ formatReadiness(athlete) }}
               </div>
-              <div class="triage-sub">Laatste check-in</div>
+              <div class="triage-sub">{{ lastCheckinLabel }}</div>
             </div>
             <div class="triage-card">
               <div class="triage-label">Strava</div>
-              <div class="triage-value elite-data" :class="stravaHasError ? 'triage-bad' : 'triage-ok'">
-                {{ stravaHasError ? 'Issue' : 'OK' }}
+              <div
+                class="triage-value elite-data strava-one-line"
+                :class="stravaStatusClass"
+              >
+                {{ stravaStatusText }}
               </div>
-              <div class="triage-sub">{{ headerLastSyncShort }}</div>
+              <q-tooltip v-if="stravaTooltipText" anchor="top middle" self="bottom middle" max-width="280px">
+                {{ stravaTooltipText }}
+              </q-tooltip>
             </div>
           </div>
           <div class="deep-dive-row">
             <span class="label">Cyclus</span>
-            <span class="value elite-data">
-              {{ athlete.metrics?.cyclePhase ?? '—' }} · D{{ athlete.metrics?.cycleDay ?? '—' }}
-            </span>
+            <span class="value elite-data">{{ formatCycleDisplay(athlete) }}</span>
           </div>
           <div class="deep-dive-row">
             <span class="label">Belastingsbalans</span>
@@ -68,11 +88,11 @@
           </div>
           <div class="deep-dive-row">
             <span class="label">Trainingsvolume (7d)</span>
-            <span class="value elite-data">{{ athlete.metrics?.acuteLoad ?? '—' }}</span>
+            <span class="value elite-data">{{ formatLoad7d(athlete) }}</span>
           </div>
           <div class="deep-dive-row">
             <span class="label">Readiness</span>
-            <span class="value elite-data">{{ athlete.readiness != null ? `${athlete.readiness}/10` : '—' }}</span>
+            <span class="value elite-data">{{ formatReadiness(athlete) }}</span>
           </div>
 
           <div class="deep-dive-section-label">BELASTING PER DAG (PRIMELOAD)</div>
@@ -202,6 +222,13 @@
         <span>{{ error }}</span>
         <q-btn flat label="Terug" @click="goBack" />
       </div>
+
+      <WeekReportDialog
+        v-model="showWeekReportDialog"
+        :athlete-id="athleteId"
+        :athlete-name="athleteDisplayName"
+        :default-week-range="weekReportDefaultRange"
+      />
     </div>
   </q-page>
 </template>
@@ -212,6 +239,8 @@ import { useRoute, useRouter } from 'vue-router'
 import VueApexCharts from 'vue3-apexcharts'
 import { useSquadronStore } from '../../stores/squadron.js'
 import PrimeLoadDailyChart from '../../components/coach/PrimeLoadDailyChart.vue'
+import WeekReportDialog from '../../components/coach/WeekReportDialog.vue'
+import AthleteAvatar from '../../components/AthleteAvatar.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -221,6 +250,8 @@ const showDebugTimelines = ref(false)
 const selectedDayKey = ref(null)
 const selectedDayActivities = ref([])
 const selectedDayTotal = ref(null)
+const showWeekReportDialog = ref(false)
+const weekReportDefaultRange = ref(null)
 
 const athleteId = computed(() => route.params.id)
 const athlete = computed(() => squadronStore.selectedAtleet || squadronStore.getAthlete(athleteId.value))
@@ -295,15 +326,85 @@ function loadBalanceClass(row) {
 
 function formatLoad7d(row) {
   const v = row.metrics?.acuteLoad ?? row.acuteLoad
-  const n = Number(v)
-  return Number.isFinite(n) ? n.toFixed(1) : '—'
+  const n = v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : null
+  if (n != null) return n.toFixed(1)
+  const sum = primeLoad7dFromActivities(row)
+  return sum != null ? sum.toFixed(1) : '—'
+}
+
+function primeLoad7dFromActivities(row) {
+  const activities = row?.activities ?? row?.recent_activities ?? []
+  if (!Array.isArray(activities) || activities.length === 0) return null
+  let sum = 0
+  for (const a of activities) {
+    const load = a.load ?? a.loadUsed ?? a._primeLoad ?? a.primeLoad
+    const n = load != null && Number.isFinite(Number(load)) ? Number(load) : null
+    if (n != null) sum += n
+  }
+  return Number.isFinite(sum) ? sum : null
 }
 
 function formatReadiness(row) {
-  const v = row.metrics?.readiness ?? row.readiness
+  const v = row?.metrics?.readiness ?? row?.readiness
+  if (v == null || v === '') return '—'
   const n = Number(v)
-  return Number.isFinite(n) ? `${n}/10` : '—'
+  return Number.isFinite(n) && n >= 0 && n <= 10 ? `${n}/10` : '—'
 }
+
+function formatCycleDisplay(row) {
+  if (!row) return '—'
+  const phase = row.metrics?.cyclePhase ?? row.cyclePhase ?? null
+  const phaseDay = row.metrics?.cycleDay ?? row.cycleDay ?? null
+  const phaseStr = phase == null || String(phase).toLowerCase() === 'unknown' || String(phase).trim() === ''
+    ? null
+    : String(phase).trim()
+  if (!phaseStr) return '—'
+  if (phaseDay == null || !Number.isFinite(Number(phaseDay)) || Number(phaseDay) <= 0) {
+    return phaseStr
+  }
+  return `${phaseStr} · dag ${Number(phaseDay)}`
+}
+
+const lastCheckinLabel = computed(() => {
+  const a = athlete.value
+  if (!a) return 'Laatste check-in'
+  const dateStr = getLastCheckinDate(a)
+  if (!dateStr) return 'Laatste check-in: —'
+  const d = new Date(dateStr)
+  if (Number.isNaN(d.getTime())) return 'Laatste check-in: —'
+  const label = d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })
+  return `Laatste check-in: ${label}`
+})
+
+const stravaStatusText = computed(() => {
+  const m = stravaMeta.value || {}
+  const connected = m.connected === true
+  const hasError = !!(m.lastError || m.error)
+  if (hasError) return 'Strava: Fout'
+  if (!connected && !m.lastWebhookAt && !m.lastSyncedAt) return 'Strava: Niet gekoppeld'
+  return 'Strava: OK'
+})
+
+const stravaStatusClass = computed(() => {
+  const m = stravaMeta.value || {}
+  const hasError = !!(m.lastError || m.error)
+  const connected = m.connected === true
+  if (hasError) return 'triage-bad'
+  if (!connected && !m.lastWebhookAt && !m.lastSyncedAt) return 'triage-unknown'
+  return 'triage-ok'
+})
+
+const stravaTooltipText = computed(() => {
+  const m = stravaMeta.value || {}
+  const parts = []
+  if (m.lastSyncedAt || m.lastSyncAt || m.lastWebhookAt || m.lastSuccessAt) {
+    const raw = m.lastSyncedAt || m.lastSyncAt || m.lastWebhookAt || m.lastSuccessAt
+    const d = parseMaybeTimestamp(raw)
+    if (d) parts.push(`Laatste sync: ${d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`)
+  }
+  if (m.lastError || m.error) parts.push(`Fout: ${(m.lastError || m.error || '').toString().slice(0, 120)}`)
+  return parts.length ? parts.join('\n') : null
+})
 
 function parseMaybeTimestamp(v) {
   if (!v) return null
@@ -373,8 +474,10 @@ function getLastCheckinDate(row) {
     row.last_checkin_date,
     row.lastCheckin,
     row.last_checkin,
+    row.lastCheckinAt,
     row.metrics?.lastCheckinDate,
     row.metrics?.last_checkin_date,
+    row.todayLog?.date,
   ]
   for (const v of candidates) {
     const d = parseMaybeTimestamp(v)
@@ -382,7 +485,18 @@ function getLastCheckinDate(row) {
   }
   const ts = row.metrics?.readiness_ts ?? row.readiness_ts
   const d = parseMaybeTimestamp(ts)
-  return d ? d.toISOString().slice(0, 10) : null
+  if (d) return d.toISOString().slice(0, 10)
+  const logs = row.history_logs ?? []
+  if (Array.isArray(logs) && logs.length > 0) {
+    const withDate = logs
+      .map((l) => (l.date ?? l.timestamp ?? '').toString().slice(0, 10))
+      .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s))
+    if (withDate.length > 0) {
+      withDate.sort((a, b) => b.localeCompare(a))
+      return withDate[0]
+    }
+  }
+  return null
 }
 
 function hasCheckinToday(row) {
@@ -609,6 +723,27 @@ function goBack() {
   router.push({ path: '/coach' })
 }
 
+function computeDefaultWeekRange() {
+  const today = new Date()
+  const day = today.getDay()
+  const base = new Date(today)
+  if (day === 0) base.setDate(base.getDate() - 7)
+  const baseDay = base.getDay() || 7
+  const monday = new Date(base)
+  monday.setDate(base.getDate() - (baseDay - 1))
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+  const fmt = (d) => d.toISOString().slice(0, 10)
+  return { from: fmt(monday), to: fmt(sunday) }
+}
+
+function openWeekReport() {
+  const a = athlete.value
+  if (!a?.id) return
+  weekReportDefaultRange.value = computeDefaultWeekRange()
+  showWeekReportDialog.value = true
+}
+
 watch(athleteId, (id) => {
   if (id) loadAthlete()
 }, { immediate: true })
@@ -657,6 +792,28 @@ watch(athleteId, (id) => {
   padding: 20px;
 }
 
+.deep-dive-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.deep-dive-header-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.weekadvies-cta {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .deep-dive-title {
   font-family: q.$typography-font-family;
   font-weight: 700;
@@ -701,6 +858,22 @@ watch(athleteId, (id) => {
 
 .load-balance-unknown {
   color: q.$prime-gray;
+}
+
+.triage-ok {
+  color: q.$status-push;
+}
+
+.triage-bad {
+  color: q.$status-recover;
+}
+
+.triage-unknown {
+  color: q.$prime-gray;
+}
+
+.strava-one-line {
+  white-space: nowrap;
 }
 
 .prime-load {

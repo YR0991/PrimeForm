@@ -75,6 +75,11 @@ export function computeAttention(athlete) {
       reasons.push('≥2 dagen geen check-in')
     }
   }
+  // When no check-in today but no multi-day compliance reason yet: single "Geen check-in vandaag" (avoids piling HRV/RHR reason).
+  if (!hasCheckinToday && (daysSinceCheckin == null || daysSinceCheckin < 2)) {
+    score += 1
+    reasons.push('Geen check-in vandaag')
+  }
 
   // --- B) Load (Belastingbalans) ---
   const acwrRaw = athlete.metrics?.acwr ?? athlete.acwr
@@ -138,12 +143,15 @@ export function computeAttention(athlete) {
       : null
   const syncStale = lastSyncTs != null && Date.now() - lastSyncTs > 48 * 3600 * 1000
   const stravaError = !!(stravaMeta.lastError ?? stravaMeta.error ?? athlete.stravaError ?? athlete.strava_error)
-  const stravaNotUpToDate = !connected || syncStale || stravaError
-  if (stravaNotUpToDate) {
+
+  if (connected && (syncStale || stravaError)) {
     score += 2
     reasons.push('Strava niet up-to-date')
+  } else if (!connected) {
+    reasons.push('Strava niet gekoppeld') // optional: no score, not treated as error
   }
 
+  // Missing HRV/RHR: only when there is a check-in today (todayLog or lastCheckinAt today) but hrv/rhr/readiness missing.
   const todayHrv =
     athlete.todayLog?.hrv ??
     athlete.todayLog?.metrics?.hrv ??
@@ -152,7 +160,7 @@ export function computeAttention(athlete) {
     athlete.todayLog?.rhr ??
     athlete.todayLog?.metrics?.rhr ??
     (logs.find((l) => (l.date || '').slice(0, 10) === today)?.rhr ?? null)
-  const missingHrvRhrToday = (todayHrv == null || todayRhr == null) && !hasCheckinToday
+  const missingHrvRhrToday = hasCheckinToday && (todayHrv == null || todayRhr == null)
   if (missingHrvRhrToday) {
     score += 1
     reasons.push('Ontbrekende HRV/RHR vandaag')
@@ -293,9 +301,16 @@ export const useSquadronStore = defineStore('squadron', {
       try {
         const data = await getAthleteDetail(id)
         const existing = this.athletesById[id]
+        const activities = Array.isArray(data.activities)
+          ? data.activities.map((a) => {
+              const loadRaw = a.load ?? a.loadUsed ?? a.primeLoad
+              const load = loadRaw != null && Number.isFinite(Number(loadRaw)) ? Number(loadRaw) : null
+              return { ...a, load }
+            })
+          : (data.activities ?? existing?.activities ?? [])
         this.athletesById = {
           ...this.athletesById,
-          [id]: { ...existing, ...data },
+          [id]: { ...existing, ...data, activities },
         }
       } catch (err) {
         console.error('SquadronStore: fetchAthleteDeepDive failed', err)

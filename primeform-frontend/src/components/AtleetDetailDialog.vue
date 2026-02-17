@@ -8,10 +8,17 @@
   >
     <q-card class="atleet-detail-card" dark flat>
       <q-card-section class="dialog-header row items-center justify-between">
-        <div>
-          <div class="dialog-title">ATLEET DOSSIER</div>
-          <div class="dialog-subtitle">
-            {{ atleetName }} • {{ atleetEmail }}
+        <div class="row items-center no-wrap q-gutter-md">
+          <AthleteAvatar
+            :avatar="user?.profile?.avatar"
+            :name="atleetName"
+            size="48px"
+          />
+          <div>
+            <div class="dialog-title">ATLEET DOSSIER</div>
+            <div class="dialog-subtitle">
+              {{ atleetName }} • {{ atleetEmail }}
+            </div>
           </div>
         </div>
         <q-btn
@@ -110,35 +117,6 @@
               v-model="localLastPeriodDate"
               label="Laatste menstruatie (YYYY-MM-DD)"
               type="date"
-              outlined
-              dark
-              dense
-              class="profile-input"
-            />
-            <q-toggle
-              v-model="localOnboardingCompleted"
-              color="amber"
-              label="Intake voltooid"
-              class="profile-toggle"
-            />
-
-            <q-separator dark inset class="q-my-md" />
-
-            <!-- Fysieke kenmerken -->
-            <div class="section-header">FYSIEKE KENMERKEN</div>
-            <q-input
-              v-model="localBirthDate"
-              label="Geboortedatum"
-              type="date"
-              outlined
-              dark
-              dense
-              class="profile-input"
-            />
-            <q-input
-              v-model.number="localWeight"
-              label="Gewicht (kg)"
-              type="number"
               outlined
               dark
               dense
@@ -299,7 +277,7 @@
                         {{ logSourceLabel(log) }}
                       </span>
                     </td>
-                    <td>{{ formatMetric(log?.metrics?.hrv) }}</td>
+                    <td>{{ formatMetric(log?.metrics?.hrv?.current) }}</td>
                     <td>{{ formatMetric(log?.metrics?.rhr?.current) }}</td>
                     <td>{{ formatMetric(log?.metrics?.readiness) }}</td>
                     <td>
@@ -387,6 +365,7 @@ import { Notify } from 'quasar'
 import { importBaseline, updateUserProfile, migrateUserData, getUserDetails, getUserHistory } from '../services/adminService'
 import DebugTimeline from './DebugTimeline.vue'
 import StravaStatusPanel from './StravaStatusPanel.vue'
+import AthleteAvatar from './AthleteAvatar.vue'
 import { useAdminStore } from '../stores/admin'
 import { useAuthStore } from '../stores/auth'
 import { useDashboardStore } from '../stores/dashboard'
@@ -419,9 +398,6 @@ const migrateTargetUid = ref(null)
 const migrating = ref(false)
 const localCycleLength = ref(null)
 const localLastPeriodDate = ref('')
-const localOnboardingCompleted = ref(false)
-const localBirthDate = ref('')
-const localWeight = ref(null)
 const backendProfile = ref(null)
 const recentLogs = ref([])
 const historyLoading = ref(false)
@@ -469,22 +445,14 @@ const profileDirty = computed(() => {
   const origRole = (p.role === 'user' ? 'athlete' : p.role) ?? 'athlete'
   const origCycleLength = cycle.avgDuration ?? null
   const origLastPeriod = cycle.lastPeriodDate || ''
-  const origOnboarding =
-    (u.onboardingComplete ?? p.onboardingCompleted ?? u.profileComplete) ?? false
-  const origBirthDate = p.birthDate || ''
-  const origWeight = p.weight != null ? Number(p.weight) : null
 
   const curCycleLength = localCycleLength.value != null ? Number(localCycleLength.value) : null
-  const curWeight = localWeight.value != null ? Number(localWeight.value) : null
 
   return (
     localTeamId.value !== origTeam ||
     localRole.value !== origRole ||
     curCycleLength !== origCycleLength ||
-    (localLastPeriodDate.value || '') !== origLastPeriod ||
-    Boolean(localOnboardingCompleted.value) !== Boolean(origOnboarding) ||
-    (localBirthDate.value || '') !== origBirthDate ||
-    curWeight !== origWeight
+    (localLastPeriodDate.value || '') !== origLastPeriod
   )
 })
 
@@ -504,11 +472,6 @@ function hydrateFromProfile(profileOverride) {
 
   localCycleLength.value = cycle.avgDuration ?? null
   localLastPeriodDate.value = cycle.lastPeriodDate || ''
-  localOnboardingCompleted.value =
-    (u?.onboardingComplete ?? p.onboardingCompleted ?? u?.profileComplete) ?? false
-
-  localBirthDate.value = p.birthDate || ''
-  localWeight.value = p.weight != null ? Number(p.weight) : null
 
   injectorRaw.value = ''
   recognizedEntries.value = []
@@ -624,11 +587,6 @@ async function saveProfile() {
     const previousRole = (p.role === 'user' ? 'athlete' : p.role) ?? 'athlete'
     if (localRole.value !== previousRole) {
       profilePatch.role = localRole.value === 'athlete' ? 'user' : localRole.value
-      // When promoting to coach, auto-complete onboarding
-      if (localRole.value === 'coach') {
-        profilePatch.onboardingCompleted = true
-        localOnboardingCompleted.value = true
-      }
     }
 
     const cyclePatch = {}
@@ -641,23 +599,6 @@ async function saveProfile() {
     }
     if (Object.keys(cyclePatch).length > 0) {
       profilePatch.cycleData = cyclePatch
-    }
-
-    const origOnboarding =
-      (u?.onboardingComplete ?? p.onboardingCompleted ?? u?.profileComplete) ?? false
-    if (Boolean(localOnboardingCompleted.value) !== Boolean(origOnboarding)) {
-      profilePatch.onboardingCompleted = Boolean(localOnboardingCompleted.value)
-    }
-
-    const origBirthDate = p.birthDate || ''
-    if ((localBirthDate.value || '') !== origBirthDate) {
-      profilePatch.birthDate = localBirthDate.value || null
-    }
-
-    const origWeight = p.weight != null ? Number(p.weight) : null
-    const curWeight = localWeight.value != null ? Number(localWeight.value) : null
-    if (curWeight !== origWeight) {
-      profilePatch.weight = curWeight
     }
 
     if (Object.keys(profilePatch).length > 0) {

@@ -55,9 +55,11 @@
           <template #body-cell-athlete="props">
             <q-td :props="props">
               <div class="athlete-cell">
-                <q-avatar size="32px" color="rgba(255,255,255,0.1)" text-color="#9ca3af">
-                  {{ getInitials(props.row.name) }}
-                </q-avatar>
+                <AthleteAvatar
+                  :avatar="props.row.profile?.avatar"
+                  :name="props.row.name"
+                  size="32px"
+                />
                 <div class="athlete-info">
                   <span class="athlete-name">{{ props.row.name }}</span>
                   <span class="athlete-level" :class="`level-${props.row.level}`">
@@ -70,8 +72,8 @@
           </template>
 
           <template #body-cell-attention="props">
-            <q-td :props="props">
-              <div v-if="props.row.attention" class="attention-cell">
+            <q-td :props="props" class="attention-td">
+              <div v-if="props.row.attention" class="attention-cell attention-cell-single">
                 <span
                   class="attention-badge"
                   :class="`attention-${props.row.attention.level}`"
@@ -87,19 +89,17 @@
                 <span class="attention-score elite-data">
                   {{ props.row.attention.score }}
                 </span>
-                <div
+                <span
                   v-if="(props.row.attention.reasons || []).length"
-                  class="attention-reasons"
+                  class="attention-reason-inline"
                 >
-                  <span class="attention-reason-line">
-                    {{ (props.row.attention.reasons || []).slice(0, 2).join(' · ') }}
-                  </span>
-                  <q-tooltip anchor="top middle" self="bottom middle">
-                    {{ props.row.attention.reasons.join('\n') }}
+                  {{ (props.row.attention.reasons || [])[0] }}
+                  <q-tooltip anchor="top middle" self="bottom middle" max-width="280px">
+                    <span style="white-space: pre-line;">{{ (props.row.attention.reasons || []).join('\n') }}</span>
                   </q-tooltip>
-                </div>
+                </span>
               </div>
-              <div v-else class="attention-cell attention-none">
+              <div v-else class="attention-cell attention-cell-single attention-none">
                 <span class="attention-badge attention-ok">OK</span>
                 <span class="attention-score elite-data">0</span>
               </div>
@@ -118,17 +118,20 @@
             <q-td :props="props">
               <span
                 class="load-balance-cell elite-data"
-            :class="loadBalanceClass(props.row)"
+                :class="loadBalanceClass(props.row)"
               >
-            {{
-              getLoadBalanceValue(props.row) != null
-                ? getLoadBalanceValue(props.row).toFixed(2)
-                : '—'
-            }}
+                {{
+                  getLoadBalanceValue(props.row) != null
+                    ? getLoadBalanceValue(props.row).toFixed(2)
+                    : '—'
+                }}
               </span>
-          <span class="load-balance-hint">
-            {{ getLoadBalanceBand(props.row) }}
-          </span>
+              <q-tooltip anchor="top middle" self="bottom middle" max-width="240px">
+                {{ getLoadBalanceBand(props.row) }}
+                <template v-if="getLoadBalanceValue(props.row) != null">
+                  — Acute/chronic load ratio; 0.80–1.30 is de sweet spot.
+                </template>
+              </q-tooltip>
             </q-td>
           </template>
 
@@ -145,32 +148,16 @@
 
           <template #body-cell-lastActivity="props">
             <q-td :props="props">
-              <span v-if="props.row.lastActivity" class="elite-data">
-                {{ props.row.lastActivity.time }} · {{ props.row.lastActivity.type }}
+              <span v-if="props.row.lastActivity" class="last-activity-cell elite-data">
+                {{ formatLastActivityDate(props.row.lastActivity) }}
+                · {{ props.row.lastActivity.type || 'Workout' }}
+                · PL {{ formatLastActivityLoad(props.row.lastActivity) }}
               </span>
               <span v-else class="elite-data" style="color: #9ca3af">—</span>
             </q-td>
           </template>
-          <template #body-cell-weekReport="props">
-            <q-td :props="props" class="week-report-cell">
-              <q-btn
-                flat
-                dense
-                size="xs"
-                color="amber"
-                label="Weekadvies"
-                @click.stop="openWeekReport(props.row)"
-              />
-            </q-td>
-          </template>
         </q-table>
       </q-card>
-      <WeekReportDialog
-        v-model="showWeekReportDialog"
-        :athlete-id="weekReportAthleteId"
-        :athlete-name="weekReportAthleteName"
-        :default-week-range="weekReportDefaultRange"
-      />
     </div>
   </q-page>
 </template>
@@ -178,9 +165,9 @@
 <script setup>
 import { ref, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import WeekReportDialog from '../../components/coach/WeekReportDialog.vue'
 import { useAuthStore } from '../../stores/auth.js'
 import { useSquadronStore } from '../../stores/squadron.js'
+import AthleteAvatar from '../../components/AthleteAvatar.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -188,10 +175,6 @@ const squadronStore = useSquadronStore()
 
 const search = ref('')
 const activeFilter = ref('all')
-const showWeekReportDialog = ref(false)
-const weekReportAthleteId = ref('')
-const weekReportAthleteName = ref('')
-const weekReportDefaultRange = ref(null)
 const filterOptions = [
   { label: 'Alle', value: 'all' },
   { label: 'Alleen aandacht (score ≥3)', value: 'attention' },
@@ -248,12 +231,6 @@ const columns = [
     field: 'lastActivity',
     align: 'left',
   },
-  {
-    name: 'weekReport',
-    label: '',
-    field: 'id',
-    align: 'right',
-  },
 ]
 
 const getInitials = (name) => {
@@ -271,34 +248,22 @@ const getLevelIcon = (level) => {
   return 'person'
 }
 
-function computeDefaultWeekRange() {
-  const today = new Date()
-  const day = today.getDay() // 0 = zondag, 1 = maandag
-  const base = new Date(today)
-  // Op zondag: vorige week (ma-zo)
-  if (day === 0) {
-    base.setDate(base.getDate() - 7)
-  }
-  const baseDay = base.getDay() || 7 // 1..7, waarbij zondag 7
-  const monday = new Date(base)
-  monday.setDate(base.getDate() - (baseDay - 1))
-  const sunday = new Date(monday)
-  sunday.setDate(monday.getDate() + 6)
-  const fmt = (d) => d.toISOString().slice(0, 10)
-  return { from: fmt(monday), to: fmt(sunday) }
+function formatLastActivityDate(activity) {
+  if (!activity) return '—'
+  const raw = activity.date ?? activity.start_date ?? ''
+  if (!raw) return '—'
+  const str = typeof raw === 'string' ? raw.slice(0, 10) : (raw?.toDate?.()?.toISOString?.() ?? '').slice(0, 10)
+  if (!str || !/^\d{4}-\d{2}-\d{2}$/.test(str)) return '—'
+  const d = new Date(str)
+  if (Number.isNaN(d.getTime())) return str
+  return d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
 }
 
-function openWeekReport(row) {
-  if (!row) return
-  weekReportAthleteId.value = row.id ?? row.uid ?? ''
-  weekReportAthleteName.value =
-    row.name ||
-    row.profile?.fullName ||
-    row.displayName ||
-    row.email ||
-    ''
-  weekReportDefaultRange.value = computeDefaultWeekRange()
-  showWeekReportDialog.value = true
+function formatLastActivityLoad(activity) {
+  if (!activity) return '—'
+  const v = activity.load ?? activity.loadUsed ?? activity.primeLoad
+  const n = v != null && Number.isFinite(Number(v)) ? Number(v) : null
+  return n != null ? String(Math.round(n)) : '—'
 }
 
 function matchesSearch(row, term) {
@@ -559,10 +524,21 @@ watch(
   color: q.$prime-gold;
 }
 
+.attention-td {
+  max-height: 2.5em;
+  vertical-align: middle;
+}
+
 .attention-cell {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.attention-cell-single {
+  flex-wrap: nowrap;
+  min-height: 0;
+  line-height: 1.3;
 }
 
 .attention-badge {
@@ -597,18 +573,13 @@ watch(
   font-size: 0.8rem;
 }
 
-.attention-reasons {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.attention-reason-line {
-  display: block;
+.attention-reason-inline {
   font-size: 0.65rem;
   color: q.$prime-gray;
   white-space: nowrap;
-  text-overflow: ellipsis;
   overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
 }
 
 .load-balance-cell.load-balance-optimal {
@@ -621,15 +592,6 @@ watch(
 
 .load-balance-cell.load-balance-unknown {
   color: q.$prime-gray;
-}
-
-.load-balance-hint {
-  display: block;
-  font-size: 0.6rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: q.$status-push;
-  margin-top: 2px;
 }
 
 .compliance-badge {
@@ -654,7 +616,10 @@ watch(
   border-color: rgba(255, 255, 255, 0.2);
 }
 
-.week-report-cell {
-  text-align: right;
+.last-activity-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
 }
 </style>

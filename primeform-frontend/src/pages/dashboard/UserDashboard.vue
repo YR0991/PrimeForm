@@ -3,6 +3,12 @@
     <div class="pilot-container">
       <!-- Header: Greeting + Cycle Phase -->
       <header class="pilot-header">
+        <AthleteAvatar
+          :avatar="authStore.profile?.avatar"
+          :name="greetingName || authStore.user?.displayName"
+          size="40px"
+          class="pilot-header-avatar q-mr-sm"
+        />
         <h1 class="pilot-greeting">
           Hoi<span v-if="greetingName">, {{ greetingName }}</span>
         </h1>
@@ -358,6 +364,7 @@ import VueApexCharts from 'vue3-apexcharts'
 import { useAuthStore } from '../../stores/auth.js'
 import { api } from '../../services/httpClient.js'
 import { getAthleteDashboard, normalizeCycle } from '../../services/userService.js'
+import AthleteAvatar from '../../components/AthleteAvatar.vue'
 
 const authStore = useAuthStore()
 
@@ -1168,6 +1175,10 @@ onMounted(async () => {
 
 .pilot-header {
   margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .pilot-greeting {
