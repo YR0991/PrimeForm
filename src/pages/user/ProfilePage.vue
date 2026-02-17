@@ -352,9 +352,26 @@ function optionsPastOnly(date) {
 watch(
   () => authStore.profile,
   (p) => {
-    if (p?.lastPeriodDate) localLastPeriod.value = p.lastPeriodDate
-    if (p?.contraception != null) localContraception.value = p.contraception
-    if (p?.cycleLength != null) localCycleLength.value = Number(p.cycleLength)
+    const cd = p?.cycleData || {}
+    const lastPeriod =
+      p?.lastPeriodDate ||
+      cd.lastPeriodDate ||
+      cd.lastPeriod ||
+      null
+    const cycleLength =
+      p?.cycleLength != null
+        ? Number(p.cycleLength)
+        : cd.avgDuration != null
+          ? Number(cd.avgDuration)
+          : null
+
+    if (lastPeriod) localLastPeriod.value = lastPeriod
+    if (p?.contraception != null || cd.contraception != null) {
+      localContraception.value = p?.contraception ?? cd.contraception
+    }
+    if (cycleLength != null && Number.isFinite(cycleLength)) {
+      localCycleLength.value = cycleLength
+    }
     if (p?.rhrBaseline != null) localRhrBaseline.value = Number(p.rhrBaseline)
     if (p?.hrvBaseline != null) localHrvBaseline.value = Number(p.hrvBaseline)
   },
@@ -363,9 +380,26 @@ watch(
 
 onMounted(() => {
   const p = authStore.profile
-  if (p?.lastPeriodDate) localLastPeriod.value = p.lastPeriodDate
-  if (p?.contraception != null) localContraception.value = p.contraception
-  if (p?.cycleLength != null) localCycleLength.value = Number(p.cycleLength)
+  const cd = p?.cycleData || {}
+  const lastPeriod =
+    p?.lastPeriodDate ||
+    cd.lastPeriodDate ||
+    cd.lastPeriod ||
+    null
+  const cycleLength =
+    p?.cycleLength != null
+      ? Number(p.cycleLength)
+      : cd.avgDuration != null
+        ? Number(cd.avgDuration)
+        : null
+
+  if (lastPeriod) localLastPeriod.value = lastPeriod
+  if (p?.contraception != null || cd.contraception != null) {
+    localContraception.value = p?.contraception ?? cd.contraception
+  }
+  if (cycleLength != null && Number.isFinite(cycleLength)) {
+    localCycleLength.value = cycleLength
+  }
   if (p?.rhrBaseline != null) localRhrBaseline.value = Number(p.rhrBaseline)
   if (p?.hrvBaseline != null) localHrvBaseline.value = Number(p.hrvBaseline)
 
@@ -411,11 +445,31 @@ async function completeOnboarding() {
 }
 
 async function updateCalibration() {
+  // Validatie: cyclusdatum verplicht en lengte 21..35 dagen
+  const date = (localLastPeriod.value || '').toString().trim()
+  const lengthNum = Number(localCycleLength.value)
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    $q.notify({
+      type: 'negative',
+      message: 'Vul een geldige datum in voor de eerste dag van je laatste bloeding (YYYY-MM-DD).',
+    })
+    return
+  }
+
+  if (!Number.isFinite(lengthNum) || lengthNum < 21 || lengthNum > 35) {
+    $q.notify({
+      type: 'negative',
+      message: 'Gemiddelde cyclusduur moet tussen 21 en 35 dagen liggen.',
+    })
+    return
+  }
+
   try {
     await authStore.updateAtleetProfile({
-      lastPeriodDate: localLastPeriod.value || null,
+      lastPeriodDate: date,
       contraception: localContraception.value ?? 'Geen',
-      cycleLength: localCycleLength.value,
+      cycleLength: lengthNum,
       rhrBaseline: localRhrBaseline.value != null && Number.isFinite(Number(localRhrBaseline.value)) ? Number(localRhrBaseline.value) : null,
       hrvBaseline: localHrvBaseline.value != null && Number.isFinite(Number(localHrvBaseline.value)) ? Number(localHrvBaseline.value) : null,
     })

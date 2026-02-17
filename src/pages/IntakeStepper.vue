@@ -356,7 +356,8 @@ const canProceedStep4 = computed(() => {
 
 const canProceedStep5 = computed(() => {
   const lastPeriodOk = /^\d{4}-\d{2}-\d{2}$/.test(form.value.lastPeriod)
-  const avgOk = Number(form.value.cycleAvgDuration) >= 21
+  const avg = Number(form.value.cycleAvgDuration)
+  const avgOk = Number.isFinite(avg) && avg >= 21 && avg <= 35
   return !!form.value.contraception && lastPeriodOk && avgOk
 })
 
@@ -397,8 +398,11 @@ const saveProfile = async () => {
       checkinTime: form.value.checkinTime,
 
       cycleData: {
-        lastPeriod: form.value.lastPeriod,
+        // Nieuwe sleutel: lastPeriodDate + avgDuration
+        lastPeriodDate: form.value.lastPeriod,
         avgDuration: Number(form.value.cycleAvgDuration),
+        // Legacy veld voor backwards-compat (kan veilig blijven tot alles migreert)
+        lastPeriod: form.value.lastPeriod,
         contraception: form.value.contraception
       }
     }

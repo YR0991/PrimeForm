@@ -539,7 +539,8 @@ export const useAuthStore = defineStore('auth', {
     },
 
     /**
-     * Update atleet profile (last period date, contraception, cycle length, baseline RHR/HRV). Persists via PUT /api/profile.
+     * Update atleet profile (last period date, contraception, cycle length, baseline RHR/HRV).
+     * Persists via PUT /api/profile en houdt cycleData in sync (lastPeriodDate + avgDuration).
      */
     async updateAtleetProfile({ lastPeriodDate, contraception, cycleLength, rhrBaseline, hrvBaseline }) {
       if (!this.user?.uid) throw new Error('No authenticated user')
@@ -552,14 +553,28 @@ export const useAuthStore = defineStore('auth', {
           ...(rhrBaseline != null && Number.isFinite(Number(rhrBaseline)) ? { rhrBaseline: Number(rhrBaseline) } : {}),
           ...(hrvBaseline != null && Number.isFinite(Number(hrvBaseline)) ? { hrvBaseline: Number(hrvBaseline) } : {}),
         }
-        if (contraception !== undefined) {
-          profile.cycleData = { ...(this.profile?.cycleData || {}), contraception: contraception ?? 'Geen' }
+        // Bouw cycleData patch (lastPeriodDate + avgDuration + contraception) voor female users
+        const cycleDataPatch = { ...(this.profile?.cycleData || {}) }
+        if (lastPeriodDate !== undefined) {
+          cycleDataPatch.lastPeriodDate = lastPeriodDate || null
         }
+        if (cycleLength !== undefined && cycleLength != null) {
+          cycleDataPatch.avgDuration = Number(cycleLength)
+        }
+        if (contraception !== undefined) {
+          cycleDataPatch.contraception = contraception ?? 'Geen'
+        }
+        if (Object.keys(cycleDataPatch).length > 0) {
+          profile.cycleData = cycleDataPatch
+        }
+
         await apiPutProfile({ profilePatch: profile })
         this.profile = { ...this.profile, ...profile }
         if (profile.cycleData) {
           this.profile.cycleData = { ...(this.profile.cycleData || {}), ...profile.cycleData }
-          if (profile.cycleData.contraception !== undefined) this.profile.contraception = profile.cycleData.contraception ?? null
+          if (profile.cycleData.contraception !== undefined) {
+            this.profile.contraception = profile.cycleData.contraception ?? null
+          }
         }
         Notify.create({ type: 'positive', message: 'Kalibratie bijgewerkt' })
       } catch (err) {
