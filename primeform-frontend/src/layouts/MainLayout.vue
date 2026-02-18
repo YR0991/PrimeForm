@@ -44,20 +44,32 @@
           <router-link v-if="showAdmin" to="/admin" class="nav-link">Admin</router-link>
         </div>
 
-        <q-btn
+        <router-link
           v-if="isAuthenticated"
-          flat
-          dense
-          round
-          :icon="profileIcon"
           :to="isAdmin ? '/admin' : '/profile'"
-          class="header-profile-btn"
+          class="header-profile-link"
           :aria-label="profileAriaLabel"
         >
-          <q-tooltip v-if="profileTooltip">
-            {{ profileTooltip }}
-          </q-tooltip>
-        </q-btn>
+          <AthleteAvatar
+            v-if="headerAvatarUrl"
+            :avatar="headerAvatarUrl"
+            :name="authStore.user?.displayName"
+            size="36px"
+            class="header-profile-avatar"
+          />
+          <q-btn
+            v-else
+            flat
+            dense
+            round
+            :icon="profileIcon"
+            class="header-profile-btn"
+          >
+            <q-tooltip v-if="profileTooltip">
+              {{ profileTooltip }}
+            </q-tooltip>
+          </q-btn>
+        </router-link>
 
         <q-btn-dropdown
           v-if="isAuthenticated"
@@ -157,6 +169,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
 import { useAdminStore } from '../stores/admin.js'
 import CoachDeepDive from '../pages/coach/CoachDeepDive.vue'
+import AthleteAvatar from '../components/AthleteAvatar.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -194,6 +207,7 @@ const showAdmin = computed(() => authStore.isAdmin)
 const showCoach = computed(() => authStore.isCoach || authStore.isAdmin)
 const showDashboard = computed(() => authStore.role === 'user')
 
+const headerAvatarUrl = computed(() => authStore.profile?.avatar ?? null)
 const profileIcon = computed(() =>
   isAdmin.value ? 'admin_panel_settings' : isCoach.value ? 'engineering' : 'person'
 )
@@ -305,6 +319,17 @@ const handleStopImpersonation = async () => {
 .nav-link:hover,
 .nav-link.router-link-active {
   color: q.$prime-gold;
+}
+
+.header-profile-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+}
+
+.header-profile-avatar {
+  display: block;
 }
 
 .header-profile-btn {

@@ -141,6 +141,7 @@ export const useAuthStore = defineStore('auth', {
         lastPeriodDate: p.lastPeriodDate ?? p.lastPeriod ?? null,
         cycleLength: p.cycleLength != null ? Number(p.cycleLength) : (p.avgDuration != null ? Number(p.avgDuration) : null),
         contraception: cd.contraception ?? null,
+        avatar: p.avatar ?? p.avatarUrl ?? p.photoUrl ?? (this.profile && this.profile.avatar) ?? null,
       }
       this.preferences = p.preferences || {}
       this.stravaConnected = profileData?.strava?.connected === true
@@ -294,7 +295,7 @@ export const useAuthStore = defineStore('auth', {
             lastPeriodDate: p.lastPeriodDate ?? cd.lastPeriodDate ?? null,
             cycleLength: p.cycleLength != null ? Number(p.cycleLength) : (p.avgDuration != null ? Number(p.avgDuration) : (cd.avgDuration != null ? Number(cd.avgDuration) : null)),
             contraception: cd.contraception ?? null,
-            avatar: p.avatar ?? p.photoUrl ?? (this.profile && this.profile.avatar) ?? null,
+            avatar: p.avatar ?? p.avatarUrl ?? p.photoUrl ?? (this.profile && this.profile.avatar) ?? null,
           }
           this.preferences = p.preferences || this.preferences || {}
           this.stravaConnected = data.strava?.connected === true

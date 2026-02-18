@@ -86,7 +86,7 @@
             </thead>
             <tbody>
               <tr v-for="(act, i) in activities" :key="act.id || i">
-                <td class="elite-data activity-date">{{ formatDate(act.startDate) }}</td>
+                <td class="elite-data activity-date">{{ formatActivityDate(act.startDate ?? act.date) }}</td>
                 <td>
                   <span class="activity-type-cell">
                     <q-icon :name="activityIcon(act.type)" size="14px" class="q-mr-xs" />
@@ -589,6 +589,16 @@ function formatDate(value) {
   return d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
 }
 
+/** Activity table: date only YYYY-MM-DD, or "—" when missing. */
+function formatActivityDate(value) {
+  const d = toJsDate(value)
+  if (!d) return '—'
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 function activityIcon(type) {
   if (!type) return 'fitness_center'
   const t = String(type).toLowerCase()
@@ -615,62 +625,31 @@ function extractPrimeLoad(activity) {
   return null
 }
 
-function isStravaActivity(activity) {
-  if (!activity || typeof activity !== 'object') return false
-  const source = (activity.source || '').toString().toLowerCase()
-  if (source === 'strava') return true
-  if (activity.start_date_local || activity.start_date) return true
-  if (activity.type && activity.name) return true
-  return false
-}
-
-function normalizeStravaActivities(list) {
+/**
+ * Map raw activities (from GET /api/dashboard payload.recent_activities or GET /api/activities)
+ * to display shape. Defensive mapping; sort desc by date; slice to 7.
+ */
+function mapRecentActivities(list) {
   const items = Array.isArray(list) ? list : []
-  const now = new Date()
-  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-
-  const enriched = items
-    .filter(isStravaActivity)
-    .map((a, idx) => {
-      const start_date_raw =
-        a.start_date_local ||
-        a.start_date ||
-        a.date ||
-        null
-      const preferredDate = toJsDate(start_date_raw)
-      const rawFallback =
-        a.start ||
-        a.start_date_local ||
-        a.start_date ||
-        a.date ||
-        a.timestamp
-      const d = preferredDate || parseFirestoreDate(rawFallback)
-      return {
-        src: a,
-        start: d,
-        startDate: preferredDate
-          ? preferredDate.toISOString()
-          : d
-            ? d.toISOString()
-            : null,
-        index: idx,
-      }
-    })
-    .filter((x) => x.start && x.start >= weekAgo && x.start <= now)
-    .sort((a, b) => b.start - a.start)
-    .slice(0, 20)
-
-  return enriched.map((x, i) => {
-    const a = x.src
+  const mapped = items.map((activity, idx) => {
+    const dateRaw = activity.date ?? activity.start_date_local ?? activity.start_date ?? activity.start ?? activity.timestamp ?? null
+    const date = toJsDate(dateRaw) || parseFirestoreDate(dateRaw)
+    const type = activity.type ?? activity.sport_type ?? 'Workout'
+    const primeLoad = activity.primeLoad ?? activity.loadUsed ?? activity.load ?? extractPrimeLoad(activity)
     return {
-      id: a.id || a.activityId || a._id || x.index || i,
-      start: x.start,
-      startDate: x.startDate,
-      type: a.type || 'Workout',
-      name: a.name || a.workout_name || '',
-      primeLoad: extractPrimeLoad(a),
+      id: activity.id ?? activity.activityId ?? activity._id ?? idx,
+      startDate: date ? date.toISOString() : null,
+      date,
+      type,
+      name: activity.name ?? activity.workout_name ?? '',
+      primeLoad: primeLoad != null ? Number(primeLoad) : null,
     }
   })
+  const sorted = mapped
+    .filter((a) => a.date)
+    .sort((a, b) => b.date.getTime() - a.date.getTime())
+    .slice(0, 7)
+  return sorted
 }
 
 function formatPrimeLoad(v) {
@@ -1057,21 +1036,18 @@ async function submitCheckin() {
   }
 }
 
+/** Fallback: when dashboard had no recent_activities, try GET /api/activities?limit=7 if backend provides it. */
 async function loadActivities() {
-  // Fallback: laad Strava-activiteiten direct als /api/dashboard geen bruikbare recent_activities had
+  if (activities.value.length) return
   activitiesLoading.value = true
   try {
-    const uid = authStore.user?.uid
-    if (!uid) {
-      activities.value = []
-      return
-    }
-    const res = await api.get(`/api/strava/activities/${encodeURIComponent(uid)}`)
+    const res = await api.get('/api/activities', { params: { limit: 7 } })
     const list = res.data?.data ?? res.data ?? []
-    activities.value = normalizeStravaActivities(list)
-  } catch (e) {
-    console.error('Strava activities load failed:', e)
-    activities.value = []
+    if (Array.isArray(list) && list.length) {
+      activities.value = mapRecentActivities(list)
+    }
+  } catch {
+    // Backend may not expose GET /api/activities; leave activities from dashboard (possibly empty)
   } finally {
     activitiesLoading.value = false
   }
@@ -1086,10 +1062,8 @@ async function loadDashboard() {
       const cycleInfo = normalizeCycle(payload)
       const readiness = payload.readiness_today ?? payload.readiness ?? data.value.readiness
       const acwr = payload.acwr
-      const recentStrava = normalizeStravaActivities(payload.recent_activities)
-      if (recentStrava.length) {
-        activities.value = recentStrava
-      }
+      const recent = mapRecentActivities(payload.recent_activities ?? [])
+      activities.value = recent
       const cycleLength =
         payload.cycle_length ??
         payload.cycleLength ??
@@ -1150,9 +1124,7 @@ onMounted(async () => {
   }
 
   await loadDashboard()
-  if (!activities.value.length) {
-    await loadActivities()
-  }
+  await loadActivities()
 })
 </script>
 
