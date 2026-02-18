@@ -43,6 +43,20 @@ export default defineRouter(function (/* { store, ssrContext } */) {
       if (!authStore.isAuthReady) return true
     }
 
+    // Admin routes: ensure profile (role) loaded, then require auth + admin
+    if (to.path.startsWith('/admin')) {
+      if (typeof authStore.loadProfileIfNeeded === 'function') {
+        await authStore.loadProfileIfNeeded()
+      }
+      if (!authStore.isAuthenticated) {
+        const query = to.query?.code ? { code: to.query.code } : {}
+        if (to.fullPath !== '/') query.redirect = to.fullPath
+        return { path: '/auth', query: Object.keys(query).length ? query : undefined }
+      }
+      if (authStore.isAdmin) return true
+      return { path: '/dashboard', query: { reason: 'no_access' } }
+    }
+
     // Niet ingelogd: alleen /join en /auth (en callback) toegestaan
     if (!authStore.user) {
       const publicPaths = ['/login', '/join', '/auth', '/auth/strava/callback']
@@ -54,11 +68,17 @@ export default defineRouter(function (/* { store, ssrContext } */) {
       return true
     }
 
-    // Ingelogd maar geen teamId: alleen /join en /auth (geen dashboard/intake)
+    // Teamcode gate: alleen voor niet-admin. Admins mogen zonder teamId naar /admin.
     if (!authStore.teamId) {
-      const allowedWithoutTeam = ['/join', '/auth', '/login']
-      if (!allowedWithoutTeam.includes(to.path)) {
-        return { path: '/join' }
+      if (typeof authStore.loadProfileIfNeeded === 'function') {
+        await authStore.loadProfileIfNeeded()
+      }
+      if (!authStore.isAdmin) {
+        const allowedWithoutTeam = ['/join', '/auth', '/login']
+        if (!allowedWithoutTeam.includes(to.path)) {
+          return { path: '/join' }
+        }
+        return true
       }
       return true
     }

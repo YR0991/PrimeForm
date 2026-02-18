@@ -363,6 +363,15 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
+    /**
+     * Ensure profile (and role) is loaded for current user. No-op when already loaded. Use from router before checking isAdmin.
+     */
+    async loadProfileIfNeeded() {
+      if (!this.user?.uid) return
+      if (this.profileLoadedForUid === this.user.uid) return
+      await this.bootstrapProfile()
+    },
+
     init() {
       // Singleton: reuse existing promise & listener
       if (initPromise) {
