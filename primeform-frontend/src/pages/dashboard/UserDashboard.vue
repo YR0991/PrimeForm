@@ -583,12 +583,6 @@ function toJsDate(v) {
   return null
 }
 
-function formatDate(value) {
-  const d = toJsDate(value)
-  if (!d) return '—'
-  return d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
-}
-
 /** Activity table: date only YYYY-MM-DD, or "—" when missing. */
 function formatActivityDate(value) {
   const d = toJsDate(value)
