@@ -7,6 +7,11 @@ const routes = [
     children: [{ path: '', component: () => import('pages/IntakeStepper.vue') }],
   },
   {
+    path: '/join',
+    component: () => import('layouts/MainLayout.vue'),
+    children: [{ path: '', component: () => import('pages/join/JoinPage.vue') }],
+  },
+  {
     path: '/',
     component: () => import('layouts/MainLayout.vue'),
     children: [{ path: '', component: () => import('pages/IndexPage.vue') }],
@@ -39,7 +44,12 @@ const routes = [
   {
     path: '/login',
     component: () => import('layouts/MainLayout.vue'),
-    children: [{ path: '', component: () => import('pages/LoginPage.vue') }],
+    children: [{ path: '', component: () => import('pages/auth/AuthPage.vue') }],
+  },
+  {
+    path: '/auth',
+    component: () => import('layouts/MainLayout.vue'),
+    children: [{ path: '', component: () => import('pages/auth/AuthPage.vue') }],
   },
   {
     path: '/auth/strava/callback',

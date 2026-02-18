@@ -229,7 +229,7 @@ export const useAuthStore = defineStore('auth', {
         }
 
         const uid = firebaseUser.uid
-        await apiPutProfile(uid, {
+        await apiPutProfile({
           profilePatch: {
             email: firebaseUser.email ?? email,
             displayName: firebaseUser.displayName ?? fullName ?? null,
@@ -237,7 +237,7 @@ export const useAuthStore = defineStore('auth', {
           role: 'user',
           onboardingComplete: false,
         })
-        const data = await apiGetProfile(uid)
+        const data = await apiGetProfile()
         this._setUserFromProfile(firebaseUser, data)
         this.profileLoadedForUid = uid
       } catch (err) {

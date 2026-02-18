@@ -43,11 +43,20 @@ export default defineRouter(function (/* { store, ssrContext } */) {
       if (!authStore.isAuthReady) return true
     }
 
-    // Niet ingelogd? → /login
+    // Niet ingelogd? → /auth (code uit query behouden)
     if (!authStore.user) {
-      if (to.path !== '/login') {
-        return { path: '/login', query: to.path !== '/' ? { redirect: to.fullPath } : undefined }
+      const publicPaths = ['/login', '/join', '/auth', '/auth/strava/callback']
+      if (!publicPaths.includes(to.path)) {
+        const query = { ...(to.query?.code ? { code: to.query.code } : {}) }
+        if (to.path !== '/' && to.fullPath !== '/') query.redirect = to.fullPath
+        return { path: '/auth', query: Object.keys(query).length ? query : undefined }
       }
+      return true
+    }
+
+    // Ingelogd maar geen teamId → orphan user, altijd naar /join
+    if (!authStore.teamId) {
+      if (to.path !== '/join') return { path: '/join' }
       return true
     }
 
@@ -57,32 +66,26 @@ export default defineRouter(function (/* { store, ssrContext } */) {
       return true
     }
 
-    // Onboarding lock: intake is one-way zodra onboardingComplete of onboardingLockedAt is gezet
+    // Atleet met teamId: onboardingLockedAt bepaalt toegang tot /intake
     const onboardingLocked =
       authStore.onboardingComplete === true ||
       Boolean(authStore.onboardingLockedAt)
 
-    // Alleen voor atleten (rol 'user'): intake / dashboard routing; coaches/admins zijn hier al doorgelaten
     const isAthlete = authStore.role === 'user' || (!authStore.isAdmin && !authStore.isCoach)
     if (isAthlete) {
-      // A) Locked atleet mag nooit terug naar /intake
+      // Locked atleet mag /intake niet zien → dashboard
       if (to.path === '/intake' && onboardingLocked) {
         return { path: '/dashboard' }
       }
 
-      // B) Intake onboarding voor niet-locked atleet
+      // Niet-locked: /intake en /dashboard beide toegestaan
       if (to.path === '/' || to.path === '/dashboard') {
-        // Alleen als onboarding NIET gelocked is en profiel nog niet compleet is → naar intake
         if (!onboardingLocked && authStore.profileComplete === false) {
           return { path: '/intake' }
         }
-
-        // Als je naar root ('/') gaat en je hoeft niet naar intake → altijd naar dashboard
         if (to.path === '/') {
           return { path: '/dashboard' }
         }
-
-        // Als je al op '/dashboard' bent en onboardingLocked true is, blijf je gewoon op dashboard
       }
     }
 
