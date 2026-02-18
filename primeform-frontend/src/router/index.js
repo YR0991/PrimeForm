@@ -43,7 +43,7 @@ export default defineRouter(function (/* { store, ssrContext } */) {
       if (!authStore.isAuthReady) return true
     }
 
-    // Niet ingelogd? → /auth (code uit query behouden)
+    // Niet ingelogd: alleen /join en /auth (en callback) toegestaan
     if (!authStore.user) {
       const publicPaths = ['/login', '/join', '/auth', '/auth/strava/callback']
       if (!publicPaths.includes(to.path)) {
@@ -54,9 +54,12 @@ export default defineRouter(function (/* { store, ssrContext } */) {
       return true
     }
 
-    // Ingelogd maar geen teamId → orphan user, altijd naar /join
+    // Ingelogd maar geen teamId: alleen /join en /auth (geen dashboard/intake)
     if (!authStore.teamId) {
-      if (to.path !== '/join') return { path: '/join' }
+      const allowedWithoutTeam = ['/join', '/auth', '/login']
+      if (!allowedWithoutTeam.includes(to.path)) {
+        return { path: '/join' }
+      }
       return true
     }
 

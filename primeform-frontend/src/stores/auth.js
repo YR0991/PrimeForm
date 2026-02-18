@@ -39,6 +39,46 @@ async function apiVerifyInviteCode(code) {
   }
 }
 
+/**
+ * Claim team invite for the current user. Uses POST /api/teams/claim-invite.
+ * @param {string} code - Team invite code from query (e.g. /auth?code=XXXX)
+ * @returns {{ ok: true }} on success
+ * @throws never; returns { ok: false, code: 'TEAM_ALREADY_SET' | 'NOT_FOUND', message?: string } for 409/404
+ */
+async function apiClaimTeamInvite(code) {
+  const raw = (code || '').toString().trim()
+  if (!raw) {
+    return { ok: false, code: 'NOT_FOUND', message: 'Geen teamcode opgegeven' }
+  }
+  try {
+    await api.post('/api/teams/claim-invite', { code: raw })
+    return { ok: true }
+  } catch (err) {
+    const status = err.response?.status
+    const data = err.response?.data || {}
+    const errCode = data.code || data.errorCode || data.reason || null
+    if (status === 409 || errCode === 'TEAM_ALREADY_SET') {
+      return {
+        ok: false,
+        code: 'TEAM_ALREADY_SET',
+        message: data.message || data.error || 'Je bent al gekoppeld aan een ander team.',
+      }
+    }
+    if (status === 404 || errCode === 'INVITE_INVALID' || errCode === 'NOT_FOUND') {
+      return {
+        ok: false,
+        code: 'NOT_FOUND',
+        message: data.message || data.error || 'Teamcode ongeldig.',
+      }
+    }
+    return {
+      ok: false,
+      code: 'ERROR',
+      message: data.message || data.error || err.message || 'Claim mislukt.',
+    }
+  }
+}
+
 const googleProvider = new GoogleAuthProvider()
 
 /**
@@ -436,6 +476,14 @@ export const useAuthStore = defineStore('auth', {
       const raw = (code || '').trim()
       if (!raw) throw new Error('Geen teamcode opgegeven')
       return apiVerifyInviteCode(raw)
+    },
+
+    /**
+     * Claim team invite for current user (e.g. after login with ?code=XXX).
+     * Does not throw; returns { ok: true } or { ok: false, code, message }.
+     */
+    async claimTeamInvite(code) {
+      return apiClaimTeamInvite(code)
     },
 
     /**
