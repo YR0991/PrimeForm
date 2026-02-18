@@ -2,7 +2,7 @@
   <q-page class="coach-dashboard elite-page">
     <div class="engineer-container">
       <header class="engineer-header">
-        <h1 class="engineer-title">SQUADRON VIEW</h1>
+        <h1 class="engineer-title">Overzicht team</h1>
         <q-btn
           flat
           round

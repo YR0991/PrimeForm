@@ -2,7 +2,7 @@
   <q-page class="coach-dashboard elite-page">
     <div class="engineer-container">
       <header class="engineer-header">
-        <h1 class="engineer-title">SQUADRON VIEW</h1>
+        <h1 class="engineer-title">Overzicht team</h1>
         <q-btn
           flat
           round
@@ -252,9 +252,10 @@ function formatLastActivityDate(activity) {
 
 function formatLastActivityLoad(activity) {
   if (!activity) return '—'
-  const v = activity.load ?? activity.loadUsed ?? activity.primeLoad
+  const v = activity.primeLoad ?? activity.load ?? activity.loadUsed
   const n = v != null && Number.isFinite(Number(v)) ? Number(v) : null
-  return n != null ? String(Math.round(n)) : '—'
+  if (n == null) return '—'
+  return n % 1 === 0 ? String(Math.round(n)) : n.toFixed(1)
 }
 
 function matchesSearch(row, term) {
