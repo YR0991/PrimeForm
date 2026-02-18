@@ -95,84 +95,117 @@
             <span class="value elite-data">{{ formatReadiness(athlete) }}</span>
           </div>
 
-          <div class="deep-dive-section-label">BELASTING PER DAG (PRIMELOAD)</div>
-          <div class="prime-load-section">
-            <PrimeLoadDailyChart
-              :activities="athlete.activities || []"
-              :days="14"
-              @day-click="handleDayClick"
-            />
-            <div class="prime-load-detail" v-if="selectedDayKey">
-              <div class="prime-load-detail-header">
-                <span class="prime-load-date">{{ selectedDayLabel }}</span>
-                <span class="prime-load-total elite-data">
-                  Totaal PrimeLoad: {{ formatPrimeLoad(selectedDayTotal) }}
-                </span>
+          <q-card flat bordered class="load-card">
+            <q-card-section class="load-card-header">
+              <div class="load-card-title">Belasting</div>
+              <div class="load-card-range-toggle">
+                <q-btn-group
+                  dense
+                  outline
+                  rounded
+                >
+                  <q-btn
+                    v-for="option in loadRangeOptions"
+                    :key="option.value"
+                    :label="option.label"
+                    :flat="loadRange !== option.value"
+                    :color="loadRange === option.value ? 'white' : 'grey-5'"
+                    @click="loadRange = option.value"
+                  />
+                </q-btn-group>
               </div>
-              <table v-if="selectedDayActivities.length" class="prime-load-activity-table">
-                <thead>
-                  <tr>
-                    <th>Type</th>
-                    <th>Naam</th>
-                    <th class="th-right">PrimeLoad</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="(act, idx) in selectedDayActivities"
-                    :key="act.id || act.name || idx"
-                  >
-                    <td class="elite-data">
-                      {{ act.type || 'Workout' }}
-                    </td>
-                    <td class="elite-data">
-                      {{ act.name || act.title || act.date || '—' }}
-                    </td>
-                    <td class="elite-data prime-load">
-                      {{ formatPrimeLoad(act._primeLoad) }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-              <div v-else class="deep-dive-empty">
-                Geen workouts met PrimeLoad voor deze dag.
+            </q-card-section>
+            <q-card-section class="load-card-body">
+              <div class="load-chart-block">
+                <div class="deep-dive-section-label load-subtitle">Belasting per dag</div>
+                <PrimeLoadDailyChart
+                  :activities="athlete.activities || []"
+                  :days="loadRange"
+                  @day-click="handleDayClick"
+                />
+                <div class="prime-load-detail" v-if="selectedDayKey">
+                  <div class="prime-load-detail-header">
+                    <span class="prime-load-date">{{ selectedDayLabel }}</span>
+                    <span class="prime-load-total elite-data">
+                      Totaal PrimeLoad: {{ formatPrimeLoad(selectedDayTotal) }}
+                    </span>
+                  </div>
+                  <table v-if="selectedDayActivities.length" class="prime-load-activity-table">
+                    <thead>
+                      <tr>
+                        <th>Type</th>
+                        <th>Naam</th>
+                        <th class="th-right">PrimeLoad</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="(act, idx) in selectedDayActivities"
+                        :key="act.id || act.name || idx"
+                      >
+                        <td class="elite-data">
+                          {{ act.type || 'Workout' }}
+                        </td>
+                        <td class="elite-data">
+                          {{ act.name || act.title || act.date || '—' }}
+                        </td>
+                        <td class="elite-data prime-load">
+                          {{ formatPrimeLoad(act._primeLoad) }}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <div v-else class="deep-dive-empty">
+                    Geen workouts met PrimeLoad voor deze dag.
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          <div class="deep-dive-section-label">LAATSTE 7 ACTIVITEITEN (MET PRIMELOAD)</div>
-          <table v-if="athlete.activities?.length" class="deep-dive-activity-table">
-            <thead>
-              <tr>
-                <th>Datum</th>
-                <th>Type</th>
-                <th class="th-right">PrimeLoad</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(act, i) in athlete.activities" :key="act.id || i">
-                <td class="elite-data">{{ act.date }}</td>
-                <td>
-                  <span class="activity-source-inline">
-                    <q-badge
-                      v-if="act.source === 'manual' || act.source === 'primeform'"
-                      class="source-badge primeform-badge"
-                      outline
-                      dense
-                    >
-                      PF
-                    </q-badge>
-                    <q-badge v-else class="source-badge strava-badge" outline dense>Strava</q-badge>
-                    <span class="activity-type">{{ act.type || 'Workout' }}</span>
-                  </span>
-                </td>
-                <td class="elite-data prime-load">{{ act.load ?? '—' }}</td>
-              </tr>
-            </tbody>
-          </table>
-          <div v-else class="deep-dive-empty">
-            Geen activiteiten in de laatste 7 dagen.
-          </div>
+              <div class="load-table-block">
+                <div class="deep-dive-section-label load-subtitle">Laatste activiteiten</div>
+                <table v-if="athlete.activities?.length" class="deep-dive-activity-table">
+                  <thead>
+                    <tr>
+                      <th>Datum</th>
+                      <th>Type</th>
+                      <th class="th-right">PrimeLoad</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(act, i) in athlete.activities" :key="act.id || i">
+                      <td class="elite-data activity-date">
+                        <span
+                          :title="act.date || ''"
+                        >
+                          {{ formatShortDate(act.date) }}
+                        </span>
+                      </td>
+                      <td>
+                        <span class="activity-source-inline">
+                          <q-badge
+                            v-if="act.source === 'manual' || act.source === 'primeform'"
+                            class="source-badge primeform-badge"
+                            outline
+                            dense
+                          >
+                            PF
+                          </q-badge>
+                          <q-badge v-else class="source-badge strava-badge" outline dense>Strava</q-badge>
+                          <span class="activity-type">{{ act.type || 'Workout' }}</span>
+                        </span>
+                      </td>
+                      <td class="elite-data prime-load activity-load">
+                        {{ act.load ?? '—' }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div v-else class="deep-dive-empty">
+                  Geen activiteiten in de laatste 7 dagen.
+                </div>
+              </div>
+            </q-card-section>
+          </q-card>
 
           <div class="deep-dive-section-label trends-label">
             <span>HRV & RHR TRENDS (cycle-over-cycle)</span>
@@ -250,6 +283,13 @@ const showDebugTimelines = ref(false)
 const selectedDayKey = ref(null)
 const selectedDayActivities = ref([])
 const selectedDayTotal = ref(null)
+const loadRange = ref(14)
+
+const loadRangeOptions = [
+  { label: '7d', value: 7 },
+  { label: '28d', value: 28 },
+  { label: '90d', value: 90 },
+]
 const showWeekReportDialog = ref(false)
 const weekReportDefaultRange = ref(null)
 
@@ -278,6 +318,16 @@ function formatPrimeLoad(val) {
   const n = Number(val)
   if (!Number.isFinite(n)) return '—'
   return n.toFixed(1)
+}
+
+function formatShortDate(raw) {
+  if (!raw) return '—'
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) {
+    const s = String(raw)
+    return s.length >= 10 ? s.slice(0, 10) : s
+  }
+  return d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
 }
 
 function handleDayClick(dateKey, activities, totalLoad) {
@@ -967,6 +1017,52 @@ watch(athleteId, (id) => {
 .deep-dive-activity-table td {
   padding: 8px 0;
   vertical-align: middle;
+}
+
+.activity-date span,
+.activity-load {
+  font-feature-settings: 'tnum' 1;
+}
+
+.load-card {
+  margin-top: 20px;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: q.$radius-sm;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.load-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.load-card-title {
+  font-family: q.$typography-font-family;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #ffffff;
+}
+
+.load-card-range-toggle {
+  display: flex;
+  align-items: center;
+}
+
+.load-card-body {
+  padding-top: 12px;
+}
+
+.load-subtitle {
+  margin: 0 0 8px 0;
+}
+
+.load-chart-block {
+  margin-bottom: 12px;
 }
 
 .activity-source-inline {

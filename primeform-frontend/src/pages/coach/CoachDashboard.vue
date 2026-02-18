@@ -1,3 +1,8 @@
+<!-- CoachDashboard (ACTIVE)
+  Deze coach view wordt gebruikt door de Quasar SPA in primeform-frontend
+  via primeform-frontend/src/router/routes.js (route pad '/coach').
+  Pas voor de live coachervaring ALLEEN deze versie aan.
+-->
 <template>
   <q-page class="coach-dashboard elite-page">
     <div class="engineer-container">

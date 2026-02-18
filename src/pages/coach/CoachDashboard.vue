@@ -1,3 +1,8 @@
+<!-- CoachDashboard (DEPRECATED)
+  Legacy coach view behorend bij de oude root Vue-app (src/router/routes.js).
+  De huidige Quasar SPA gebruikt primeform-frontend/src/pages/coach/CoachDashboard.vue.
+  Gebruik deze file niet meer voor wijzigingen; alleen bewaren als referentie.
+-->
 <template>
   <q-page class="coach-dashboard elite-page">
     <div class="engineer-container">

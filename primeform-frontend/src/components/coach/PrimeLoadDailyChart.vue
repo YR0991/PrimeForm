@@ -165,8 +165,22 @@ const chartOptions = computed(() => ({
   },
   tooltip: {
     theme: 'dark',
+    x: {
+      formatter: (_val, opts) => {
+        const b = buckets.value[opts?.dataPointIndex ?? -1]
+        return b ? b.dateKey : ''
+      },
+    },
     y: {
-      formatter: (val) => `${val} PL`,
+      formatter: (val, opts) => {
+        const b = buckets.value[opts?.dataPointIndex ?? -1]
+        const type =
+          b && b.activities && b.activities.length
+            ? (b.activities[0].type || 'Workout')
+            : ''
+        const base = `${val} PL`
+        return type ? `${base} · ${type}` : base
+      },
     },
   },
 }))
