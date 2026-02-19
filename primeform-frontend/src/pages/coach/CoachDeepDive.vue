@@ -374,20 +374,6 @@ function formatReadiness(row) {
   return Number.isFinite(n) && n >= 0 && n <= 10 ? `${n}/10` : '—'
 }
 
-function formatCycleDisplay(row) {
-  if (!row) return '—'
-  const phase = row.metrics?.cyclePhase ?? row.cyclePhase ?? null
-  const phaseDay = row.metrics?.cycleDay ?? row.cycleDay ?? null
-  const phaseStr = phase == null || String(phase).toLowerCase() === 'unknown' || String(phase).trim() === ''
-    ? null
-    : String(phase).trim()
-  if (!phaseStr) return '—'
-  if (phaseDay == null || !Number.isFinite(Number(phaseDay)) || Number(phaseDay) <= 0) {
-    return phaseStr
-  }
-  return `${phaseStr} · dag ${Number(phaseDay)}`
-}
-
 const lastCheckinLabel = computed(() => {
   const a = athlete.value
   if (!a) return 'Laatste check-in'
