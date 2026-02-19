@@ -857,45 +857,67 @@ const usesTempBaselines = computed(() => {
   return !Number.isFinite(dashRhr) || !Number.isFinite(dashHrv)
 })
 
-const eliteChartOptions = (colors, cycleLength) => ({
-  chart: {
-    type: 'line',
-    background: 'transparent',
-    toolbar: { show: false },
-    zoom: { enabled: false },
-    foreColor: 'rgba(255,255,255,0.75)'
-  },
-  theme: { mode: 'dark' },
-  stroke: { curve: 'smooth', width: 2 },
-  colors: colors || ['#22c55e', '#16a34a'],
-  grid: {
-    borderColor: 'rgba(255,255,255,0.08)',
-    strokeDashArray: 4,
-    xaxis: { lines: { show: false } },
-    yaxis: { lines: { show: true } }
-  },
-  xaxis: {
-    type: 'numeric',
-    min: 1,
-    max: cycleLength || 28,
-    labels: { style: { colors: 'rgba(255,255,255,0.55)' } },
-    axisBorder: { color: 'rgba(255,255,255,0.08)' },
-    axisTicks: { color: 'rgba(255,255,255,0.08)' }
-  },
-  yaxis: {
-    labels: { style: { colors: 'rgba(255,255,255,0.55)' } }
-  },
-  legend: {
-    labels: { colors: '#9ca3af' },
-    fontSize: '11px'
-  },
-  tooltip: {
-    theme: 'dark',
-    x: {
-      formatter: (val) => `Dag ${val}`,
+// Huidige cyclus: thick solid line, markers on. Vorige cyclus: thin dashed line, low opacity, no markers.
+const eliteChartOptions = (colors, cycleLength) => {
+  const baseColors = colors || ['#22c55e', '#16a34a']
+  const currentColor = baseColors[0]
+  const previousColorRaw = baseColors[1] || baseColors[0]
+  const previousColorRgba = (() => {
+    const hex = previousColorRaw.replace(/^#/, '')
+    const r = parseInt(hex.slice(0, 2), 16)
+    const g = parseInt(hex.slice(2, 4), 16)
+    const b = parseInt(hex.slice(4, 6), 16)
+    return `rgba(${r},${g},${b},0.45)`
+  })()
+  return {
+    chart: {
+      type: 'line',
+      background: 'transparent',
+      toolbar: { show: false },
+      zoom: { enabled: false },
+      foreColor: 'rgba(255,255,255,0.75)'
     },
+    theme: { mode: 'dark' },
+    stroke: {
+      curve: 'smooth',
+      width: [3, 1.5],
+      dashArray: [0, 6]
+    },
+    colors: [currentColor, previousColorRgba],
+    grid: {
+      borderColor: 'rgba(255,255,255,0.08)',
+      strokeDashArray: 4,
+      xaxis: { lines: { show: false } },
+      yaxis: { lines: { show: true } }
+    },
+    xaxis: {
+      type: 'numeric',
+      min: 1,
+      max: cycleLength || 28,
+      labels: { style: { colors: 'rgba(255,255,255,0.55)' } },
+      axisBorder: { color: 'rgba(255,255,255,0.08)' },
+      axisTicks: { color: 'rgba(255,255,255,0.08)' }
+    },
+    yaxis: {
+      labels: { style: { colors: 'rgba(255,255,255,0.55)' } }
+    },
+    markers: {
+      size: [4, 0],
+      hover: { sizeOffset: 4 }
+    },
+    legend: {
+      labels: { colors: '#9ca3af' },
+      fontSize: '11px',
+      showForSingleSeries: false
+    },
+    tooltip: {
+      theme: 'dark',
+      x: {
+        formatter: (val) => `Dag ${val}`,
+      },
+    }
   }
-})
+}
 
 const hrvChartOptions = computed(() => eliteChartOptions(['#22c55e', '#16a34a'], data.value.cycleLength || 28))
 const rhrChartOptions = computed(() => eliteChartOptions(['#ef4444', '#dc2626'], data.value.cycleLength || 28))
