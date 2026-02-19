@@ -459,7 +459,6 @@ const activities = ref([])
 const activitiesLoading = ref(false)
 const historyLoading = ref(false)
 const historyLogs = ref([])
-const stravaSyncing = ref(false)
 
 // Check-in dialog state
 const showCheckinDialog = ref(false)
@@ -881,19 +880,6 @@ const eliteChartOptions = (colors, cycleLength) => {
 
 const hrvChartOptions = computed(() => eliteChartOptions(['#22c55e', '#16a34a'], data.value.cycleLength || 28))
 const rhrChartOptions = computed(() => eliteChartOptions(['#ef4444', '#dc2626'], data.value.cycleLength || 28))
-
-async function syncStravaNow() {
-  stravaSyncing.value = true
-  try {
-    await api.post('/api/strava/sync-now')
-    await authStore.fetchUserProfile()
-    await loadDashboard()
-  } catch (e) {
-    console.error('Strava sync failed', e)
-  } finally {
-    stravaSyncing.value = false
-  }
-}
 
 function openCheckinDialog() {
   checkinError.value = ''
