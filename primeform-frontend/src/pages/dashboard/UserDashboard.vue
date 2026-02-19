@@ -17,8 +17,7 @@
             {{ cycle.phaseLabel }} – Dag {{ cycle.cycleDay || '—' }} {{ cycleEmoji }}
           </template>
           <template v-else>
-            Cyclus niet ingesteld
-            <router-link to="/profile" class="cycle-cta">Vul cyclus in</router-link>
+            Cyclus: n.v.t.
           </template>
         </div>
       </header>
@@ -363,7 +362,7 @@ import { ref, computed, onMounted } from 'vue'
 import VueApexCharts from 'vue3-apexcharts'
 import { useAuthStore } from '../../stores/auth.js'
 import { api } from '../../services/httpClient.js'
-import { getAthleteDashboard, normalizeCycle } from '../../services/userService.js'
+import { getAthleteDashboard } from '../../services/userService.js'
 import AthleteAvatar from '../../components/AthleteAvatar.vue'
 
 const authStore = useAuthStore()
@@ -375,8 +374,8 @@ const getOrCreateUserId = () => {
 
 const data = ref({
   greeting: 'Goedemorgen',
-  cyclePhase: 'Luteal Phase',
-  cycleDay: 22,
+  cyclePhase: null,
+  cycleDay: null,
   cycleEmoji: '🩸',
   readiness: 7,
   dailyAdvice: 'MAINTAIN',
@@ -388,20 +387,25 @@ const data = ref({
   phaseDay: null,
   ghostComparison: null,
   todayLog: null,
+  cycleContext: null,
 })
 
 const menstruationLengthDefault = 5
 
+// Header: alleen data.cycleContext; geen history_logs, ghost_comparison, phase/phaseDay/cycleDay legacy
 const cycle = computed(() => {
-  const c = data.value.cycle || {}
-  const phaseLabel = c.phaseLabel || c.phase || data.value.cyclePhase
-  let cycleDay = c.cycleDay ?? data.value.cycleDay ?? null
-  cycleDay = cycleDay != null ? Number(cycleDay) : null
-  if (!Number.isFinite(cycleDay) || cycleDay <= 0) cycleDay = null
-
+  const ctx = data.value.cycleContext ?? null
+  if (ctx?.confidence !== 'HIGH') {
+    return { phase: '', phaseLabel: '', cycleDay: null }
+  }
+  const phaseLabel = (ctx.phaseLabelNL ?? ctx.phaseName ?? '').trim() || ''
+  const cycleDay =
+    ctx.phaseDay != null && Number.isFinite(Number(ctx.phaseDay)) && Number(ctx.phaseDay) > 0
+      ? Number(ctx.phaseDay)
+      : null
   return {
-    phase: c.phase || phaseLabel,
-    phaseLabel: phaseLabel || '',
+    phase: phaseLabel,
+    phaseLabel,
     cycleDay,
   }
 })
@@ -1053,7 +1057,7 @@ async function loadDashboard() {
     const res = await api.get('/api/dashboard')
     const payload = res.data?.data
     if (payload) {
-      const cycleInfo = normalizeCycle(payload)
+      const ctx = payload.cycleContext ?? null
       const readiness = payload.readiness_today ?? payload.readiness ?? data.value.readiness
       const acwr = payload.acwr
       const recent = mapRecentActivities(payload.recent_activities ?? [])
@@ -1061,15 +1065,8 @@ async function loadDashboard() {
       const cycleLength =
         payload.cycle_length ??
         payload.cycleLength ??
-        cycleInfo.cycleLength ??
         data.value.cycleLength ??
         28
-      const phaseDay =
-        payload.phaseDay ??
-        payload.current_phase_day ??
-        cycleInfo.cycleDay ??
-        data.value.phaseDay ??
-        null
       const ghostComparison =
         payload.ghost_comparison ??
         payload.ghostComparison ??
@@ -1081,12 +1078,18 @@ async function loadDashboard() {
         payload.today ??
         data.value.todayLog ??
         null
+      // Phase/day alleen uit cycleContext (geen legacy phase/phaseDay/cycleDay/history_logs voor header)
+      const isHighCycle = ctx?.confidence === 'HIGH' && ctx?.phaseName != null && String(ctx.phaseName).trim() !== ''
+      const cycleDayVal = isHighCycle && ctx.phaseDay != null && Number.isFinite(Number(ctx.phaseDay)) && Number(ctx.phaseDay) > 0
+        ? Number(ctx.phaseDay)
+        : null
       data.value = {
         ...data.value,
+        cycleContext: ctx ?? data.value.cycleContext,
         readiness: readiness ?? data.value.readiness,
-        cyclePhase: cycleInfo.phaseLabel ?? data.value.cyclePhase,
-        cycleDay: cycleInfo.cycleDay ?? data.value.cycleDay,
-        cycle: cycleInfo,
+        cyclePhase: isHighCycle ? (ctx.phaseLabelNL ?? ctx.phaseName ?? '') : null,
+        cycleDay: cycleDayVal,
+        cycle: null,
         acwr: acwr != null ? acwr : data.value.acwr,
         acwrStatus: acwr != null ? (acwr > 1.5 ? 'spike' : acwr > 1.3 ? 'overreaching' : acwr < 0.8 ? 'undertraining' : 'sweet') : data.value.acwrStatus,
         primeLoad7d: payload.recent_activities?.reduce((s, a) => s + (a.loadUsed ?? a._primeLoad ?? 0), 0) ?? data.value.primeLoad7d,
@@ -1094,7 +1097,7 @@ async function loadDashboard() {
         hrvBaseline: payload.hrv_baseline_28d ?? payload.hrvBaseline ?? data.value.hrvBaseline,
         stravaMeta: payload.strava_meta ?? data.value.stravaMeta,
         cycleLength,
-        phaseDay,
+        phaseDay: cycleDayVal,
         ghostComparison,
         todayLog: todayLogPayload,
         dailyAdvice: todayLogPayload?.aiMessage ?? data.value.dailyAdvice,

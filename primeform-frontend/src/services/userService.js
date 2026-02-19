@@ -81,7 +81,7 @@ export function normalizeCycle(payload = {}) {
 export async function getAthleteDashboard(/* userId */) {
   const res = await api.get('/api/dashboard')
   const payload = res.data?.data ?? res.data ?? {}
-  const cycle = normalizeCycle(payload)
+  const ctx = payload.cycleContext ?? null
   const acwr = payload.acwr
   const readiness = payload.readiness_today ?? payload.readiness
   const acwrStatus =
@@ -100,11 +100,17 @@ export async function getAthleteDashboard(/* userId */) {
   )
   const out = {}
   if (readiness != null) out.readiness = readiness
-  if (cycle.phaseLabel != null) {
-    out.cyclePhase = cycle.phaseLabel
-    out.cycle = cycle
+  out.cycleContext = ctx
+  // Header: alleen fase/dag tonen bij HIGH confidence en phaseName != null; profile.lastPeriodDate negeren
+  if (ctx?.confidence === 'HIGH' && ctx?.phaseName != null && String(ctx.phaseName).trim() !== '') {
+    const phaseLabel = ctx.phaseLabelNL ?? ctx.phaseName ?? ''
+    const cycleDay = ctx.phaseDay != null && Number.isFinite(Number(ctx.phaseDay)) && Number(ctx.phaseDay) > 0
+      ? Number(ctx.phaseDay)
+      : null
+    out.cyclePhase = phaseLabel
+    out.cycle = { phase: phaseLabel, phaseLabel, cycleDay }
+    if (cycleDay != null) out.cycleDay = cycleDay
   }
-  if (cycle.cycleDay != null) out.cycleDay = cycle.cycleDay
   if (acwr != null) out.acwr = acwr
   if (acwrStatus != null) out.acwrStatus = acwrStatus
   if (primeLoad7d != null) out.primeLoad7d = primeLoad7d
