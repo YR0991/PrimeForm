@@ -88,7 +88,7 @@
                     </span>
                   </span>
                 </td>
-                <td class="elite-data activity-load">{{ formatPrimeLoad(act.primeLoad) }}</td>
+                <td class="elite-data activity-load">{{ formatPrimeLoad(act.primeLoad ?? act._primeLoad ?? act.loadUsed ?? act.prime_load) }}</td>
               </tr>
             </tbody>
           </table>
@@ -300,6 +300,7 @@ import VueApexCharts from 'vue3-apexcharts'
 import { useAuthStore } from '../../stores/auth.js'
 import { api } from '../../services/httpClient.js'
 import { getAthleteDashboard, compute7dFromActivities } from '../../services/userService.js'
+import { normalizeActivities } from '../../lib/activityNormalizer.js'
 import AthleteAvatar from '../../components/AthleteAvatar.vue'
 
 const authStore = useAuthStore()
@@ -507,47 +508,6 @@ function activityIcon(type) {
   if (t.includes('swim')) return 'pool'
   if (t.includes('weight') || t.includes('strength')) return 'fitness_center'
   return 'fitness_center'
-}
-
-function extractPrimeLoad(activity) {
-  const candidates = [
-    activity.primeLoad,
-    activity.loadUsed,
-    activity._primeLoad,
-    activity.metrics?.primeLoad,
-    activity.metrics?.load,
-    activity.suffer_score,
-  ]
-  for (const v of candidates) {
-    const n = Number(v)
-    if (Number.isFinite(n)) return n
-  }
-  return null
-}
-
-/**
- * Map raw activities (from GET /api/dashboard payload.activitiesLast7Days)
- * to display shape. Defensive mapping; sort desc by date; no slice (full list).
- */
-function mapRecentActivities(list) {
-  const items = Array.isArray(list) ? list : []
-  const mapped = items.map((activity, idx) => {
-    const dateRaw = activity.date ?? activity.start_date_local ?? activity.start_date ?? activity.start ?? activity.timestamp ?? null
-    const date = toJsDate(dateRaw) || parseFirestoreDate(dateRaw)
-    const type = activity.type ?? activity.sport_type ?? 'Workout'
-    const primeLoad = activity.primeLoad ?? activity.loadUsed ?? activity.prime_load ?? activity.load ?? extractPrimeLoad(activity)
-    return {
-      id: activity.id ?? activity.activityId ?? activity._id ?? idx,
-      startDate: date ? date.toISOString() : null,
-      date,
-      type,
-      name: activity.name ?? activity.workout_name ?? '',
-      primeLoad: primeLoad != null ? Number(primeLoad) : null,
-    }
-  })
-  return mapped
-    .filter((a) => a.date)
-    .sort((a, b) => b.date.getTime() - a.date.getTime())
 }
 
 function formatPrimeLoad(v) {
@@ -961,7 +921,16 @@ async function loadDashboard() {
       const ctx = payload.cycleContext ?? null
       const readiness = payload.readiness_today ?? payload.readiness ?? data.value.readiness
       const acwr = payload.acwr
-      activities.value = mapRecentActivities(payload.activitiesLast7Days ?? payload.recent_activities ?? [])
+      const raw = payload.activitiesLast7Days ?? payload.recent_activities ?? []
+      const normalized = normalizeActivities(raw)
+      activities.value = normalized
+        .filter((a) => a.date)
+        .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+        .map((a) => ({
+          ...a,
+          startDate: a.date ? new Date(a.date) : null,
+          name: a.name ?? a.workout_name ?? '',
+        }))
 
       const todayStr = new Date().toISOString().slice(0, 10)
       let trainingVolume7d =

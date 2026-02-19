@@ -217,24 +217,38 @@ export async function getAthleteDashboard(/* userId */) {
 
 /**
  * Fetches dashboard payload for an athlete (coach/admin). Uses GET /api/admin/users/:uid/dashboard.
- * For coach deep dive the squadron store uses getAthleteDetail + getDashboardForUser; this is for direct callers.
+ * Returns same shape as /api/dashboard for target athlete. No mock.
  */
 export async function getAthleteDeepDive(athleteId) {
   const { getDashboardForUser } = await import('./adminService.js')
   const dashboard = await getDashboardForUser(athleteId).catch(() => ({}))
-  const activities = Array.isArray(dashboard.activitiesLast7Days) ? dashboard.activitiesLast7Days : []
+  if (!dashboard || typeof dashboard !== 'object') {
+    return {
+      id: athleteId,
+      acwr: null,
+      readiness_today: null,
+      readiness: null,
+      todayLog: null,
+      strava_meta: null,
+      activitiesLast7Days: [],
+      history_logs: [],
+    }
+  }
+  const readiness =
+    dashboard.readiness_today ??
+    dashboard.todayLog?.metrics?.readiness ??
+    dashboard.readiness ??
+    null
   return {
     id: athleteId,
-    name: null,
-    cyclePhase: dashboard.phase ?? dashboard.cycleContext?.phaseName ?? null,
-    cycleDay: dashboard.phaseDay ?? dashboard.cycleContext?.phaseDay ?? null,
     acwr: dashboard.acwr ?? null,
-    acwrStatus: null,
-    primeLoad7d: null,
-    readiness: dashboard.readiness_today ?? dashboard.readiness ?? null,
-    activities,
+    readiness_today: dashboard.readiness_today ?? null,
+    readiness,
     todayLog: dashboard.todayLog ?? null,
-    history_logs: dashboard.history_logs ?? [],
-    strava_meta: dashboard.strava_meta ?? null
+    strava_meta: dashboard.strava_meta ?? null,
+    activitiesLast7Days: Array.isArray(dashboard.activitiesLast7Days) ? dashboard.activitiesLast7Days : [],
+    history_logs: Array.isArray(dashboard.history_logs) ? dashboard.history_logs : [],
+    load_history: Array.isArray(dashboard.load_history) ? dashboard.load_history : [],
+    cycleContext: dashboard.cycleContext ?? null,
   }
 }

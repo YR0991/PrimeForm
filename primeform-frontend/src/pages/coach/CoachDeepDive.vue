@@ -49,11 +49,11 @@
             </div>
             <div class="kpi-card">
               <div class="kpi-label">Trainingsvolume (7d)</div>
-              <div class="kpi-value elite-data">{{ formatLoad7d(athlete) }}</div>
+              <div class="kpi-value elite-data">{{ trainingVolume7d != null ? Number(trainingVolume7d).toFixed(1) : '—' }}</div>
             </div>
             <div class="kpi-card">
               <div class="kpi-label">PrimeLoad (7d)</div>
-              <div class="kpi-value elite-data">{{ formatLoad7d(athlete) }}</div>
+              <div class="kpi-value elite-data">{{ primeLoad7d != null ? Number(primeLoad7d).toFixed(1) : '—' }}</div>
             </div>
             <div class="kpi-card">
               <div class="kpi-label">Readiness</div>
@@ -83,7 +83,7 @@
               <div class="load-chart-block">
                 <div class="deep-dive-section-label load-subtitle">Belasting per dag</div>
                 <PrimeLoadDailyChart
-                  :activities="athlete.activities || []"
+                  :activities="normalizedActivities"
                   :days="loadRange"
                   @day-click="handleDayClick"
                 />
@@ -127,7 +127,7 @@
 
               <div class="load-table-block">
                 <div class="deep-dive-section-label load-subtitle">Laatste activiteiten</div>
-                <table v-if="athlete.activities?.length" class="deep-dive-activity-table">
+                <table v-if="normalizedActivities.length" class="deep-dive-activity-table">
                   <thead>
                     <tr>
                       <th>Datum</th>
@@ -136,12 +136,10 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="(act, i) in athlete.activities" :key="act.id || i">
+                    <tr v-for="(act, i) in normalizedActivities" :key="act.id || i">
                       <td class="elite-data activity-date">
-                        <span
-                          :title="act.date || ''"
-                        >
-                          {{ formatShortDate(act.date) }}
+                        <span :title="act.date || ''">
+                          {{ formatShortDate(act.date ?? act._dateStr) }}
                         </span>
                       </td>
                       <td>
@@ -159,7 +157,7 @@
                         </span>
                       </td>
                       <td class="elite-data prime-load activity-load">
-                        {{ act.load ?? '—' }}
+                        {{ formatPrimeLoad(act.primeLoad ?? act._primeLoad ?? act.loadUsed ?? act.prime_load) }}
                       </td>
                     </tr>
                   </tbody>
@@ -235,6 +233,7 @@ import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import VueApexCharts from 'vue3-apexcharts'
 import { useSquadronStore } from '../../stores/squadron.js'
+import { normalizeActivities } from '../../lib/activityNormalizer.js'
 import PrimeLoadDailyChart from '../../components/coach/PrimeLoadDailyChart.vue'
 import WeekReportDialog from '../../components/coach/WeekReportDialog.vue'
 import AthleteAvatar from '../../components/AthleteAvatar.vue'
@@ -259,6 +258,42 @@ const weekReportDefaultRange = ref(null)
 
 const athleteId = computed(() => route.params.id)
 const athlete = computed(() => squadronStore.selectedAtleet || squadronStore.getAthlete(athleteId.value))
+
+const normalizedActivities = computed(() =>
+  normalizeActivities(athlete.value?.activities ?? [])
+)
+
+const trainingVolume7d = computed(() => {
+  const list = normalizedActivities.value
+  const today = new Date().toISOString().slice(0, 10)
+  const sevenDaysAgo = new Date()
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
+  const start = sevenDaysAgo.toISOString().slice(0, 10)
+  let sum = 0
+  for (const a of list) {
+    const d = a.date ?? a._dateStr ?? ''
+    if (d < start || d > today) continue
+    const v = a.rawLoad ?? a.load ?? a.suffer_score ?? a.loadRaw
+    if (v != null && Number.isFinite(Number(v))) sum += Number(v)
+  }
+  return Number.isFinite(sum) && sum > 0 ? sum : null
+})
+
+const primeLoad7d = computed(() => {
+  const list = normalizedActivities.value
+  const today = new Date().toISOString().slice(0, 10)
+  const sevenDaysAgo = new Date()
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
+  const start = sevenDaysAgo.toISOString().slice(0, 10)
+  let sum = 0
+  for (const a of list) {
+    const d = a.date ?? a._dateStr ?? ''
+    if (d < start || d > today) continue
+    const v = a.primeLoad ?? a._primeLoad ?? a.loadUsed ?? a.prime_load
+    if (v != null && Number.isFinite(Number(v))) sum += Number(v)
+  }
+  return Number.isFinite(sum) && sum > 0 ? sum : null
+})
 
 const athleteDisplayName = computed(() => {
   const a = athlete.value || {}
@@ -338,28 +373,12 @@ function loadBalanceClass(row) {
   return 'load-balance-outside'
 }
 
-function formatLoad7d(row) {
-  const v = row.metrics?.acuteLoad ?? row.acuteLoad
-  const n = v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : null
-  if (n != null) return n.toFixed(1)
-  const sum = primeLoad7dFromActivities(row)
-  return sum != null ? sum.toFixed(1) : '—'
-}
-
-function primeLoad7dFromActivities(row) {
-  const activities = row?.activities ?? row?.recent_activities ?? []
-  if (!Array.isArray(activities) || activities.length === 0) return null
-  let sum = 0
-  for (const a of activities) {
-    const load = a.load ?? a.loadUsed ?? a._primeLoad ?? a.primeLoad
-    const n = load != null && Number.isFinite(Number(load)) ? Number(load) : null
-    if (n != null) sum += n
-  }
-  return Number.isFinite(sum) ? sum : null
-}
-
 function formatReadiness(row) {
-  const v = row?.metrics?.readiness ?? row?.readiness
+  const v =
+    row?.readiness_today ??
+    row?.todayLog?.metrics?.readiness ??
+    row?.metrics?.readiness ??
+    row?.readiness
   if (v == null || v === '') return '—'
   const n = Number(v)
   return Number.isFinite(n) && n >= 0 && n <= 10 ? `${n}/10` : '—'
