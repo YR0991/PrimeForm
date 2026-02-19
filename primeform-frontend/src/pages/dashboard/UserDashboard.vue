@@ -97,57 +97,33 @@
         </q-card-section>
       </q-card>
 
-      <!-- KPI strip: 4 tiles — ACWR, Trainingsvolume (7d), PrimeLoad (7d), Readiness -->
+      <!-- KPI strip: ACWR (centered, max-width) -->
       <div class="kpi-strip">
-        <!-- 1. ACWR -->
-        <q-card class="kpi-tile" flat>
-          <q-card-section class="kpi-tile-section">
-            <div class="kpi-tile-label">ACWR</div>
-            <div class="kpi-tile-value">
-              {{ hasAcwr ? Number(data.acwr).toFixed(1) : '—' }}
-            </div>
-            <div class="kpi-tile-subtext">Belastingbalans</div>
-            <template v-if="hasAcwr">
-              <div class="acwr-scale acwr-scale-compact">
-                <div class="acwr-scale-bar">
-                  <div class="acwr-band acwr-band-under"></div>
-                  <div class="acwr-band acwr-band-sweet"></div>
-                  <div class="acwr-band acwr-band-risk"></div>
-                  <div class="acwr-band acwr-band-high"></div>
-                  <div class="acwr-marker" :style="{ left: acwrMarkerPosition + '%' }"></div>
-                </div>
-                <div class="acwr-scale-labels">
-                  <span>0.5</span><span>1.0</span><span>1.5</span><span>2.0</span>
-                </div>
+        <div class="q-mx-auto kpi-strip-inner">
+          <q-card class="kpi-tile" flat>
+            <q-card-section class="kpi-tile-section">
+              <div class="kpi-tile-label">ACWR</div>
+              <div class="kpi-tile-value">
+                {{ hasAcwr ? Number(data.acwr).toFixed(1) : '—' }}
               </div>
-            </template>
-          </q-card-section>
-        </q-card>
-        <!-- 2. Trainingsvolume (7d) -->
-        <q-card class="kpi-tile" flat>
-          <q-card-section class="kpi-tile-section">
-            <div class="kpi-tile-label">Trainingsvolume (7d)</div>
-            <div class="kpi-tile-value">{{ formatKpiDecimal(data.trainingVolume7d) }}</div>
-            <div class="kpi-tile-subtext">Som loadUsed</div>
-          </q-card-section>
-        </q-card>
-        <!-- 3. PrimeLoad (7d) -->
-        <q-card class="kpi-tile" flat>
-          <q-card-section class="kpi-tile-section">
-            <div class="kpi-tile-label">PrimeLoad (7d)</div>
-            <div class="kpi-tile-value">{{ formatKpiDecimal(data.primeLoad7d) }}</div>
-            <div class="kpi-tile-subtext">Som PrimeLoad</div>
-          </q-card-section>
-        </q-card>
-        <!-- 4. Readiness -->
-        <q-card class="kpi-tile" flat>
-          <q-card-section class="kpi-tile-section">
-            <div class="kpi-tile-label">Readiness</div>
-            <div class="kpi-tile-value">{{ readinessDisplayValue }}</div>
-            <div class="kpi-tile-subtext">{{ readinessSubtext }}</div>
-            <div v-if="lastCheckinDateDisplay" class="kpi-tile-extra">{{ lastCheckinDateDisplay }}</div>
-          </q-card-section>
-        </q-card>
+              <div class="kpi-tile-subtext">Belastingbalans</div>
+              <template v-if="hasAcwr">
+                <div class="acwr-scale acwr-scale-compact">
+                  <div class="acwr-scale-bar">
+                    <div class="acwr-band acwr-band-under"></div>
+                    <div class="acwr-band acwr-band-sweet"></div>
+                    <div class="acwr-band acwr-band-risk"></div>
+                    <div class="acwr-band acwr-band-high"></div>
+                    <div class="acwr-marker" :style="{ left: acwrMarkerPosition + '%' }"></div>
+                  </div>
+                  <div class="acwr-scale-labels">
+                    <span>0.5</span><span>1.0</span><span>1.5</span><span>2.0</span>
+                  </div>
+                </div>
+              </template>
+            </q-card-section>
+          </q-card>
+        </div>
       </div>
 
       <!-- Primary Action: START CHECK-IN -->
@@ -580,39 +556,6 @@ function formatPrimeLoad(v) {
   return n.toFixed(1)
 }
 
-function formatKpiDecimal(v) {
-  const n = Number(v)
-  if (!Number.isFinite(n)) return '—'
-  return n.toFixed(1)
-}
-
-const readinessDisplayValue = computed(() => {
-  const r =
-    data.value.readiness_today ??
-    data.value.todayLog?.metrics?.readiness ??
-    data.value.readiness
-  if (r != null && Number.isFinite(Number(r))) return String(Number(r))
-  return '—'
-})
-
-const readinessSubtext = computed(() => {
-  if (data.value.todayLog != null) return 'Vandaag check-in gedaan'
-  return 'Geen check-in vandaag'
-})
-
-const lastCheckinDateDisplay = computed(() => {
-  const raw = data.value.lastCheckinDate
-  if (!raw) return ''
-  const d = toJsDate(raw) || (typeof raw === 'string' ? new Date(raw) : null)
-  if (!d || isNaN(d.getTime())) return ''
-  const formatted = d.toLocaleDateString('nl-NL', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
-  return `Laatste check-in: ${formatted}`
-})
-
 // --- HRV/RHR chart: history_logs met 7d en 28d rollend gemiddelde ---
 function toDateStr(val) {
   if (!val) return ''
@@ -773,11 +716,11 @@ const rhrChartSeries = computed(() => {
 })
 
 const hasHrvRhrData = computed(() => {
-  const a = hrvChartSeries.value[0].data.length
-  const b = hrvChartSeries.value[1].data.length
-  const c = rhrChartSeries.value[0].data.length
-  const d = rhrChartSeries.value[1].data.length
-  return a > 0 || b > 0 || c > 0 || d > 0
+  const hrv0 = hrvChartSeries.value?.[0]?.data?.length ?? 0
+  const hrv1 = hrvChartSeries.value?.[1]?.data?.length ?? 0
+  const rhr0 = rhrChartSeries.value?.[0]?.data?.length ?? 0
+  const rhr1 = rhrChartSeries.value?.[1]?.data?.length ?? 0
+  return hrv0 > 0 || hrv1 > 0 || rhr0 > 0 || rhr1 > 0
 })
 
 const hasAcwr = computed(() => {
@@ -1000,16 +943,25 @@ async function submitCheckin() {
   }
 }
 
+const EMPTY_DASHBOARD_PAYLOAD = {
+  activitiesLast7Days: [],
+  recent_activities: [],
+  todayLog: null,
+  strava_meta: null,
+  cycleContext: null,
+  history_logs: [],
+}
+
 async function loadDashboard() {
   historyLoading.value = true
   try {
-    const res = await api.get('/api/dashboard')
-    const payload = res.data?.data
-    if (payload) {
+    const res = await api.get('/api/dashboard').catch(() => null)
+    const payload = res?.data?.data ?? res?.data ?? EMPTY_DASHBOARD_PAYLOAD
+    if (payload && typeof payload === 'object') {
       const ctx = payload.cycleContext ?? null
       const readiness = payload.readiness_today ?? payload.readiness ?? data.value.readiness
       const acwr = payload.acwr
-      activities.value = mapRecentActivities(payload.activitiesLast7Days ?? [])
+      activities.value = mapRecentActivities(payload.activitiesLast7Days ?? payload.recent_activities ?? [])
 
       const todayStr = new Date().toISOString().slice(0, 10)
       let trainingVolume7d =
@@ -1103,10 +1055,17 @@ async function loadDashboard() {
         todayLog: todayLogPayload,
         dailyAdvice: todayLogPayload?.aiMessage ?? data.value.dailyAdvice,
       }
-      historyLogs.value = payload.history_logs || []
+      historyLogs.value = payload.history_logs ?? []
     }
   } catch (e) {
     console.error('Dashboard API failed', e)
+    activities.value = []
+    historyLogs.value = []
+    data.value = {
+      ...data.value,
+      todayLog: null,
+      stravaMeta: data.value.stravaMeta ?? null,
+    }
   } finally {
     historyLoading.value = false
   }
@@ -1116,11 +1075,12 @@ onMounted(async () => {
   try {
     const userId = getOrCreateUserId()
     const dashboardData = await getAthleteDashboard(userId)
-    data.value = { ...data.value, ...dashboardData }
+    if (dashboardData && typeof dashboardData === 'object') {
+      data.value = { ...data.value, ...dashboardData }
+    }
   } catch (e) {
     console.error('Dashboard load failed', e)
   }
-
   await loadDashboard()
 })
 </script>
@@ -1251,21 +1211,14 @@ onMounted(async () => {
   background: rgba(34, 197, 94, 0.1);
 }
 
-/* KPI strip: 4 tiles — desktop 4 cols, mobile stacked */
+/* KPI strip: single ACWR tile, centered with max-width */
 .kpi-strip {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
+  width: 100%;
 }
-@media (min-width: 480px) {
-  .kpi-strip {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-@media (min-width: 960px) {
-  .kpi-strip {
-    grid-template-columns: repeat(4, 1fr);
-  }
+
+.kpi-strip-inner {
+  max-width: 600px;
+  width: 100%;
 }
 
 .kpi-tile {

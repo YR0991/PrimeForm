@@ -129,14 +129,30 @@ export function compute7dFromActivities(recentActivities, todayStr) {
   return { trainingVolume7d: volume, primeLoad7d: prime }
 }
 
+const EMPTY_DASHBOARD = {
+  activitiesLast7Days: [],
+  recent_activities: [],
+  todayLog: null,
+  strava_meta: null,
+  cycleContext: null,
+}
+
 /**
  * Fetches athlete dashboard data from /api/dashboard.
  * Used by UserDashboard.vue for initial load (userId kept for API compatibility; backend uses auth token).
+ * Never throws: on failure returns safe empty payload.
  * Contract: { success, data: { acwr, readiness_today, todayLog, recent_activities, cycleContext, ... } }
  */
 export async function getAthleteDashboard(/* userId */) {
-  const res = await api.get('/api/dashboard')
-  const payload = res.data?.data ?? res.data ?? {}
+  let res
+  try {
+    res = await api.get('/api/dashboard')
+  } catch (e) {
+    console.error('getAthleteDashboard failed', e)
+    return { ...EMPTY_DASHBOARD }
+  }
+  const payload = res?.data?.data ?? res?.data ?? EMPTY_DASHBOARD
+  if (!payload || typeof payload !== 'object') return { ...EMPTY_DASHBOARD }
   const ctx = payload.cycleContext ?? null
   const acwr = payload.acwr
   const readiness = payload.readiness_today ?? payload.readiness
@@ -199,17 +215,26 @@ export async function getAthleteDashboard(/* userId */) {
   return out
 }
 
+/**
+ * Fetches dashboard payload for an athlete (coach/admin). Uses GET /api/admin/users/:uid/dashboard.
+ * For coach deep dive the squadron store uses getAthleteDetail + getDashboardForUser; this is for direct callers.
+ */
 export async function getAthleteDeepDive(athleteId) {
-  await new Promise((r) => setTimeout(r, 250))
+  const { getDashboardForUser } = await import('./adminService.js')
+  const dashboard = await getDashboardForUser(athleteId).catch(() => ({}))
+  const activities = Array.isArray(dashboard.activitiesLast7Days) ? dashboard.activitiesLast7Days : []
   return {
     id: athleteId,
-    name: '—',
-    cyclePhase: '—',
-    cycleDay: 0,
-    acwr: 0,
-    acwrStatus: 'sweet',
-    primeLoad7d: 0,
-    readiness: 0,
-    activities: []
+    name: null,
+    cyclePhase: dashboard.phase ?? dashboard.cycleContext?.phaseName ?? null,
+    cycleDay: dashboard.phaseDay ?? dashboard.cycleContext?.phaseDay ?? null,
+    acwr: dashboard.acwr ?? null,
+    acwrStatus: null,
+    primeLoad7d: null,
+    readiness: dashboard.readiness_today ?? dashboard.readiness ?? null,
+    activities,
+    todayLog: dashboard.todayLog ?? null,
+    history_logs: dashboard.history_logs ?? [],
+    strava_meta: dashboard.strava_meta ?? null
   }
 }

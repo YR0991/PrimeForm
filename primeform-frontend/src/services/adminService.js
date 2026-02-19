@@ -63,6 +63,22 @@ export async function getUserHistory(userId) {
 }
 
 /**
+ * Get dashboard payload for a user (coach/admin viewing athlete). GET /api/admin/users/:uid/dashboard.
+ * Same shape as GET /api/dashboard: acwr, todayLog, activitiesLast7Days, history_logs, strava_meta, etc.
+ * @param {string} uid - User (athlete) id
+ * @returns {Promise<object>} Dashboard data or empty object on failure
+ */
+export async function getDashboardForUser(uid) {
+  try {
+    const res = await api.get(`/api/admin/users/${encodeURIComponent(uid)}/dashboard`)
+    return res?.data?.data ?? res?.data ?? {}
+  } catch (e) {
+    console.error('getDashboardForUser failed', e)
+    return {}
+  }
+}
+
+/**
  * Get debug timeline (last X days) for coach/admin. GET /api/admin/users/:uid/debug-history?days=...
  * @param {string} uid - User ID
  * @param {number} [days=14] - 7, 14, 28, or 56

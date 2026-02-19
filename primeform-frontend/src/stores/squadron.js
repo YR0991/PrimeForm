@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { getCoachSquad, getAthleteDetail } from '../services/coachService'
-import { getLiveLoadMetrics } from '../services/adminService'
+import { getLiveLoadMetrics, getDashboardForUser } from '../services/adminService'
 
 const TODAY_STR = () => new Date().toISOString().slice(0, 10)
 const MS_PER_DAY = 86400000
@@ -53,11 +53,12 @@ export function computeAttention(athlete) {
   if (!lastCheckinDate && athlete.metrics?.readiness_ts != null) {
     lastCheckinDate = parseDate(athlete.metrics.readiness_ts) || parseDate(athlete.readiness_ts)
   }
+  // Prefer API-provided checkinToday (backend /api/coach/squadron) when present
   const hasCheckinToday =
-    (lastCheckinDate && lastCheckinDate === today) ||
-    athlete.hasCheckinToday === true ||
     athlete.checkinToday === true ||
+    athlete.hasCheckinToday === true ||
     athlete.todayCheckin === true ||
+    (lastCheckinDate && lastCheckinDate === today) ||
     (athlete.todayLog != null && typeof athlete.todayLog === 'object')
   const daysSinceCheckin = hasCheckinToday
     ? 0
@@ -171,9 +172,79 @@ export function computeAttention(athlete) {
 }
 
 /**
+ * Normalize API row to a single row model for Coach Dashboard table.
+ * Required fields: hasCheckinToday, checkinDate, loadRatio, cyclePhaseLabel, cycleDay,
+ * lastActivityDate, lastActivityType, lastActivityPrimeLoad.
+ */
+function normalizeSquadRow(a) {
+  if (!a || typeof a !== 'object') {
+    return {
+      hasCheckinToday: false,
+      checkinDate: null,
+      loadRatio: null,
+      cyclePhaseLabel: null,
+      cycleDay: null,
+      lastActivityDate: null,
+      lastActivityType: null,
+      lastActivityPrimeLoad: null,
+    }
+  }
+  const hasCheckinToday = a.checkinToday === true
+  const acwrRaw = a.metrics?.acwr ?? a.acwr
+  const loadRatio = acwrRaw != null && Number.isFinite(Number(acwrRaw)) ? Number(acwrRaw) : null
+  const cyclePhaseLabel =
+    a.metrics?.cyclePhase ?? a.cyclePhase ?? (typeof a.cyclePhase === 'string' ? a.cyclePhase : null)
+  const cycleDayRaw = a.metrics?.cycleDay ?? a.cycleDay
+  const cycleDay =
+    cycleDayRaw != null && Number.isFinite(Number(cycleDayRaw)) && Number(cycleDayRaw) > 0
+      ? Number(cycleDayRaw)
+      : null
+  const last = a.lastActivity
+  const lastActivityDate =
+    last && typeof last === 'object'
+      ? (last.dateISO ?? last.date ?? null)
+      : null
+  const lastActivityType =
+    last && typeof last === 'object' && last.type != null && last.type !== ''
+      ? String(last.type)
+      : null
+  const lastActivityPrimeLoad =
+    last && typeof last === 'object' && last.primeLoad != null && Number.isFinite(Number(last.primeLoad))
+      ? Number(last.primeLoad)
+      : null
+  let checkinDate = null
+  const cands = [
+    a.lastCheckinDate,
+    a.last_checkin_date,
+    a.lastCheckin,
+    a.last_checkin,
+    a.metrics?.lastCheckinDate,
+    a.metrics?.last_checkin_date,
+  ]
+  for (const v of cands) {
+    if (!v) continue
+    const d = parseDate(v)
+    if (d) {
+      checkinDate = d
+      break
+    }
+  }
+  return {
+    hasCheckinToday,
+    checkinDate,
+    loadRatio,
+    cyclePhaseLabel,
+    cycleDay,
+    lastActivityDate,
+    lastActivityType,
+    lastActivityPrimeLoad,
+  }
+}
+
+/**
  * Squadron store — Backend-First. Storage only; no metric calculations.
  * State: athletesById (dict). Data stored exactly as the API sends.
- * Attention is computed on read via squadRows.
+ * squadRows adds attention + normalized row model for table columns.
  */
 export const useSquadronStore = defineStore('squadron', {
   state: () => ({
@@ -190,12 +261,16 @@ export const useSquadronStore = defineStore('squadron', {
       return Object.values(state.athletesById)
     },
 
-    /** Alias for table binding; each row gets attention computed on read. */
+    /** Table rows: raw API row + attention + normalized fields (hasCheckinToday, loadRatio, etc.). */
     squadRows(state) {
-      return Object.values(state.athletesById).map((a) => ({
-        ...a,
-        attention: computeAttention(a),
-      }))
+      return Object.values(state.athletesById).map((a) => {
+        const norm = normalizeSquadRow(a)
+        return {
+          ...a,
+          ...norm,
+          attention: computeAttention(a),
+        }
+      })
     },
 
     squadronSize(state) {
@@ -276,8 +351,8 @@ export const useSquadronStore = defineStore('squadron', {
     },
 
     /**
-     * Fetch one athlete detail from API and merge into athletesById.
-     * Does not mutate API response; merges into a new object.
+     * Fetch one athlete detail + dashboard (for coach deep dive). Merges GET /api/coach/athletes/:id
+     * and GET /api/admin/users/:uid/dashboard so UI has strava_meta, history_logs, activitiesLast7Days.
      */
     async fetchAthleteDeepDive(id) {
       if (!id) {
@@ -289,19 +364,45 @@ export const useSquadronStore = defineStore('squadron', {
       this.selectedAtleetId = id
 
       try {
-        const data = await getAthleteDetail(id)
-        const existing = this.athletesById[id]
-        const activities = Array.isArray(data.activities)
-          ? data.activities.map((a) => {
-              const loadRaw = a.load ?? a.loadUsed ?? a.primeLoad
+        const [detail, dashboard] = await Promise.all([
+          getAthleteDetail(id).catch(() => ({})),
+          getDashboardForUser(id),
+        ])
+        const existing = this.athletesById[id] ?? {}
+        const dash = dashboard && typeof dashboard === 'object' ? dashboard : {}
+        const activitiesFromDash = Array.isArray(dash.activitiesLast7Days) ? dash.activitiesLast7Days : []
+        const activities = activitiesFromDash.length > 0
+          ? activitiesFromDash.map((a) => {
+              const loadRaw = a.loadUsed ?? a.primeLoad ?? a.load ?? a._primeLoad
               const load = loadRaw != null && Number.isFinite(Number(loadRaw)) ? Number(loadRaw) : null
-              return { ...a, load }
+              return { ...a, load, _primeLoad: load ?? a.primeLoad }
             })
-          : (data.activities ?? existing?.activities ?? [])
-        this.athletesById = {
-          ...this.athletesById,
-          [id]: { ...existing, ...data, activities },
+          : (Array.isArray(detail.activities)
+              ? detail.activities.map((a) => {
+                  const loadRaw = a.load ?? a.loadUsed ?? a.primeLoad
+                  const load = loadRaw != null && Number.isFinite(Number(loadRaw)) ? Number(loadRaw) : null
+                  return { ...a, load }
+                })
+              : existing?.activities ?? [])
+        const merged = {
+          ...existing,
+          ...detail,
+          id,
+          name: detail.name ?? existing.name,
+          profile: detail.profile ?? existing.profile,
+          activities,
+          strava_meta: dash.strava_meta ?? detail.strava_meta ?? existing.strava_meta ?? null,
+          stravaMeta: dash.strava_meta ?? detail.stravaMeta ?? existing.stravaMeta ?? null,
+          history_logs: dash.history_logs ?? detail.history_logs ?? existing.history_logs ?? [],
+          todayLog: dash.todayLog ?? detail.todayLog ?? existing.todayLog ?? null,
+          acwr: dash.acwr ?? detail.metrics?.acwr ?? detail.acwr ?? existing.acwr ?? null,
+          metrics: {
+            ...(existing.metrics ?? {}),
+            ...(detail.metrics ?? {}),
+            acwr: dash.acwr ?? detail.metrics?.acwr ?? existing.metrics?.acwr,
+          },
         }
+        this.athletesById = { ...this.athletesById, [id]: merged }
       } catch (err) {
         console.error('SquadronStore: fetchAthleteDeepDive failed', err)
         this.selectedAtleetId = null

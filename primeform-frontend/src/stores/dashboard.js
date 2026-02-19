@@ -72,11 +72,11 @@ export const useDashboardStore = defineStore('dashboard', {
         console.log('Dashboard fetch for UID:', uid)
 
         const [dashboardRes, briefRes] = await Promise.all([
-          api.get('/api/dashboard'),
+          api.get('/api/dashboard').catch(() => null),
           api.get('/api/daily-brief').catch(() => ({ data: null })),
         ])
 
-        const data = dashboardRes?.data?.data || dashboardRes?.data || {}
+        const data = dashboardRes?.data?.data ?? dashboardRes?.data ?? {}
         this.dailyBrief = briefRes?.data?.data ?? briefRes?.data ?? null
 
         const raw = { ...data }
@@ -105,12 +105,21 @@ export const useDashboardStore = defineStore('dashboard', {
           readinessToday: data.readiness_today ?? data.readiness ?? null,
           activities: data.activitiesLast7Days ?? data.recent_activities ?? data.activities ?? [],
           activitiesLast7Days: data.activitiesLast7Days ?? [],
-          raw,
+          raw: raw ?? {},
         }
       } catch (err) {
         console.error('fetchUserDashboard failed', err)
         this.error = err?.message || 'Dashboard ophalen mislukt'
-        throw err
+        this.telemetry = {
+          acwr: null,
+          phase: null,
+          phaseDay: null,
+          phaseLength: 28,
+          readinessToday: null,
+          activities: [],
+          activitiesLast7Days: [],
+          raw: {},
+        }
       } finally {
         this.loading = false
       }

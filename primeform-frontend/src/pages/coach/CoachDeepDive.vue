@@ -399,7 +399,13 @@ function parseMaybeTimestamp(v) {
   return null
 }
 
-const stravaMeta = computed(() => athlete.value?.stravaMeta || athlete.value?.strava || {})
+const stravaMeta = computed(
+  () =>
+    athlete.value?.strava_meta ??
+    athlete.value?.stravaMeta ??
+    athlete.value?.strava ??
+    {}
+)
 
 const headerLastSyncText = computed(() => {
   const m = stravaMeta.value || {}
@@ -453,6 +459,9 @@ function getLastCheckinDate(row) {
 }
 
 function hasCheckinToday(row) {
+  if (!row) return false
+  if (row.checkinToday === true) return true
+  if (row.todayLog != null && typeof row.todayLog === 'object') return true
   const today = new Date().toISOString().slice(0, 10)
   const last = getLastCheckinDate(row)
   return !!last && last === today

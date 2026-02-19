@@ -113,9 +113,9 @@
 
           <template #body-cell-cycle="props">
             <q-td :props="props">
-          <span class="elite-data">
-            {{ formatCyclePhase(props.row) }} · D{{ formatCycleDay(props.row) }}
-          </span>
+              <span class="elite-data">
+                {{ formatCyclePhaseLabel(props.row.cyclePhaseLabel) }} · D{{ formatCycleDayValue(props.row.cycleDay) }}
+              </span>
             </q-td>
           </template>
 
@@ -123,17 +123,13 @@
             <q-td :props="props">
               <span
                 class="load-balance-cell elite-data"
-                :class="loadBalanceClass(props.row)"
+                :class="loadBalanceClassFromValue(props.row.loadRatio)"
               >
-                {{
-                  getLoadBalanceValue(props.row) != null
-                    ? getLoadBalanceValue(props.row).toFixed(2)
-                    : '—'
-                }}
+                {{ props.row.loadRatio != null ? Number(props.row.loadRatio).toFixed(2) : '—' }}
               </span>
               <q-tooltip anchor="top middle" self="bottom middle" max-width="240px">
-                {{ getLoadBalanceBand(props.row) }}
-                <template v-if="getLoadBalanceValue(props.row) != null">
+                {{ loadBalanceBandFromValue(props.row.loadRatio) }}
+                <template v-if="props.row.loadRatio != null">
                   — Acute/chronic load ratio; 0.80–1.30 is de sweet spot.
                 </template>
               </q-tooltip>
@@ -144,19 +140,17 @@
             <q-td :props="props">
               <span
                 class="compliance-badge"
-            :class="hasCheckinToday(props.row) ? 'done' : 'pending'"
+                :class="props.row.hasCheckinToday ? 'done' : 'pending'"
               >
-            {{ hasCheckinToday(props.row) ? 'Vandaag' : 'Niet gedaan' }}
+                {{ props.row.hasCheckinToday ? 'GEDAAN' : 'NIET GEDAAN' }}
               </span>
             </q-td>
           </template>
 
           <template #body-cell-lastActivity="props">
             <q-td :props="props">
-              <span v-if="props.row.lastActivity" class="last-activity-cell elite-data">
-                {{ formatLastActivityDate(props.row.lastActivity) }}
-                · {{ props.row.lastActivity.type || 'Workout' }}
-                · PL {{ formatLastActivityLoad(props.row.lastActivity) }}
+              <span v-if="props.row.lastActivityDate != null || props.row.lastActivityType != null" class="last-activity-cell elite-data">
+                {{ formatLastActivityNorm(props.row) }}
               </span>
               <span v-else class="elite-data" style="color: #9ca3af">—</span>
             </q-td>
@@ -220,7 +214,7 @@ const columns = [
   {
     name: 'loadBalance',
     label: 'BELASTINGSBALANS',
-    field: 'loadBalance',
+    field: (row) => row.loadRatio ?? null,
     align: 'center',
     sortable: true,
   },
@@ -244,23 +238,53 @@ const getLevelIcon = (level) => {
   return 'person'
 }
 
-function formatLastActivityDate(activity) {
-  if (!activity) return '—'
-  const raw = activity.date ?? activity.start_date ?? ''
-  if (!raw) return '—'
-  const str = typeof raw === 'string' ? raw.slice(0, 10) : (raw?.toDate?.()?.toISOString?.() ?? '').slice(0, 10)
-  if (!str || !/^\d{4}-\d{2}-\d{2}$/.test(str)) return '—'
-  const d = new Date(str)
-  if (Number.isNaN(d.getTime())) return str
-  return d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
+/** Format normalized last activity row to "DD mmm · Type · PL value" */
+function formatLastActivityNorm(row) {
+  if (!row || typeof row !== 'object') return '—'
+  const dateStr = row.lastActivityDate
+  let datePart = '—'
+  if (dateStr && typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr.slice(0, 10))) {
+    const d = new Date(dateStr.slice(0, 10))
+    if (!Number.isNaN(d.getTime())) datePart = d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
+  }
+  const typePart = row.lastActivityType != null && row.lastActivityType !== '' ? row.lastActivityType : 'Workout'
+  const loadPart =
+    row.lastActivityPrimeLoad != null && Number.isFinite(Number(row.lastActivityPrimeLoad))
+      ? (Number(row.lastActivityPrimeLoad) % 1 === 0
+          ? String(Math.round(row.lastActivityPrimeLoad))
+          : Number(row.lastActivityPrimeLoad).toFixed(1))
+      : '—'
+  return `${datePart} · ${typePart} · PL ${loadPart}`
 }
 
-function formatLastActivityLoad(activity) {
-  if (!activity) return '—'
-  const v = activity.primeLoad ?? activity.load ?? activity.loadUsed
-  const n = v != null && Number.isFinite(Number(v)) ? Number(v) : null
-  if (n == null) return '—'
-  return n % 1 === 0 ? String(Math.round(n)) : n.toFixed(1)
+function formatCyclePhaseLabel(cyclePhaseLabel) {
+  if (cyclePhaseLabel == null || cyclePhaseLabel === '') return 'Niet ingesteld'
+  const s = String(cyclePhaseLabel).trim()
+  if (s.toLowerCase() === 'unknown' || s.toLowerCase() === 'onbekend') return 'Niet ingesteld'
+  return s
+}
+
+function formatCycleDayValue(cycleDay) {
+  if (cycleDay == null || !Number.isFinite(Number(cycleDay)) || Number(cycleDay) <= 0) return '—'
+  return Number(cycleDay)
+}
+
+function loadBalanceBandFromValue(loadRatio) {
+  if (loadRatio == null) return 'Geen data'
+  const v = Number(loadRatio)
+  if (!Number.isFinite(v)) return 'Geen data'
+  if (v < 0.8) return '<0.80 Onder'
+  if (v < 1.3) return '0.80–1.30 In balans'
+  if (v < 1.5) return '1.30–1.50 Hoog'
+  return '>1.50 Piek'
+}
+
+function loadBalanceClassFromValue(loadRatio) {
+  if (loadRatio == null) return 'load-balance-unknown'
+  const v = Number(loadRatio)
+  if (!Number.isFinite(v)) return 'load-balance-unknown'
+  if (v >= 0.8 && v <= 1.3) return 'load-balance-optimal'
+  return 'load-balance-outside'
 }
 
 function matchesSearch(row, term) {
@@ -278,55 +302,6 @@ function getAcwr(row) {
   const v = row.metrics?.acwr ?? row.acwr
   const n = Number(v)
   return Number.isFinite(n) ? n : null
-}
-
-function getLastCheckinDate(row) {
-  const candidates = [
-    row.lastCheckinDate,
-    row.last_checkin_date,
-    row.lastCheckin,
-    row.last_checkin,
-    row.metrics?.lastCheckinDate,
-    row.metrics?.last_checkin_date,
-  ]
-  for (const v of candidates) {
-    if (!v) continue
-    if (typeof v === 'string') return v.slice(0, 10)
-    if (typeof v?.toDate === 'function') return v.toDate().toISOString().slice(0, 10)
-    if (v instanceof Date) return v.toISOString().slice(0, 10)
-    if (typeof v === 'number') {
-      const d = new Date(v)
-      if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10)
-    }
-  }
-  const ts = row.metrics?.readiness_ts ?? row.readiness_ts
-  if (ts) {
-    const d = new Date(ts)
-    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10)
-  }
-  return null
-}
-
-function hasCheckinToday(row) {
-  const today = new Date().toISOString().slice(0, 10)
-  const lastDate = getLastCheckinDate(row)
-  if (lastDate && lastDate === today) return true
-
-  const v =
-    row.hasCheckinToday ??
-    row.checkinToday ??
-    row.checkin_today ??
-    row.todayCheckin ??
-    row.today_checkin
-  if (typeof v === 'boolean') return v
-  if (typeof v === 'number') return v > 0
-  if (typeof v === 'string') {
-    const s = v.toLowerCase()
-    return s === 'true' || s === '1' || s === 'yes' || s === 'done'
-  }
-  // fallback: if there is a readiness_today metric, assume check-in
-  if (row.metrics?.readiness_today != null || row.readiness_today != null) return true
-  return false
 }
 
 function hasStravaIssue(row) {
@@ -348,56 +323,14 @@ function hasNoData(row) {
   return !hasLoad && !hasHistory
 }
 
-function getLoadBalanceValue(row) {
-  const v =
-    row.loadBalance ??
-    row.metrics?.acwr ??
-    row.acwr
-  const n = Number(v)
-  return Number.isFinite(n) ? n : null
-}
-
-function getLoadBalanceBand(row) {
-  const v = getLoadBalanceValue(row)
-  if (v == null) return 'Geen data'
-  if (v < 0.8) return '<0.80 Onder'
-  if (v < 1.3) return '0.80–1.30 In balans'
-  if (v < 1.5) return '1.30–1.50 Hoog'
-  return '>1.50 Piek'
-}
-
-function loadBalanceClass(row) {
-  const v = getLoadBalanceValue(row)
-  if (v == null) return 'load-balance-unknown'
-  if (v >= 0.8 && v <= 1.3) return 'load-balance-optimal'
-  return 'load-balance-outside'
-}
-
-function formatCyclePhase(row) {
-  const raw = row.cyclePhase ?? row.metrics?.cyclePhase
-  if (!raw) return 'Niet ingesteld'
-  const s = String(raw).trim()
-  if (!s || s.toLowerCase() === 'unknown' || s.toLowerCase() === 'onbekend') {
-    return 'Niet ingesteld'
-  }
-  return s
-}
-
-function formatCycleDay(row) {
-  const v = row.cycleDay ?? row.metrics?.cycleDay
-  const n = Number(v)
-  if (!Number.isFinite(n) || n <= 0) return '—'
-  return n
-}
-
 function matchesFilter(row, mode) {
   switch (mode) {
     case 'attention':
       return (row.attention?.score ?? 0) >= 3
     case 'highRisk':
-      return (getAcwr(row) ?? 0) > 1.5
+      return (row.loadRatio ?? getAcwr(row) ?? 0) > 1.5
     case 'noCheckinToday':
-      return !hasCheckinToday(row)
+      return row.hasCheckinToday !== true
     case 'stravaIssues':
       return hasStravaIssue(row)
     case 'noData':
