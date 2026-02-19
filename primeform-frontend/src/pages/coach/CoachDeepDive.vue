@@ -376,36 +376,6 @@ const lastCheckinLabel = computed(() => {
   return `Laatste check-in: ${label}`
 })
 
-const stravaStatusText = computed(() => {
-  const m = stravaMeta.value || {}
-  const connected = m.connected === true
-  const hasError = !!(m.lastError || m.error)
-  if (hasError) return 'Strava: Fout'
-  if (!connected && !m.lastWebhookAt && !m.lastSyncedAt) return 'Strava: Niet gekoppeld'
-  return 'Strava: OK'
-})
-
-const stravaStatusClass = computed(() => {
-  const m = stravaMeta.value || {}
-  const hasError = !!(m.lastError || m.error)
-  const connected = m.connected === true
-  if (hasError) return 'triage-bad'
-  if (!connected && !m.lastWebhookAt && !m.lastSyncedAt) return 'triage-unknown'
-  return 'triage-ok'
-})
-
-const stravaTooltipText = computed(() => {
-  const m = stravaMeta.value || {}
-  const parts = []
-  if (m.lastSyncedAt || m.lastSyncAt || m.lastWebhookAt || m.lastSuccessAt) {
-    const raw = m.lastSyncedAt || m.lastSyncAt || m.lastWebhookAt || m.lastSuccessAt
-    const d = parseMaybeTimestamp(raw)
-    if (d) parts.push(`Laatste sync: ${d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`)
-  }
-  if (m.lastError || m.error) parts.push(`Fout: ${(m.lastError || m.error || '').toString().slice(0, 120)}`)
-  return parts.length ? parts.join('\n') : null
-})
-
 function parseMaybeTimestamp(v) {
   if (!v) return null
   if (typeof v?.toDate === 'function') {
