@@ -165,7 +165,7 @@ export async function getAthleteDashboard(/* userId */) {
     !Number.isFinite(Number(trainingVolume7d)) ||
     !Number.isFinite(Number(primeLoad7d))
   ) {
-    const computed = compute7dFromActivities(payload.recent_activities ?? [], todayStr)
+    const computed = compute7dFromActivities(payload.activitiesLast7Days ?? payload.recent_activities ?? [], todayStr)
     if (trainingVolume7d == null || !Number.isFinite(Number(trainingVolume7d))) {
       trainingVolume7d = computed.trainingVolume7d
     }

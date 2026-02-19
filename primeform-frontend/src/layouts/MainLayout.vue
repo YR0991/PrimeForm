@@ -1,22 +1,5 @@
 <template>
   <q-layout view="hHh lpR fFf">
-    <div v-if="isImpersonating" class="shadow-banner">
-      <div class="shadow-text">
-        <span class="shadow-badge">SHADOW</span>
-        <span class="shadow-sep">·</span>
-        <span class="shadow-name">{{ shadowUidDisplay }}</span>
-      </div>
-      <q-btn
-        dense
-        flat
-        no-caps
-        color="black"
-        class="shadow-stop-btn"
-        label="Exit"
-        @click="handleStopImpersonation"
-      />
-    </div>
-
     <q-header class="premium-header">
       <q-toolbar>
         <router-link :to="isAdmin ? '/admin' : '/dashboard'" class="premium-title-link">
@@ -25,16 +8,6 @@
           </q-toolbar-title>
         </router-link>
         <q-space />
-
-        <q-btn
-          v-if="isImpersonating"
-          dense
-          flat
-          no-caps
-          class="header-stop-shadow-btn"
-          label="Exit"
-          @click="handleStopImpersonation"
-        />
 
         <div v-if="showNavContainer" class="nav-links">
           <router-link v-if="showDashboard" to="/dashboard" class="nav-link">Dashboard</router-link>
@@ -167,14 +140,12 @@
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
-import { useAdminStore } from '../stores/admin.js'
 import CoachDeepDive from '../pages/coach/CoachDeepDive.vue'
 import AthleteAvatar from '../components/AthleteAvatar.vue'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
-const adminStore = useAdminStore()
 
 onMounted(() => {
   if (!authStore.isAuthReady && typeof authStore.init === 'function') {
@@ -192,10 +163,6 @@ const showNavContainer = computed(() => !hideNav.value && authStore.isAuthReady)
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isAdmin = computed(() => authStore.isAdmin)
 const isCoach = computed(() => authStore.isCoach)
-const isImpersonating = computed(() => authStore.isImpersonating)
-const shadowUidDisplay = computed(
-  () => authStore.impersonatingUser?.id || authStore.shadowUid || '—'
-)
 const userEmail = computed(() => {
   const email = authStore.user?.email || ''
   if (!email) return ''
@@ -222,12 +189,6 @@ const handleLogout = async () => {
   await authStore.logoutUser()
   router.push('/login')
 }
-
-const handleStopImpersonation = async () => {
-  authStore.stopImpersonation?.()
-  await router.push('/admin')
-  adminStore.fetchAllData?.()
-}
 </script>
 
 <style scoped lang="scss">
@@ -236,56 +197,6 @@ const handleStopImpersonation = async () => {
 .premium-header {
   background: q.$prime-black;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.shadow-banner {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 16px;
-  position: relative;
-  z-index: 9999;
-  background: #fbbf24;
-  color: #111827;
-  font-family: q.$mono-font;
-  font-size: 0.78rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.shadow-text {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  align-items: baseline;
-}
-
-.shadow-badge {
-  font-weight: 800;
-  letter-spacing: 0.14em;
-}
-
-.shadow-sep {
-  opacity: 0.8;
-  margin: 0 2px;
-}
-
-.shadow-name {
-  font-weight: 700;
-}
-
-.shadow-stop-btn {
-  font-family: q.$mono-font;
-  font-size: 0.72rem;
-  letter-spacing: 0.12em;
-}
-
-.header-stop-shadow-btn {
-  font-family: q.$mono-font;
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
-  color: #fbbf24;
-  margin-right: 4px;
 }
 
 .premium-title-link {

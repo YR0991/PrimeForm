@@ -13,7 +13,7 @@ export { resolveOnStravaReauth } from './responseErrorHandling.js'
  * Single HTTP client for all /api/* calls.
  * - Injects Authorization: Bearer <idToken> from Firebase currentUser.
  * - On 401: retry once with getIdToken(true); if still 401, sign out and redirect to /login.
- * - Keeps optional x-admin-email / x-coach-email / x-user-uid for legacy or admin/coach flows.
+ * - Keeps optional x-admin-email / x-coach-email for coach/admin flows.
  */
 export const api = axios.create({
   baseURL: API_URL,
@@ -57,14 +57,6 @@ api.interceptors.request.use(
         if (coachEmailLS) headers['x-coach-email'] = coachEmailLS
         else if (authStore.isCoach && emailFromStore) headers['x-coach-email'] = emailFromStore
       }
-      const shadowUid = (localStorage.getItem('pf_shadow_uid') || '').trim()
-      if (shadowUid) {
-        headers['x-user-uid'] = shadowUid
-      } else {
-        const uid = authStore.activeUid || authStore.user?.uid || ''
-        if (uid) headers['x-user-uid'] = uid
-      }
-      headers['x-shadow-mode'] = shadowUid ? '1' : '0'
     } catch (err) {
       console.error('[httpClient] request interceptor error', err)
     }

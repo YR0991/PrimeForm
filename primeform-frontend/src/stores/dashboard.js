@@ -103,7 +103,8 @@ export const useDashboardStore = defineStore('dashboard', {
           phaseDay: data.phaseDay ?? data.current_phase_day ?? null,
           phaseLength: data.phaseLength ?? data.cycle_length ?? 28,
           readinessToday: data.readiness_today ?? data.readiness ?? null,
-          activities: data.recent_activities || data.activities || [],
+          activities: data.activitiesLast7Days ?? data.recent_activities ?? data.activities ?? [],
+          activitiesLast7Days: data.activitiesLast7Days ?? [],
           raw,
         }
       } catch (err) {

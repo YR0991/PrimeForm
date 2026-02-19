@@ -93,7 +93,7 @@
             </tbody>
           </table>
           <div v-else-if="activitiesLoading" class="activity-empty">Laden...</div>
-          <div v-else class="activity-empty">Nog geen activiteiten</div>
+          <div v-else class="activity-empty">Geen activiteiten in de laatste 7 dagen</div>
         </q-card-section>
       </q-card>
 
@@ -550,8 +550,8 @@ function extractPrimeLoad(activity) {
 }
 
 /**
- * Map raw activities (from GET /api/dashboard payload.recent_activities or GET /api/activities)
- * to display shape. Defensive mapping; sort desc by date; slice to 7.
+ * Map raw activities (from GET /api/dashboard payload.activitiesLast7Days)
+ * to display shape. Defensive mapping; sort desc by date; no slice (full list).
  */
 function mapRecentActivities(list) {
   const items = Array.isArray(list) ? list : []
@@ -559,7 +559,7 @@ function mapRecentActivities(list) {
     const dateRaw = activity.date ?? activity.start_date_local ?? activity.start_date ?? activity.start ?? activity.timestamp ?? null
     const date = toJsDate(dateRaw) || parseFirestoreDate(dateRaw)
     const type = activity.type ?? activity.sport_type ?? 'Workout'
-    const primeLoad = activity.primeLoad ?? activity.loadUsed ?? activity.load ?? extractPrimeLoad(activity)
+    const primeLoad = activity.primeLoad ?? activity.loadUsed ?? activity.prime_load ?? activity.load ?? extractPrimeLoad(activity)
     return {
       id: activity.id ?? activity.activityId ?? activity._id ?? idx,
       startDate: date ? date.toISOString() : null,
@@ -569,11 +569,9 @@ function mapRecentActivities(list) {
       primeLoad: primeLoad != null ? Number(primeLoad) : null,
     }
   })
-  const sorted = mapped
+  return mapped
     .filter((a) => a.date)
     .sort((a, b) => b.date.getTime() - a.date.getTime())
-    .slice(0, 7)
-  return sorted
 }
 
 function formatPrimeLoad(v) {
@@ -1002,23 +1000,6 @@ async function submitCheckin() {
   }
 }
 
-/** Fallback: when dashboard had no recent_activities, try GET /api/activities?limit=7 if backend provides it. */
-async function loadActivities() {
-  if (activities.value.length) return
-  activitiesLoading.value = true
-  try {
-    const res = await api.get('/api/activities', { params: { limit: 7 } })
-    const list = res.data?.data ?? res.data ?? []
-    if (Array.isArray(list) && list.length) {
-      activities.value = mapRecentActivities(list)
-    }
-  } catch {
-    // Backend may not expose GET /api/activities; leave activities from dashboard (possibly empty)
-  } finally {
-    activitiesLoading.value = false
-  }
-}
-
 async function loadDashboard() {
   historyLoading.value = true
   try {
@@ -1028,8 +1009,7 @@ async function loadDashboard() {
       const ctx = payload.cycleContext ?? null
       const readiness = payload.readiness_today ?? payload.readiness ?? data.value.readiness
       const acwr = payload.acwr
-      const recent = mapRecentActivities(payload.recent_activities ?? [])
-      activities.value = recent
+      activities.value = mapRecentActivities(payload.activitiesLast7Days ?? [])
 
       const todayStr = new Date().toISOString().slice(0, 10)
       let trainingVolume7d =
@@ -1045,7 +1025,7 @@ async function loadDashboard() {
         !Number.isFinite(Number(trainingVolume7d)) ||
         !Number.isFinite(Number(primeLoad7d))
       ) {
-        const computed = compute7dFromActivities(payload.recent_activities ?? [], todayStr)
+        const computed = compute7dFromActivities(payload.activitiesLast7Days ?? [], todayStr)
         if (trainingVolume7d == null || !Number.isFinite(Number(trainingVolume7d))) {
           trainingVolume7d = computed.trainingVolume7d
         }
@@ -1057,10 +1037,10 @@ async function loadDashboard() {
       primeLoad7d = Number.isFinite(Number(primeLoad7d)) ? Number(primeLoad7d) : data.value.primeLoad7d
 
       if (import.meta.env?.DEV) {
-        const list = payload.recent_activities ?? []
+        const list = payload.activitiesLast7Days ?? []
         const withDiffering = list.filter((a) => {
           if (!a || a.includeInAcwr === false) return false
-          const pl = a.primeLoad ?? a._primeLoad
+          const pl = a.prime_load ?? a.primeLoad ?? a._primeLoad
           if (pl == null) return false
           return Number(a.loadUsed) !== Number(pl)
         }).length
@@ -1069,7 +1049,7 @@ async function loadDashboard() {
           Number(trainingVolume7d) === Number(primeLoad7d)
         ) {
           console.warn(
-            '[Dashboard] trainingVolume7d and primeLoad7d are equal while recent_activities have differing loadUsed vs primeLoad/_primeLoad — possible binding bug.'
+            '[Dashboard] trainingVolume7d and primeLoad7d are equal while activitiesLast7Days have differing loadUsed vs primeLoad — possible binding bug.'
           )
         }
       }
@@ -1142,7 +1122,6 @@ onMounted(async () => {
   }
 
   await loadDashboard()
-  await loadActivities()
 })
 </script>
 
