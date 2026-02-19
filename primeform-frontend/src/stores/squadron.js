@@ -1,5 +1,4 @@
 import { defineStore } from 'pinia'
-import { useAuthStore } from './auth'
 import { getCoachSquad, getAthleteDetail } from '../services/coachService'
 import { getLiveLoadMetrics } from '../services/adminService'
 
@@ -235,24 +234,15 @@ export const useSquadronStore = defineStore('squadron', {
       this.loading = true
       this.error = null
 
-      const authStore = useAuthStore()
-      const teamId = authStore.teamId ?? authStore.user?.teamId
-
       try {
-        if (!teamId) {
-          this.error = 'No Team Assigned'
-          throw new Error('No Team Assigned')
-        }
-
         const list = await getCoachSquad()
         if (!Array.isArray(list)) {
           this.error = 'Invalid squadron response'
           throw new Error('Invalid squadron response')
         }
-        const filtered = list.filter((row) => row.teamId === teamId)
-
+        // Trust backend /api/coach/squadron: no client-side filter by teamId; show what backend returns.
         const nextById = {}
-        for (const athlete of filtered) {
+        for (const athlete of list) {
           const id = athlete.id ?? athlete.uid
           if (!id) continue
           // Preserve full API response; only fill name/profile/metrics when missing (never overwrite with empty)
