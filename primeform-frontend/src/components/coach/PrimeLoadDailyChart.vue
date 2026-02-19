@@ -135,15 +135,17 @@ const chartOptions = computed(() => ({
     },
   },
   theme: { mode: 'dark' },
+  colors: ['#fbbf24'],
   plotOptions: {
     bar: {
       columnWidth: '55%',
-      borderRadius: 2,
+      borderRadius: 6,
+      distributed: false,
     },
   },
   dataLabels: { enabled: false },
   grid: {
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.06)',
     strokeDashArray: 4,
     xaxis: { lines: { show: false } },
     yaxis: { lines: { show: true } },

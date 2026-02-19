@@ -38,34 +38,31 @@
           </div>
         </q-card-section>
         <q-card-section class="deep-dive-body">
-          <div class="triage-row">
-            <div class="triage-card">
-              <div class="triage-label">Belastingsbalans</div>
-              <div class="triage-value elite-data" :class="loadBalanceClass(athlete)">
+          <!-- KPI strip: single source, no duplication -->
+          <div class="kpi-strip">
+            <div class="kpi-card">
+              <div class="kpi-label">Belastingsbalans</div>
+              <div class="kpi-value elite-data" :class="loadBalanceClass(athlete)">
                 {{ formatAcwr(athlete) }}
               </div>
-              <div class="triage-sub">{{ getLoadBalanceBand(athlete) }}</div>
+              <span class="kpi-pill" :class="loadBalanceClass(athlete)">{{ getLoadBalanceBand(athlete) }}</span>
             </div>
-            <div class="triage-card">
-              <div class="triage-label">Trainingbelasting (7d)</div>
-              <div class="triage-value elite-data">
-                {{ formatLoad7d(athlete) }}
-              </div>
-              <div class="triage-sub">PrimeLoad som 7 dagen</div>
+            <div class="kpi-card">
+              <div class="kpi-label">Trainingsvolume (7d)</div>
+              <div class="kpi-value elite-data">{{ formatLoad7d(athlete) }}</div>
             </div>
-            <div class="triage-card">
-              <div class="triage-label">Readiness</div>
-              <div class="triage-value elite-data">
-                {{ formatReadiness(athlete) }}
-              </div>
-              <div class="triage-sub">{{ lastCheckinLabel }}</div>
+            <div class="kpi-card">
+              <div class="kpi-label">PrimeLoad (7d)</div>
+              <div class="kpi-value elite-data">{{ formatLoad7d(athlete) }}</div>
             </div>
-            <div class="triage-card">
-              <div class="triage-label">Strava</div>
-              <div
-                class="triage-value elite-data strava-one-line"
-                :class="stravaStatusClass"
-              >
+            <div class="kpi-card">
+              <div class="kpi-label">Readiness</div>
+              <div class="kpi-value elite-data">{{ formatReadiness(athlete) }}</div>
+              <div class="kpi-sub">{{ lastCheckinLabel }}</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Strava</div>
+              <div class="kpi-value elite-data strava-one-line" :class="stravaStatusClass">
                 {{ stravaStatusText }}
               </div>
               <q-tooltip v-if="stravaTooltipText" anchor="top middle" self="bottom middle" max-width="280px">
@@ -73,46 +70,22 @@
               </q-tooltip>
             </div>
           </div>
-          <div class="deep-dive-row">
-            <span class="label">Cyclus</span>
-            <span class="value elite-data">{{ formatCycleDisplay(athlete) }}</span>
-          </div>
-          <div class="deep-dive-row">
-            <span class="label">Belastingsbalans</span>
-            <span
-              class="value elite-data"
-              :class="loadBalanceClass(athlete)"
-            >
-              {{ athlete.metrics?.acwr != null ? athlete.metrics.acwr.toFixed(2) : '—' }}
-            </span>
-          </div>
-          <div class="deep-dive-row">
-            <span class="label">Trainingsvolume (7d)</span>
-            <span class="value elite-data">{{ formatLoad7d(athlete) }}</span>
-          </div>
-          <div class="deep-dive-row">
-            <span class="label">Readiness</span>
-            <span class="value elite-data">{{ formatReadiness(athlete) }}</span>
-          </div>
 
+          <div class="deep-dive-section-label">BELASTING</div>
           <q-card flat bordered class="load-card">
             <q-card-section class="load-card-header">
-              <div class="load-card-title">Belasting</div>
-              <div class="load-card-range-toggle">
-                <q-btn-group
-                  dense
-                  outline
-                  rounded
+              <div class="load-card-title">Belasting per periode</div>
+              <div class="timeframe-segmented">
+                <button
+                  v-for="option in loadRangeOptions"
+                  :key="option.value"
+                  type="button"
+                  class="timeframe-seg-item"
+                  :class="{ active: loadRange === option.value }"
+                  @click="loadRange = option.value"
                 >
-                  <q-btn
-                    v-for="option in loadRangeOptions"
-                    :key="option.value"
-                    :label="option.label"
-                    :flat="loadRange !== option.value"
-                    :color="loadRange === option.value ? 'white' : 'grey-5'"
-                    @click="loadRange = option.value"
-                  />
-                </q-btn-group>
+                  {{ option.label }}
+                </button>
               </div>
             </q-card-section>
             <q-card-section class="load-card-body">
@@ -208,7 +181,7 @@
           </q-card>
 
           <div class="deep-dive-section-label trends-label">
-            <span>HRV & RHR TRENDS (cycle-over-cycle)</span>
+            <span>HRV & RHR TRENDS</span>
             <q-toggle
               v-model="showDebugTimelines"
               color="grey-5"
@@ -645,83 +618,96 @@ const hasHrvRhrData = computed(() => {
   return a > 0 || b > 0 || c > 0 || d > 0
 })
 
-const eliteChartOptions = (colors) => ({
-  chart: {
-    type: 'line',
-    background: 'transparent',
-    toolbar: { show: false },
-    zoom: { enabled: false },
-    foreColor: 'rgba(255,255,255,0.75)'
-  },
-  theme: { mode: 'dark' },
-  stroke: { curve: 'smooth', width: 2 },
-  colors: colors || ['#22c55e', '#16a34a'],
-  grid: {
-    borderColor: 'rgba(255,255,255,0.08)',
-    strokeDashArray: 4,
-    xaxis: { lines: { show: false } },
-    yaxis: { lines: { show: true } }
-  },
-  xaxis: {
-    type: 'datetime',
-    labels: { style: { colors: 'rgba(255,255,255,0.55)' } },
-    axisBorder: { color: 'rgba(255,255,255,0.08)' },
-    axisTicks: { color: 'rgba(255,255,255,0.08)' }
-  },
-  yaxis: {
-    labels: { style: { colors: 'rgba(255,255,255,0.55)' } }
-  },
-  legend: {
-    labels: { colors: '#9ca3af' },
-    fontSize: '11px'
-  },
-  tooltip: { theme: 'dark', x: { format: 'dd MMM' } }
-})
+const PRIME_GOLD = '#fbbf24'
+const goldRgba = (opacity) => `rgba(251, 191, 36, ${opacity})`
 
-const hrvChartOptions = computed(() => eliteChartOptions(['#22c55e', '#16a34a']))
-const rhrChartOptions = computed(() => eliteChartOptions(['#ef4444', '#dc2626']))
-
-const eliteCycleChartOptions = (colors) => ({
-  chart: {
-    type: 'line',
-    background: 'transparent',
-    toolbar: { show: false },
-    zoom: { enabled: false },
-    foreColor: 'rgba(255,255,255,0.75)',
-  },
-  theme: { mode: 'dark' },
-  stroke: { curve: 'smooth', width: 2 },
-  colors: colors || ['#22c55e', '#16a34a'],
-  grid: {
-    borderColor: 'rgba(255,255,255,0.08)',
-    strokeDashArray: 4,
-    xaxis: { lines: { show: false } },
-    yaxis: { lines: { show: true } },
-  },
-  xaxis: {
-    type: 'numeric',
-    labels: {
-      style: { colors: 'rgba(255,255,255,0.55)' },
+function eliteChartOptions(colors) {
+  const primary = colors?.[0] || PRIME_GOLD
+  const secondaryRgba = (() => {
+    const hex = (colors?.[1] || primary).replace(/^#/, '')
+    const r = parseInt(hex.slice(0, 2), 16)
+    const g = parseInt(hex.slice(2, 4), 16)
+    const b = parseInt(hex.slice(4, 6), 16)
+    return `rgba(${r},${g},${b},0.45)`
+  })()
+  return {
+    chart: {
+      type: 'line',
+      background: 'transparent',
+      toolbar: { show: false },
+      zoom: { enabled: false },
+      foreColor: 'rgba(255,255,255,0.75)',
     },
-    axisBorder: { color: 'rgba(255,255,255,0.08)' },
-    axisTicks: { color: 'rgba(255,255,255,0.08)' },
-    title: {
-      text: 'Dag-index',
-      style: { color: 'rgba(255,255,255,0.55)', fontSize: '10px' },
+    theme: { mode: 'dark' },
+    stroke: { curve: 'smooth', width: [3, 1.5], dashArray: [0, 6] },
+    colors: [primary, secondaryRgba],
+    markers: { size: [4, 0], hover: { sizeOffset: 4 } },
+    grid: {
+      borderColor: 'rgba(255,255,255,0.08)',
+      strokeDashArray: 4,
+      xaxis: { lines: { show: false } },
+      yaxis: { lines: { show: true } },
     },
-  },
-  yaxis: {
-    labels: { style: { colors: 'rgba(255,255,255,0.55)' } },
-  },
-  legend: {
-    labels: { colors: '#9ca3af' },
-    fontSize: '11px',
-  },
-  tooltip: { theme: 'dark' },
-})
+    xaxis: {
+      type: 'datetime',
+      labels: { style: { colors: 'rgba(255,255,255,0.55)' } },
+      axisBorder: { color: 'rgba(255,255,255,0.08)' },
+      axisTicks: { color: 'rgba(255,255,255,0.08)' },
+    },
+    yaxis: { labels: { style: { colors: 'rgba(255,255,255,0.55)' } } },
+    legend: { labels: { colors: '#9ca3af' }, fontSize: '11px' },
+    tooltip: { theme: 'dark', x: { format: 'dd MMM' } },
+  }
+}
 
-const hrvCycleChartOptions = computed(() => eliteCycleChartOptions(['#22c55e', '#16a34a']))
-const rhrCycleChartOptions = computed(() => eliteCycleChartOptions(['#ef4444', '#dc2626']))
+const hrvChartOptions = computed(() => eliteChartOptions([PRIME_GOLD, goldRgba(0.45)]))
+const rhrChartOptions = computed(() => eliteChartOptions([PRIME_GOLD, goldRgba(0.45)]))
+
+function eliteCycleChartOptions(colors) {
+  const primary = colors?.[0] || PRIME_GOLD
+  const secondaryRgba = (() => {
+    const hex = (colors?.[1] || primary).replace(/^#/, '')
+    const r = parseInt(hex.slice(0, 2), 16)
+    const g = parseInt(hex.slice(2, 4), 16)
+    const b = parseInt(hex.slice(4, 6), 16)
+    return `rgba(${r},${g},${b},0.45)`
+  })()
+  return {
+    chart: {
+      type: 'line',
+      background: 'transparent',
+      toolbar: { show: false },
+      zoom: { enabled: false },
+      foreColor: 'rgba(255,255,255,0.75)',
+    },
+    theme: { mode: 'dark' },
+    stroke: { curve: 'smooth', width: [3, 1.5], dashArray: [0, 6] },
+    colors: [primary, secondaryRgba],
+    markers: { size: [4, 0], hover: { sizeOffset: 4 } },
+    grid: {
+      borderColor: 'rgba(255,255,255,0.08)',
+      strokeDashArray: 4,
+      xaxis: { lines: { show: false } },
+      yaxis: { lines: { show: true } },
+    },
+    xaxis: {
+      type: 'numeric',
+      labels: { style: { colors: 'rgba(255,255,255,0.55)' } },
+      axisBorder: { color: 'rgba(255,255,255,0.08)' },
+      axisTicks: { color: 'rgba(255,255,255,0.08)' },
+      title: {
+        text: 'Dag-index',
+        style: { color: 'rgba(255,255,255,0.55)', fontSize: '10px' },
+      },
+    },
+    yaxis: { labels: { style: { colors: 'rgba(255,255,255,0.55)' } } },
+    legend: { labels: { colors: '#9ca3af' }, fontSize: '11px' },
+    tooltip: { theme: 'dark' },
+  }
+}
+
+const hrvCycleChartOptions = computed(() => eliteCycleChartOptions([PRIME_GOLD, goldRgba(0.45)]))
+const rhrCycleChartOptions = computed(() => eliteCycleChartOptions([PRIME_GOLD, goldRgba(0.45)]))
 
 const displayHrvSeries = computed(() =>
   showDebugTimelines.value ? hrvChartSeries.value : cycleHrvSeries.value
@@ -822,7 +808,7 @@ watch(athleteId, (id) => {
 
 .deep-dive-header {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 20px;
+  padding: 24px;
 }
 
 .deep-dive-title-row {
@@ -857,28 +843,70 @@ watch(athleteId, (id) => {
 }
 
 .deep-dive-body {
+  padding: 24px;
+}
+
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.kpi-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: q.$radius-sm;
   padding: 20px;
+  min-width: 0;
 }
 
-.deep-dive-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.deep-dive-row .label {
+.kpi-label {
   font-family: q.$typography-font-family;
-  font-size: 0.7rem;
+  font-size: 0.6rem;
+  font-weight: 700;
   color: q.$prime-gray;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.12em;
+  margin-bottom: 6px;
 }
 
-.deep-dive-row .value {
+.kpi-value {
   font-family: q.$mono-font;
-  font-size: 0.9rem;
+  font-size: 1.35rem;
+  font-weight: 700;
   color: #ffffff;
+  line-height: 1.2;
+}
+
+.kpi-pill {
+  display: inline-block;
+  margin-top: 6px;
+  font-family: q.$typography-font-family;
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.06);
+  color: q.$prime-gray;
+}
+
+.kpi-pill.load-balance-optimal {
+  background: rgba(34, 197, 94, 0.15);
+  color: q.$status-push;
+}
+
+.kpi-pill.load-balance-outside {
+  background: rgba(249, 115, 22, 0.15);
+  color: q.$status-maintain;
+}
+
+.kpi-sub {
+  font-size: 0.65rem;
+  color: q.$prime-gray;
+  margin-top: 4px;
 }
 
 .load-balance-optimal {
@@ -886,7 +914,7 @@ watch(athleteId, (id) => {
 }
 
 .load-balance-outside {
-  color: #f97316;
+  color: q.$status-maintain;
 }
 
 .load-balance-unknown {
@@ -981,8 +1009,12 @@ watch(athleteId, (id) => {
   font-weight: 700;
   color: q.$prime-gray;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin: 20px 0 12px 0;
+  letter-spacing: 0.12em;
+  margin: 0 0 12px 0;
+}
+
+.deep-dive-section-label.trends-label {
+  margin-top: 28px;
 }
 
 .deep-dive-activity-table {
@@ -1024,37 +1056,65 @@ watch(athleteId, (id) => {
   font-feature-settings: 'tnum' 1;
 }
 
-.load-card {
-  margin-top: 20px;
-  background: rgba(15, 23, 42, 0.6);
+.timeframe-segmented {
+  display: inline-flex;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: q.$radius-sm;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 2px;
+  gap: 0;
+}
+
+.timeframe-seg-item {
+  font-family: q.$typography-font-family;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: q.$prime-gray;
+  background: transparent;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.timeframe-seg-item:hover {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.timeframe-seg-item.active {
+  background: q.$prime-gold;
+  color: #050505;
+}
+
+.load-card {
+  margin-top: 0;
+  background: q.$prime-surface;
+  border-radius: q.$radius-sm;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .load-card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .load-card-title {
   font-family: q.$typography-font-family;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   color: #ffffff;
 }
 
-.load-card-range-toggle {
-  display: flex;
-  align-items: center;
-}
-
 .load-card-body {
-  padding-top: 12px;
+  padding: 20px 24px 24px;
 }
 
 .load-subtitle {
