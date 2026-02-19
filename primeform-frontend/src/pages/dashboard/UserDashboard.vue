@@ -64,16 +64,9 @@
         </q-card-section>
       </q-card>
 
-      <!-- Recente Activiteiten (Strava, laatste 7 dagen) -->
+      <!-- Recente Activiteiten (laatste 7) -->
       <q-card class="history-card" flat>
         <q-card-section>
-          <div class="strava-mini-status">
-            <span class="strava-mini-text">{{ stravaStatusText }}</span>
-            <span v-if="stravaHasError" class="strava-mini-error">
-              <q-icon name="warning" size="14px" class="q-mr-xs" />
-              {{ stravaErrorText }}
-            </span>
-          </div>
           <div class="history-label">RECENTE ACTIVITEITEN (LAATSTE 7)</div>
           <table v-if="activities.length" class="activity-table">
             <thead>
@@ -104,44 +97,18 @@
         </q-card-section>
       </q-card>
 
-      <!-- Telemetry: Prime Load + ACWR -->
-      <div class="telemetry-row">
-        <q-card class="telemetry-card" flat>
-          <q-card-section>
-            <div class="telemetry-label">
-              Trainingbelasting (7 dagen)
-              <q-icon name="info_outline" size="14px" class="q-ml-xs">
-                <q-tooltip anchor="top middle" self="bottom middle">
-                  Hoger = meer totale trainingsprikkel. Vergelijk met je belastingbalans (ACWR) voor risico op overbelasting.
-                </q-tooltip>
-              </q-icon>
+      <!-- KPI strip: 4 tiles — ACWR, Trainingsvolume (7d), PrimeLoad (7d), Readiness -->
+      <div class="kpi-strip">
+        <!-- 1. ACWR -->
+        <q-card class="kpi-tile" flat>
+          <q-card-section class="kpi-tile-section">
+            <div class="kpi-tile-label">ACWR</div>
+            <div class="kpi-tile-value">
+              {{ hasAcwr ? Number(data.acwr).toFixed(1) : '—' }}
             </div>
-            <div class="telemetry-value elite-data">{{ data.primeLoad7d }}</div>
-            <div class="telemetry-subtext">
-              Som van je PrimeLoad over de laatste 7 dagen. Gebruik dit om pieken te zien.
-            </div>
-          </q-card-section>
-        </q-card>
-        <q-card class="telemetry-card" flat>
-          <q-card-section>
-            <div class="telemetry-label">
-              Belastingbalans
-              <q-icon name="info_outline" size="14px" class="q-ml-xs">
-                <q-tooltip anchor="top middle" self="bottom middle">
-                  &lt; 0.80 = Onderbelasting<br>
-                  0.80–1.30 = In balans<br>
-                  1.30–1.50 = Verhoogd risico<br>
-                  &gt; 1.50 = Hoog risico
-                </q-tooltip>
-              </q-icon>
-            </div>
-
+            <div class="kpi-tile-subtext">Belastingbalans</div>
             <template v-if="hasAcwr">
-              <div class="telemetry-value elite-data">
-                {{ Number(data.acwr).toFixed(2) }}
-              </div>
-
-              <div class="acwr-scale">
+              <div class="acwr-scale acwr-scale-compact">
                 <div class="acwr-scale-bar">
                   <div class="acwr-band acwr-band-under"></div>
                   <div class="acwr-band acwr-band-sweet"></div>
@@ -150,41 +117,35 @@
                   <div class="acwr-marker" :style="{ left: acwrMarkerPosition + '%' }"></div>
                 </div>
                 <div class="acwr-scale-labels">
-                  <span>0.5</span>
-                  <span>1.0</span>
-                  <span>1.5</span>
-                  <span>2.0</span>
+                  <span>0.5</span><span>1.0</span><span>1.5</span><span>2.0</span>
                 </div>
               </div>
-
-              <div class="acwr-legend">
-                <span>&lt; 0.80 = Onderbelasting</span>
-                <span>0.80–1.30 = In balans</span>
-                <span>1.30–1.50 = Verhoogd risico</span>
-                <span>&gt; 1.50 = Hoog risico</span>
-              </div>
             </template>
-
-            <template v-else>
-              <div class="telemetry-value elite-data">—</div>
-              <div class="acwr-empty">Nog geen data</div>
-              <div class="acwr-cta-row">
-                <q-btn
-                  v-if="authStore.stravaConnected"
-                  flat
-                  dense
-                  no-caps
-                  class="acwr-cta"
-                  :loading="stravaSyncing"
-                  @click="syncStravaNow"
-                >
-                  Sync Strava
-                </q-btn>
-                <router-link v-else to="/" class="acwr-cta-link">
-                  Log check-in
-                </router-link>
-              </div>
-            </template>
+          </q-card-section>
+        </q-card>
+        <!-- 2. Trainingsvolume (7d) -->
+        <q-card class="kpi-tile" flat>
+          <q-card-section class="kpi-tile-section">
+            <div class="kpi-tile-label">Trainingsvolume (7d)</div>
+            <div class="kpi-tile-value">{{ formatKpiDecimal(data.trainingVolume7d) }}</div>
+            <div class="kpi-tile-subtext">Som loadUsed</div>
+          </q-card-section>
+        </q-card>
+        <!-- 3. PrimeLoad (7d) -->
+        <q-card class="kpi-tile" flat>
+          <q-card-section class="kpi-tile-section">
+            <div class="kpi-tile-label">PrimeLoad (7d)</div>
+            <div class="kpi-tile-value">{{ formatKpiDecimal(data.primeLoad7d) }}</div>
+            <div class="kpi-tile-subtext">Som PrimeLoad</div>
+          </q-card-section>
+        </q-card>
+        <!-- 4. Readiness -->
+        <q-card class="kpi-tile" flat>
+          <q-card-section class="kpi-tile-section">
+            <div class="kpi-tile-label">Readiness</div>
+            <div class="kpi-tile-value">{{ readinessDisplayValue }}</div>
+            <div class="kpi-tile-subtext">{{ readinessSubtext }}</div>
+            <div v-if="lastCheckinDateDisplay" class="kpi-tile-extra">{{ lastCheckinDateDisplay }}</div>
           </q-card-section>
         </q-card>
       </div>
@@ -362,7 +323,7 @@ import { ref, computed, onMounted } from 'vue'
 import VueApexCharts from 'vue3-apexcharts'
 import { useAuthStore } from '../../stores/auth.js'
 import { api } from '../../services/httpClient.js'
-import { getAthleteDashboard } from '../../services/userService.js'
+import { getAthleteDashboard, compute7dFromActivities } from '../../services/userService.js'
 import AthleteAvatar from '../../components/AthleteAvatar.vue'
 
 const authStore = useAuthStore()
@@ -379,6 +340,7 @@ const data = ref({
   cycleEmoji: '🩸',
   readiness: 7,
   dailyAdvice: 'MAINTAIN',
+  trainingVolume7d: 0,
   primeLoad7d: 0,
   acwr: 0,
   acwrStatus: 'sweet',
@@ -388,6 +350,7 @@ const data = ref({
   ghostComparison: null,
   todayLog: null,
   cycleContext: null,
+  lastCheckinDate: null,
 })
 
 const menstruationLengthDefault = 5
@@ -490,42 +453,6 @@ const todayStatusLabel = computed(() => {
   if (lvl === 'recover') return 'RECOVER'
   if (lvl === 'rest') return 'REST'
   return 'MAINTAIN'
-})
-
-const stravaMeta = computed(() => data.value.stravaMeta || {})
-
-const stravaStatusText = computed(() => {
-  const meta = stravaMeta.value
-  const connected = authStore.stravaConnected || meta.connected === true
-  const prefix = connected ? 'Strava: gekoppeld' : 'Strava: niet gekoppeld'
-
-  const rawLast =
-    meta.lastWebhookAt ||
-    meta.lastSyncedAt ||
-    meta.lastSyncAt ||
-    meta.lastSuccessAt ||
-    null
-  const d = parseFirestoreDate(rawLast)
-  if (!d) return prefix
-
-  const ts = d.toLocaleDateString('nl-NL', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-  return `${prefix} • Laatste update: ${ts}`
-})
-
-const stravaHasError = computed(() => {
-  const meta = stravaMeta.value
-  return !!(meta.lastError || meta.error)
-})
-
-const stravaErrorText = computed(() => {
-  const meta = stravaMeta.value
-  return meta.lastError || meta.error || ''
 })
 
 const activities = ref([])
@@ -655,6 +582,39 @@ function formatPrimeLoad(v) {
   if (!Number.isFinite(n)) return '—'
   return n.toFixed(1)
 }
+
+function formatKpiDecimal(v) {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return '—'
+  return n.toFixed(1)
+}
+
+const readinessDisplayValue = computed(() => {
+  const r =
+    data.value.readiness_today ??
+    data.value.todayLog?.metrics?.readiness ??
+    data.value.readiness
+  if (r != null && Number.isFinite(Number(r))) return String(Number(r))
+  return '—'
+})
+
+const readinessSubtext = computed(() => {
+  if (data.value.todayLog != null) return 'Vandaag check-in gedaan'
+  return 'Geen check-in vandaag'
+})
+
+const lastCheckinDateDisplay = computed(() => {
+  const raw = data.value.lastCheckinDate
+  if (!raw) return ''
+  const d = toJsDate(raw) || (typeof raw === 'string' ? new Date(raw) : null)
+  if (!d || isNaN(d.getTime())) return ''
+  const formatted = d.toLocaleDateString('nl-NL', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+  return `Laatste check-in: ${formatted}`
+})
 
 // --- HRV/RHR chart: history_logs met 7d en 28d rollend gemiddelde ---
 function toDateStr(val) {
@@ -1084,6 +1044,57 @@ async function loadDashboard() {
       const acwr = payload.acwr
       const recent = mapRecentActivities(payload.recent_activities ?? [])
       activities.value = recent
+
+      const todayStr = new Date().toISOString().slice(0, 10)
+      let trainingVolume7d =
+        payload.trainingVolume7d ??
+        payload.training_volume_7d ??
+        payload.trainingLoad7d ??
+        undefined
+      let primeLoad7d =
+        payload.primeLoad7d ?? payload.primeLoad_7d ?? undefined
+      if (
+        trainingVolume7d == null ||
+        primeLoad7d == null ||
+        !Number.isFinite(Number(trainingVolume7d)) ||
+        !Number.isFinite(Number(primeLoad7d))
+      ) {
+        const computed = compute7dFromActivities(payload.recent_activities ?? [], todayStr)
+        if (trainingVolume7d == null || !Number.isFinite(Number(trainingVolume7d))) {
+          trainingVolume7d = computed.trainingVolume7d
+        }
+        if (primeLoad7d == null || !Number.isFinite(Number(primeLoad7d))) {
+          primeLoad7d = computed.primeLoad7d
+        }
+      }
+      trainingVolume7d = Number.isFinite(Number(trainingVolume7d)) ? Number(trainingVolume7d) : data.value.trainingVolume7d
+      primeLoad7d = Number.isFinite(Number(primeLoad7d)) ? Number(primeLoad7d) : data.value.primeLoad7d
+
+      if (import.meta.env?.DEV) {
+        const list = payload.recent_activities ?? []
+        const withDiffering = list.filter((a) => {
+          if (!a || a.includeInAcwr === false) return false
+          const pl = a.primeLoad ?? a._primeLoad
+          if (pl == null) return false
+          return Number(a.loadUsed) !== Number(pl)
+        }).length
+        if (
+          withDiffering >= 3 &&
+          Number(trainingVolume7d) === Number(primeLoad7d)
+        ) {
+          console.warn(
+            '[Dashboard] trainingVolume7d and primeLoad7d are equal while recent_activities have differing loadUsed vs primeLoad/_primeLoad — possible binding bug.'
+          )
+        }
+      }
+
+      const lastCheckinDate =
+        payload.lastCheckin ??
+        payload.last_checkin ??
+        payload.lastDailyLogDate ??
+        data.value.lastCheckinDate ??
+        null
+
       const cycleLength =
         payload.cycle_length ??
         payload.cycleLength ??
@@ -1100,7 +1111,6 @@ async function loadDashboard() {
         payload.today ??
         data.value.todayLog ??
         null
-      // Phase/day alleen uit cycleContext (geen legacy phase/phaseDay/cycleDay/history_logs voor header)
       const isHighCycle = ctx?.confidence === 'HIGH' && ctx?.phaseName != null && String(ctx.phaseName).trim() !== ''
       const cycleDayVal = isHighCycle && ctx.phaseDay != null && Number.isFinite(Number(ctx.phaseDay)) && Number(ctx.phaseDay) > 0
         ? Number(ctx.phaseDay)
@@ -1109,12 +1119,15 @@ async function loadDashboard() {
         ...data.value,
         cycleContext: ctx ?? data.value.cycleContext,
         readiness: readiness ?? data.value.readiness,
+        readiness_today: payload.readiness_today ?? data.value.readiness_today,
         cyclePhase: isHighCycle ? (ctx.phaseLabelNL ?? ctx.phaseName ?? '') : null,
         cycleDay: cycleDayVal,
         cycle: null,
         acwr: acwr != null ? acwr : data.value.acwr,
         acwrStatus: acwr != null ? (acwr > 1.5 ? 'spike' : acwr > 1.3 ? 'overreaching' : acwr < 0.8 ? 'undertraining' : 'sweet') : data.value.acwrStatus,
-        primeLoad7d: payload.recent_activities?.reduce((s, a) => s + (a.loadUsed ?? a._primeLoad ?? 0), 0) ?? data.value.primeLoad7d,
+        trainingVolume7d,
+        primeLoad7d,
+        lastCheckinDate,
         rhrBaseline: payload.rhr_baseline_28d ?? payload.rhrBaseline ?? data.value.rhrBaseline,
         hrvBaseline: payload.hrv_baseline_28d ?? payload.hrvBaseline ?? data.value.hrvBaseline,
         stravaMeta: payload.strava_meta ?? data.value.stravaMeta,
@@ -1162,6 +1175,16 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+@media (min-width: 640px) {
+  .pilot-container {
+    max-width: 640px;
+  }
+}
+@media (min-width: 960px) {
+  .pilot-container {
+    max-width: min(1280px, 100%);
+  }
 }
 
 .pilot-header {
@@ -1263,48 +1286,86 @@ onMounted(async () => {
   background: rgba(34, 197, 94, 0.1);
 }
 
-.telemetry-row {
+/* KPI strip: 4 tiles — desktop 4 cols, mobile stacked */
+.kpi-strip {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 12px;
 }
+@media (min-width: 480px) {
+  .kpi-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (min-width: 960px) {
+  .kpi-strip {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
 
-.telemetry-card {
+.kpi-tile {
   background: q.$prime-surface !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   border-radius: q.$radius-sm !important;
   box-shadow: none !important;
+  min-width: 0;
 }
 
-.telemetry-card .q-card__section {
-  padding: 16px;
+.kpi-tile-section {
+  padding: 16px 12px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  text-align: center;
+  min-height: 0;
 }
 
-.telemetry-label {
+.kpi-tile-label {
   font-family: q.$typography-font-family;
   font-size: 0.6rem;
   font-weight: 700;
   color: q.$prime-gray;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  word-break: break-word;
 }
 
-.telemetry-value {
+.kpi-tile-value {
   font-family: q.$mono-font;
-  font-size: 1.5rem;
+  font-size: 1.35rem;
   font-weight: 700;
   color: #ffffff;
+  line-height: 1.2;
+}
+@media (min-width: 480px) {
+  .kpi-tile-value {
+    font-size: 1.5rem;
+  }
 }
 
-.telemetry-subtext {
-  margin-top: 4px;
+.kpi-tile-subtext {
   font-family: q.$typography-font-family;
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   color: q.$prime-gray;
+  line-height: 1.2;
+}
+
+.kpi-tile-extra {
+  font-family: q.$typography-font-family;
+  font-size: 0.6rem;
+  color: q.$prime-gray;
+  margin-top: 2px;
+}
+
+.acwr-scale-compact {
+  margin-top: 6px;
+  width: 100%;
+  max-width: 140px;
+}
+.acwr-scale-compact .acwr-scale-labels {
+  font-size: 0.55rem;
 }
 
 .acwr-indicator {
@@ -1636,29 +1697,6 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.strava-mini-status {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
-  font-family: q.$typography-font-family;
-  font-size: 0.7rem;
-  color: q.$prime-gray;
-}
-
-.strava-mini-text {
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.strava-mini-error {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: q.$status-recover;
 }
 
 .strava-status-row {

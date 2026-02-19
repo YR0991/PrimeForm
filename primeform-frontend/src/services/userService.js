@@ -75,8 +75,64 @@ export function normalizeCycle(payload = {}) {
 }
 
 /**
+ * Get date string YYYY-MM-DD from an activity (dayKey, _dateStr, date, or start_date).
+ */
+function activityDayKey(activity) {
+  const raw =
+    activity.dayKey ??
+    activity._dateStr ??
+    activity.date ??
+    activity.start_date_local ??
+    activity.start_date ??
+    activity.start
+  if (typeof raw === 'string' && raw.length >= 10) return raw.slice(0, 10)
+  if (typeof raw === 'number') return new Date(raw).toISOString().slice(0, 10)
+  if (raw && typeof raw.toISOString === 'function') return raw.toISOString().slice(0, 10)
+  return null
+}
+
+/**
+ * Last 7 calendar days (todayStr backwards). Returns Set of 'YYYY-MM-DD'.
+ */
+function last7DayKeys(todayStr) {
+  const set = new Set()
+  const d = todayStr ? new Date(todayStr) : new Date()
+  if (isNaN(d.getTime())) return set
+  for (let i = 0; i < 7; i++) {
+    const x = new Date(d)
+    x.setDate(x.getDate() - i)
+    set.add(x.toISOString().slice(0, 10))
+  }
+  return set
+}
+
+/**
+ * Compute trainingVolume7d (sum loadUsed) and primeLoad7d (sum primeLoad/_primeLoad/loadUsed)
+ * from recent_activities for last 7 days, includeInAcwr only.
+ * Exported for use in UserDashboard loadDashboard.
+ */
+export function compute7dFromActivities(recentActivities, todayStr) {
+  const list = Array.isArray(recentActivities) ? recentActivities : []
+  const includeInAcwr = (a) => a && a.includeInAcwr !== false
+  const sevenDays = last7DayKeys(todayStr || new Date().toISOString().slice(0, 10))
+  let volume = 0
+  let prime = 0
+  for (const a of list) {
+    if (!includeInAcwr(a)) continue
+    const key = activityDayKey(a)
+    if (!key || !sevenDays.has(key)) continue
+    const loadUsed = Number(a.loadUsed)
+    const primeLoad = Number(a.primeLoad ?? a._primeLoad ?? a.loadUsed ?? a.load ?? 0)
+    if (Number.isFinite(loadUsed)) volume += loadUsed
+    if (Number.isFinite(primeLoad)) prime += primeLoad
+  }
+  return { trainingVolume7d: volume, primeLoad7d: prime }
+}
+
+/**
  * Fetches athlete dashboard data from /api/dashboard.
  * Used by UserDashboard.vue for initial load (userId kept for API compatibility; backend uses auth token).
+ * Contract: { success, data: { acwr, readiness_today, todayLog, recent_activities, cycleContext, ... } }
  */
 export async function getAthleteDashboard(/* userId */) {
   const res = await api.get('/api/dashboard')
@@ -94,13 +150,38 @@ export async function getAthleteDashboard(/* userId */) {
             ? 'undertraining'
             : 'sweet'
       : null
-  const primeLoad7d = payload.recent_activities?.reduce(
-    (s, a) => s + (a.loadUsed ?? a._primeLoad ?? 0),
-    0
-  )
+
+  const todayStr = new Date().toISOString().slice(0, 10)
+  let trainingVolume7d =
+    payload.trainingVolume7d ??
+    payload.training_volume_7d ??
+    payload.trainingLoad7d ??
+    undefined
+  let primeLoad7d =
+    payload.primeLoad7d ?? payload.primeLoad_7d ?? undefined
+  if (
+    trainingVolume7d == null ||
+    primeLoad7d == null ||
+    !Number.isFinite(Number(trainingVolume7d)) ||
+    !Number.isFinite(Number(primeLoad7d))
+  ) {
+    const computed = compute7dFromActivities(payload.recent_activities ?? [], todayStr)
+    if (trainingVolume7d == null || !Number.isFinite(Number(trainingVolume7d))) {
+      trainingVolume7d = computed.trainingVolume7d
+    }
+    if (primeLoad7d == null || !Number.isFinite(Number(primeLoad7d))) {
+      primeLoad7d = computed.primeLoad7d
+    }
+  }
+
   const out = {}
   if (readiness != null) out.readiness = readiness
+  if (payload.readiness_today != null) out.readiness_today = payload.readiness_today
   out.cycleContext = ctx
+  if (payload.todayLog != null) out.todayLog = payload.todayLog
+  if (payload.lastCheckin != null) out.lastCheckinDate = payload.lastCheckin
+  if (payload.last_checkin != null) out.lastCheckinDate = out.lastCheckinDate ?? payload.last_checkin
+  if (payload.lastDailyLogDate != null) out.lastCheckinDate = out.lastCheckinDate ?? payload.lastDailyLogDate
   // Header: alleen fase/dag tonen bij HIGH confidence en phaseName != null; profile.lastPeriodDate negeren
   if (ctx?.confidence === 'HIGH' && ctx?.phaseName != null && String(ctx.phaseName).trim() !== '') {
     const phaseLabel = ctx.phaseLabelNL ?? ctx.phaseName ?? ''
@@ -113,7 +194,8 @@ export async function getAthleteDashboard(/* userId */) {
   }
   if (acwr != null) out.acwr = acwr
   if (acwrStatus != null) out.acwrStatus = acwrStatus
-  if (primeLoad7d != null) out.primeLoad7d = primeLoad7d
+  if (trainingVolume7d != null && Number.isFinite(Number(trainingVolume7d))) out.trainingVolume7d = Number(trainingVolume7d)
+  if (primeLoad7d != null && Number.isFinite(Number(primeLoad7d))) out.primeLoad7d = Number(primeLoad7d)
   return out
 }
 
