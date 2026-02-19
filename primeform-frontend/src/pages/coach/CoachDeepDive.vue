@@ -60,15 +60,6 @@
               <div class="kpi-value elite-data">{{ formatReadiness(athlete) }}</div>
               <div class="kpi-sub">{{ lastCheckinLabel }}</div>
             </div>
-            <div class="kpi-card">
-              <div class="kpi-label">Strava</div>
-              <div class="kpi-value elite-data strava-one-line" :class="stravaStatusClass">
-                {{ stravaStatusText }}
-              </div>
-              <q-tooltip v-if="stravaTooltipText" anchor="top middle" self="bottom middle" max-width="280px">
-                {{ stravaTooltipText }}
-              </q-tooltip>
-            </div>
           </div>
 
           <div class="deep-dive-section-label">BELASTING</div>
