@@ -21,7 +21,7 @@
 
       <q-card class="squadron-card" flat>
         <q-table
-          :rows="filteredRows"
+          :rows="rows"
           :columns="columns"
           row-key="id"
           :loading="squadronStore.loading"
@@ -31,32 +31,6 @@
           class="squadron-table"
           @row-click="onRowClick"
         >
-          <template #top>
-            <div class="squadron-toolbar">
-              <q-input
-                v-model="search"
-                debounce="250"
-                dense
-                clearable
-                filled
-                dark
-                class="squadron-search"
-                placeholder="Zoek (naam/email)"
-                prepend-inner-icon="search"
-              />
-              <q-select
-                v-model="activeFilter"
-                :options="filterOptions"
-                dense
-                filled
-                dark
-                emit-value
-                map-options
-                class="squadron-filter"
-                label="Filter"
-              />
-            </div>
-          </template>
           <template #body-cell-athlete="props">
             <q-td :props="props">
               <div class="athlete-cell">
@@ -76,46 +50,11 @@
             </q-td>
           </template>
 
-          <template #body-cell-attention="props">
-            <q-td :props="props" class="attention-td">
-              <div v-if="props.row.attention" class="attention-cell attention-cell-single">
-                <span
-                  class="attention-badge"
-                  :class="`attention-${props.row.attention.level}`"
-                >
-                  {{
-                    props.row.attention.level === 'ok'
-                      ? 'OK'
-                      : props.row.attention.level === 'watch'
-                        ? 'LET OP'
-                        : 'ACTIE'
-                  }}
-                </span>
-                <span class="attention-score elite-data">
-                  {{ props.row.attention.score }}
-                </span>
-                <span
-                  v-if="(props.row.attention.reasons || []).length"
-                  class="attention-reason-inline"
-                >
-                  {{ (props.row.attention.reasons || [])[0] }}
-                  <q-tooltip anchor="top middle" self="bottom middle" max-width="280px">
-                    <span style="white-space: pre-line;">{{ (props.row.attention.reasons || []).join('\n') }}</span>
-                  </q-tooltip>
-                </span>
-              </div>
-              <div v-else class="attention-cell attention-cell-single attention-none">
-                <span class="attention-badge attention-ok">OK</span>
-                <span class="attention-score elite-data">0</span>
-              </div>
-            </q-td>
-          </template>
-
-          <template #body-cell-cycle="props">
+          <template #body-cell-directive="props">
             <q-td :props="props">
-              <span class="elite-data">
-                {{ formatCyclePhaseLabel(props.row.cyclePhaseLabel) }} · D{{ formatCycleDayValue(props.row.cycleDay) }}
-              </span>
+              <!-- Render props.row.directive as delivered by API. Fallback — if falsy. -->
+              <!-- TODO: if directive not on row, log which keys exist (do not derive). -->
+              <span class="elite-data">{{ props.row.directive || '—' }}</span>
             </q-td>
           </template>
 
@@ -149,10 +88,9 @@
 
           <template #body-cell-lastActivity="props">
             <q-td :props="props">
-              <span v-if="props.row.lastActivityDate != null || props.row.lastActivityType != null" class="last-activity-cell elite-data">
-                {{ formatLastActivityNorm(props.row) }}
+              <span class="last-activity-cell elite-data">
+                {{ formatLastActivityDateOnly(props.row) }}
               </span>
-              <span v-else class="elite-data" style="color: #9ca3af">—</span>
             </q-td>
           </template>
         </q-table>
@@ -172,23 +110,14 @@ const router = useRouter()
 const authStore = useAuthStore()
 const squadronStore = useSquadronStore()
 
-const search = ref('')
-const activeFilter = ref('all')
-const filterOptions = [
-  { label: 'Alle', value: 'all' },
-  { label: 'Alleen aandacht (score ≥3)', value: 'attention' },
-  { label: 'Hoog risico', value: 'highRisk' },
-  { label: 'Geen check-in vandaag', value: 'noCheckinToday' },
-  { label: 'Strava issues', value: 'stravaIssues' },
-  { label: 'Geen data', value: 'noData' },
-]
-
 const pagination = ref({
-  sortBy: 'attention',
-  descending: true,
+  sortBy: 'name',
+  descending: false,
   page: 1,
   rowsPerPage: 25,
 })
+
+const rows = computed(() => squadronStore.squadRows || [])
 
 const columns = [
   {
@@ -198,17 +127,9 @@ const columns = [
     align: 'left',
   },
   {
-    name: 'attention',
-    label: 'AANDACHT',
-    field: (row) => row.attention?.score ?? -1,
-    align: 'left',
-    sortable: true,
-    sort: (a, b) => (b.attention?.score ?? -1) - (a.attention?.score ?? -1),
-  },
-  {
-    name: 'cycle',
-    label: 'CYCLUS',
-    field: 'cyclePhase',
+    name: 'directive',
+    label: 'DIRECTIVE',
+    field: 'directive',
     align: 'left',
   },
   {
@@ -227,7 +148,7 @@ const columns = [
   {
     name: 'lastActivity',
     label: 'LAATSTE ACTIVITEIT',
-    field: 'lastActivity',
+    field: 'lastActivityDate',
     align: 'left',
   },
 ]
@@ -238,35 +159,16 @@ const getLevelIcon = (level) => {
   return 'person'
 }
 
-/** Format normalized last activity row to "DD mmm · Type · PL value" */
-function formatLastActivityNorm(row) {
+/** Last activity: date only (no type, no PrimeLoad). */
+function formatLastActivityDateOnly(row) {
   if (!row || typeof row !== 'object') return '—'
-  const dateStr = row.lastActivityDate
-  let datePart = '—'
-  if (dateStr && typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr.slice(0, 10))) {
-    const d = new Date(dateStr.slice(0, 10))
-    if (!Number.isNaN(d.getTime())) datePart = d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
-  }
-  const typePart = row.lastActivityType != null && row.lastActivityType !== '' ? row.lastActivityType : 'Workout'
-  const loadPart =
-    row.lastActivityPrimeLoad != null && Number.isFinite(Number(row.lastActivityPrimeLoad))
-      ? (Number(row.lastActivityPrimeLoad) % 1 === 0
-          ? String(Math.round(row.lastActivityPrimeLoad))
-          : Number(row.lastActivityPrimeLoad).toFixed(1))
-      : '—'
-  return `${datePart} · ${typePart} · PL ${loadPart}`
-}
-
-function formatCyclePhaseLabel(cyclePhaseLabel) {
-  if (cyclePhaseLabel == null || cyclePhaseLabel === '') return 'Niet ingesteld'
-  const s = String(cyclePhaseLabel).trim()
-  if (s.toLowerCase() === 'unknown' || s.toLowerCase() === 'onbekend') return 'Niet ingesteld'
-  return s
-}
-
-function formatCycleDayValue(cycleDay) {
-  if (cycleDay == null || !Number.isFinite(Number(cycleDay)) || Number(cycleDay) <= 0) return '—'
-  return Number(cycleDay)
+  const dateStr = row.lastActivity?.date ?? row.lastActivity?.time ?? row.lastActivityDate
+  if (dateStr == null || dateStr === '') return '—'
+  const str = String(dateStr).slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(str)) return '—'
+  const d = new Date(str)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function loadBalanceBandFromValue(loadRatio) {
@@ -286,67 +188,6 @@ function loadBalanceClassFromValue(loadRatio) {
   if (v >= 0.8 && v <= 1.3) return 'load-balance-optimal'
   return 'load-balance-outside'
 }
-
-function matchesSearch(row, term) {
-  const q = term.trim().toLowerCase()
-  if (!q) return true
-  const name = row.name || row.profile?.fullName || ''
-  const email = row.email || row.profile?.email || ''
-  return (
-    String(name).toLowerCase().includes(q) ||
-    String(email).toLowerCase().includes(q)
-  )
-}
-
-function getAcwr(row) {
-  const v = row.metrics?.acwr ?? row.acwr
-  const n = Number(v)
-  return Number.isFinite(n) ? n : null
-}
-
-function hasStravaIssue(row) {
-  const meta = row.stravaMeta || row.strava || row.metricsMeta?.strava || {}
-  const err = meta.lastError || meta.error || row.stravaError || row.strava_error
-  return !!err
-}
-
-function hasNoData(row) {
-  const acwr = getAcwr(row)
-  const acute = Number(row.metrics?.acuteLoad ?? row.acuteLoad)
-  const chronic = Number(row.metrics?.chronicLoad ?? row.chronicLoad)
-  const hasLoad =
-    (acwr != null) ||
-    Number.isFinite(acute) ||
-    Number.isFinite(chronic)
-  const hasHistory =
-    Array.isArray(row.history_logs) && row.history_logs.length > 0
-  return !hasLoad && !hasHistory
-}
-
-function matchesFilter(row, mode) {
-  switch (mode) {
-    case 'attention':
-      return (row.attention?.score ?? 0) >= 3
-    case 'highRisk':
-      return (row.loadRatio ?? getAcwr(row) ?? 0) > 1.5
-    case 'noCheckinToday':
-      return row.hasCheckinToday !== true
-    case 'stravaIssues':
-      return hasStravaIssue(row)
-    case 'noData':
-      return hasNoData(row)
-    case 'all':
-    default:
-      return true
-  }
-}
-
-const filteredRows = computed(() => {
-  const base = squadronStore.squadRows || []
-  const term = search.value
-  const mode = activeFilter.value
-  return base.filter((row) => matchesSearch(row, term) && matchesFilter(row, mode))
-})
 
 const loadSquad = async () => {
   try {
@@ -452,64 +293,6 @@ watch(
 
 .athlete-level.level-elite {
   color: q.$prime-gold;
-}
-
-.attention-td {
-  max-height: 2.5em;
-  vertical-align: middle;
-}
-
-.attention-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.attention-cell-single {
-  flex-wrap: nowrap;
-  min-height: 0;
-  line-height: 1.3;
-}
-
-.attention-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 2px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  font-size: 0.6rem;
-  font-weight: 700;
-  font-family: q.$mono-font;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.attention-badge.attention-ok {
-  color: q.$status-push;
-  border-color: q.$status-push;
-}
-
-.attention-badge.attention-watch {
-  color: #f97316;
-  border-color: #f97316;
-}
-
-.attention-badge.attention-act {
-  color: q.$status-recover;
-  border-color: q.$status-recover;
-}
-
-.attention-score {
-  font-family: q.$mono-font;
-  font-size: 0.8rem;
-}
-
-.attention-reason-inline {
-  font-size: 0.65rem;
-  color: q.$prime-gray;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 120px;
 }
 
 .load-balance-cell.load-balance-optimal {
